@@ -16,7 +16,7 @@ export const PRODUCTS: Product[] = [
     delay: 80,
   },
   {
-    name: 'Goriila',
+    name: 'Gorilla',
     description: 'AI marketing engine for X',
     delay: 160,
   },

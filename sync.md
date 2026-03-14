@@ -22,7 +22,7 @@ Founded by **Cooper** ([@CooperAIWorks](https://x.com/CooperAIWorks)) and **Raja
 - **Purpose:** An AI-native operating system for managing personal life — tasks, routines, goals, and daily operations, all agent-assisted
 - **Status:** Active
 
-### Goriila
+### Gorilla
 - **What:** AI marketing engine for X
 - **Purpose:** Autonomous marketing and growth operations powered by AI agents on the X (Twitter) platform
 - **Status:** Active
