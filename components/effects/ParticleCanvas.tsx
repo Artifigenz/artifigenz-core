@@ -31,6 +31,7 @@ export default function ParticleCanvas() {
   const animationRef = useRef<number>(0);
   const timeRef = useRef(0);
   const dimensionsRef = useRef({ w: 0, h: 0 });
+  const isDarkRef = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -123,15 +124,27 @@ export default function ParticleCanvas() {
           alpha += (1 - dist / 300) * 0.04;
         }
 
-        const gray = 42 + Math.floor(Math.random() * 8);
+        const baseGray = isDarkRef.current ? 200 : 42;
+        const gray = baseGray + Math.floor(Math.random() * 8);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${gray}, ${gray - 4}, ${gray - 7}, ${alpha})`;
+        ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, ${alpha})`;
         ctx.fill();
       }
 
       animationRef.current = requestAnimationFrame(animate);
     };
+
+    const checkDarkMode = () => {
+      isDarkRef.current = document.documentElement.classList.contains('dark');
+    };
+    checkDarkMode();
+
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
 
     resize();
     window.addEventListener('resize', resize);
@@ -141,6 +154,7 @@ export default function ParticleCanvas() {
     return () => {
       window.removeEventListener('resize', resize);
       document.removeEventListener('mousemove', handleMouseMove);
+      observer.disconnect();
       cancelAnimationFrame(animationRef.current);
     };
   }, []);

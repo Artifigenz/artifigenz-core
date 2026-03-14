@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import ThemeToggle from '@/components/ThemeToggle';
 import styles from './Header.module.css';
 
 export default function Header() {
@@ -16,6 +17,7 @@ export default function Header() {
         />
         <span className={styles.logoText}>Artifigenz</span>
       </Link>
+      <ThemeToggle />
     </header>
   );
 }

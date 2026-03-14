@@ -41,7 +41,7 @@ Founded by **Cooper** ([@CooperAIWorks](https://x.com/CooperAIWorks)) and **Raja
 - **Stack:** Single HTML file, vanilla JS, no dependencies (Google Fonts only)
 - **Font:** JetBrains Mono (unified across all text — headings, body, UI)
 - **Color palette:**
-  - Background: `#f5f0eb` (warm beige)
+  - Background: `#ffffff` (white, dark mode: `#0a0a0a`)
   - Text: `#1a1a1a` (dark)
   - Text mid: `#3d3830`
   - Text dim: `#8a8078`
