@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
-import ThemeProvider from '@/components/ThemeProvider';
-import AuraGradient from '@/components/effects/AuraGradient';
 import './globals.css';
 
 const jetbrainsMono = JetBrains_Mono({
@@ -14,7 +12,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Artifigenz',
   description:
-    'Artifigenz builds AI-native products for the agentic era. Founded by Cooper and Rajan RK.',
+    'AI consultants that work for you. Assign a task, they deliver.',
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
@@ -27,12 +25,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={jetbrainsMono.className}>
-        <ThemeProvider>
-          <AuraGradient />
-          {children}
-        </ThemeProvider>
+        {children}
       </body>
     </html>
   );
