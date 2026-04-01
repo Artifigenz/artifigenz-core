@@ -22,19 +22,11 @@
   object-fit: contain;
 }
 
-
 .logoText {
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
 }
 
 .nav {
@@ -64,33 +56,22 @@
   color: var(--text);
 }
 
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid var(--border-light);
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
+.actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: border-color 0.2s ease;
+  justify-content: flex-end;
+  gap: 16px;
 }
 
-.avatar:hover {
-  border-color: var(--text);
+.mobileActions {
+  display: none;
+  justify-content: flex-end;
 }
 
-.avatarInitial {
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1;
-}
-
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .header {
     padding: 20px 20px;
+    grid-template-columns: 1fr auto;
   }
 
   .logoIcon {
@@ -100,5 +81,17 @@
 
   .logoText {
     font-size: 0.82rem;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .actions {
+    display: none;
+  }
+
+  .mobileActions {
+    display: flex;
   }
 }

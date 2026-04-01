@@ -1,23 +1,29 @@
-import 'react-native-reanimated';
 import 'react-native-gesture-handler';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { MenuProvider } from '../components/MenuSheet';
+import { ThemeProvider, useTheme } from '../components/ThemeContext';
 
-export default function RootLayout() {
-  const scheme = useColorScheme();
-  const dark = scheme === 'dark';
+function AppInner() {
+  const { isDark, c } = useTheme();
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style={dark ? 'light' : 'dark'} />
+    <MenuProvider>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: dark ? '#000' : '#fff' },
+          contentStyle: { backgroundColor: c.bg },
         }}
       />
-    </GestureHandlerRootView>
+    </MenuProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   );
 }

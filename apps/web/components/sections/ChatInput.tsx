@@ -7,7 +7,11 @@ import styles from './ChatInput.module.css';
 
 const activeAgents = AGENTS.filter((a) => a.active);
 
-export default function ChatInput() {
+interface ChatInputProps {
+  agent?: string;
+}
+
+export default function ChatInput({ agent }: ChatInputProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [agentFlyout, setAgentFlyout] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -24,6 +28,52 @@ export default function ChatInput() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Agent-scoped mode
+  if (agent) {
+    return (
+      <div className={styles.bar}>
+        <div className={styles.inner}>
+          <div className={styles.compactBox}>
+            <div className={styles.addWrap} ref={menuRef}>
+              <button
+                className={styles.addBtn}
+                aria-label="Add"
+                onClick={() => setMenuOpen(!menuOpen)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className={styles.menu}>
+                  <button className={styles.menuItem} onClick={() => setMenuOpen(false)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                    <span>Add files or images</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            <input
+              type="text"
+              className={styles.compactInput}
+              placeholder={`Ask ${agent}...`}
+            />
+            <button className={styles.compactSend} aria-label="Send">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full mode (homepage)
   return (
     <div className={styles.bar}>
       <div className={styles.inner}>
@@ -69,14 +119,14 @@ export default function ChatInput() {
                     </button>
                     {agentFlyout && (
                       <div className={styles.flyout}>
-                        {activeAgents.map((agent) => (
+                        {activeAgents.map((a) => (
                           <button
-                            key={agent.name}
+                            key={a.name}
                             className={styles.flyoutItem}
-                            onClick={() => { setSelectedAgent(agent.name); setMenuOpen(false); setAgentFlyout(false); }}
+                            onClick={() => { setSelectedAgent(a.name); setMenuOpen(false); setAgentFlyout(false); }}
                           >
                             <span className={styles.flyoutDot} />
-                            {agent.name}
+                            {a.name}
                           </button>
                         ))}
                         <div className={styles.flyoutDivider} />

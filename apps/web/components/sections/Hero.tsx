@@ -23,7 +23,7 @@ export default function Hero() {
   return (
     <section className={styles.hero}>
       <h1 className={styles.title}>
-        {greeting}, Suba — your agents found a few things while you were away.
+        {greeting}, Cooper — your agents found a few things while you were away.
       </h1>
     </section>
   );

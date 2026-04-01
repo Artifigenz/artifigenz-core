@@ -22,7 +22,7 @@ export default function SettingsPage() {
           <h2 className={styles.sectionTitle}>Profile</h2>
           <div className={styles.field}>
             <label className={styles.label}>Name</label>
-            <input className={styles.input} defaultValue="Suba" readOnly />
+            <input className={styles.input} defaultValue="Cooper" readOnly />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Email</label>

@@ -1,4 +1,7 @@
+// Exact values from web globals.css — mobile uses the 600px breakpoint values
+
 export const colors = {
+  // Terminal light
   light: {
     bg: '#ffffff',
     text: '#000000',
@@ -6,8 +9,18 @@ export const colors = {
     textDim: '#999999',
     border: '#000000',
     borderLight: '#ececec',
-    cardBg: '#f6f6f6',
+    cardBg: 'transparent',
+    cardHover: '#f6f6f6',
+    menuBg: '#ffffff',
+    menuBorder: '#ececec',
+    accent: '#000000',
+    accentText: '#ffffff',
+    radius: 0,
+    radiusMd: 0,
+    radiusLg: 0,
+    shadow: false,
   },
+  // Terminal dark
   dark: {
     bg: '#000000',
     text: '#ffffff',
@@ -15,19 +28,55 @@ export const colors = {
     textDim: '#666666',
     border: '#ffffff',
     borderLight: '#222222',
-    cardBg: '#111111',
+    cardBg: 'transparent',
+    cardHover: '#111111',
+    menuBg: '#000000',
+    menuBorder: '#222222',
+    accent: '#ffffff',
+    accentText: '#000000',
+    radius: 0,
+    radiusMd: 0,
+    radiusLg: 0,
+    shadow: false,
+  },
+  // Aura light
+  auraLight: {
+    bg: '#ffffff',
+    text: '#111111',
+    textMid: '#555555',
+    textDim: '#999999',
+    border: '#d0d0d0',
+    borderLight: 'rgba(0,0,0,0.06)',
+    cardBg: 'rgba(255,255,255,0.55)',
+    cardHover: 'rgba(255,255,255,0.75)',
+    menuBg: '#ffffff',
+    menuBorder: 'rgba(0,0,0,0.08)',
+    accent: '#111111',
+    accentText: '#ffffff',
+    radius: 16,
+    radiusMd: 12,
+    radiusLg: 20,
+    shadow: true,
+  },
+  // Aura dark
+  auraDark: {
+    bg: '#0a0a0a',
+    text: '#f0f0f0',
+    textMid: '#aaaaaa',
+    textDim: '#666666',
+    border: '#333333',
+    borderLight: 'rgba(255,255,255,0.06)',
+    cardBg: 'rgba(255,255,255,0.03)',
+    cardHover: 'rgba(255,255,255,0.06)',
+    menuBg: '#141414',
+    menuBorder: 'rgba(255,255,255,0.08)',
+    accent: '#f0f0f0',
+    accentText: '#0a0a0a',
+    radius: 16,
+    radiusMd: 12,
+    radiusLg: 20,
+    shadow: true,
   },
 };
 
-export const fonts = {
-  mono: 'JetBrainsMono',
-};
-
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  xxl: 48,
-};
+export type ColorTheme = typeof colors.light;

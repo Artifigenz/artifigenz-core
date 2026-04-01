@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import React, { useEffect, useState, useRef, type ReactNode } from 'react';
+import Link from 'next/link';
 import { AGENTS, type Agent } from '@artifigenz/shared';
 import * as Icons from './AgentIcons';
 import styles from './AgentGrid.module.css';
@@ -16,10 +17,13 @@ function CyclingInsight({ insights, tick }: { insights: string[]; tick: number }
   const index = tick % insights.length;
   const [visible, setVisible] = useState(true);
   const [display, setDisplay] = useState(index);
+  const textRef = React.useRef<HTMLParagraphElement>(null);
+  const [shouldScroll, setShouldScroll] = useState(false);
 
   useEffect(() => {
     if (index === display) return;
     setVisible(false);
+    setShouldScroll(false);
     const t = setTimeout(() => {
       setDisplay(index);
       setVisible(true);
@@ -27,10 +31,24 @@ function CyclingInsight({ insights, tick }: { insights: string[]; tick: number }
     return () => clearTimeout(t);
   }, [index, display]);
 
+  // Check if text overflows on mobile, then trigger scroll
+  useEffect(() => {
+    if (!textRef.current || !visible) return;
+    const el = textRef.current;
+    const overflows = el.scrollWidth > el.clientWidth + 4;
+    if (overflows) {
+      const dist = el.scrollWidth - el.clientWidth;
+      el.style.setProperty('--scroll-dist', `-${dist}px`);
+      const timer = setTimeout(() => setShouldScroll(true), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [display, visible]);
+
   return (
     <p
+      ref={textRef}
       key={display}
-      className={`${styles.activeInsight} ${!visible ? styles.insightOut : ''}`}
+      className={`${styles.activeInsight} ${!visible ? styles.insightOut : ''} ${shouldScroll ? styles.insightScroll : ''}`}
     >
       {insights[display]}
     </p>
@@ -71,9 +89,11 @@ export default function AgentGrid() {
     <section className={styles.section}>
       <div className={styles.activeList}>
         {active.map((agent, index) => (
-          <div
+          <Link
+            href={`/agent/${agent.name.toLowerCase()}`}
             key={agent.name}
             className={`${styles.activeCard} ${visibleItems.has(index) ? styles.visible : ''}`}
+            style={{ textDecoration: 'none', color: 'inherit' }}
           >
             <div className={styles.activeLeft}>
               <div className={styles.activeIcon}>{ICON_MAP[agent.name]}</div>
@@ -92,8 +112,11 @@ export default function AgentGrid() {
                 <path d="M12 5l7 7-7 7" />
               </svg>
             </span>
-          </div>
+          </Link>
         ))}
+        <Link href="/explore" className={styles.addAgent}>
+          + Add an agent
+        </Link>
       </div>
     </section>
   );

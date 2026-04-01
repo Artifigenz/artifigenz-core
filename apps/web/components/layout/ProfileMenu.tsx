@@ -28,15 +28,15 @@ export default function ProfileMenu() {
         onClick={() => setOpen(!open)}
       >
         <span className={styles.avatar}>
-          <span className={styles.avatarInitial}>S</span>
+          <span className={styles.avatarInitial}>C</span>
         </span>
-        <span className={styles.triggerName}>Suba</span>
+        <span className={styles.triggerName}>Cooper</span>
       </button>
 
       {open && (
         <div className={styles.menu}>
           <div className={styles.user}>
-            <span className={styles.userName}>Suba</span>
+            <span className={styles.userName}>Cooper</span>
             <span className={styles.userEmail}>suba@artifigenz.com</span>
           </div>
 

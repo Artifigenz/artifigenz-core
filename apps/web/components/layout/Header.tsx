@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ProfileMenu from '@/components/layout/ProfileMenu';
+import MobileMenu from '@/components/layout/MobileMenu';
 import styles from './Header.module.css';
 
 export default function Header() {
@@ -42,6 +43,9 @@ export default function Header() {
       </nav>
       <div className={styles.actions}>
         <ProfileMenu />
+      </div>
+      <div className={styles.mobileActions}>
+        <MobileMenu />
       </div>
     </header>
   );

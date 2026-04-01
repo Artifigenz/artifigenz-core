@@ -4,8 +4,29 @@
   left: 0;
   right: 0;
   z-index: 100;
-  padding: 0 0 28px;
+  padding: 80px 0 28px;
   pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 80px);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 80px);
+  background: inherit;
+}
+
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  z-index: -1;
+}
+
+:global([data-theme="aura"]) .bar::before {
+  background: linear-gradient(165deg, rgba(255,255,255,0.95), rgba(255,255,255,0.95));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+:global([data-theme="aura"].dark) .bar::before {
+  background: linear-gradient(165deg, rgba(10,10,10,0.95), rgba(10,10,10,0.95));
 }
 
 .inner {
@@ -255,6 +276,54 @@
 }
 
 .sendBtn:hover {
+  opacity: 0.8;
+}
+
+/* ── Compact (agent-scoped) ── */
+
+.compactBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg, 20px);
+  padding: 8px 8px 8px 12px;
+  background: var(--menu-bg, var(--bg));
+  box-shadow: var(--shadow);
+}
+
+.compactInput {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 400;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+  min-width: 0;
+}
+
+.compactInput::placeholder {
+  color: var(--text-dim);
+}
+
+.compactSend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.compactSend:hover {
   opacity: 0.8;
 }
 

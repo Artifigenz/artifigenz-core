@@ -148,17 +148,55 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .main {
     padding: 0 20px 40px;
   }
 
   .header {
-    padding: 40px 0 28px;
+    padding: 24px 0 20px;
+  }
+
+  .title {
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+  }
+
+  .sub {
+    font-size: 0.82rem;
   }
 
   .grid {
     grid-template-columns: 1fr;
-    gap: 16px;
+    gap: 8px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .top {
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .name {
+    font-size: 0.92rem;
+  }
+
+  .pitch {
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+    line-height: 1.45;
+  }
+
+  .activate {
+    font-size: 0.68rem;
+    padding: 5px 12px;
   }
 }
