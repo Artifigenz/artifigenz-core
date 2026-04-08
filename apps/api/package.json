@@ -9,6 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.85.0",
     "@artifigenz/db": "*",
     "@artifigenz/shared": "*",
     "@clerk/backend": "^1.21.0",

@@ -24,7 +24,7 @@
 
 - [x] 2.1 Create `agents/finance/` directory with registration
 - [x] 2.2 `plaid.adapter.ts` — Plaid Link token, public_token exchange, /transactions/sync, webhooks — **verified with sandbox (385 txs synced)**
-- [ ] 2.3 `file-upload.adapter.ts` — file upload, Claude API extraction, Plaid Enrich *(stub; needs ANTHROPIC_API_KEY)*
+- [x] 2.3 `file-upload.adapter.ts` — file upload + Claude API extraction — **verified with CSV (22 txs extracted, 4 subscriptions detected)**
 - [x] 2.4 `subscriptions.skill.ts` — 5 job categories (Visibility, Timing, Change, Cleanup, Insight)
 - [x] 2.5 `recurring-detection.ts` — pattern matching for subscriptions with category filtering
 - [x] 2.6 Register Finance agent in `bootstrap.ts`
