@@ -1,0 +1,658 @@
+@keyframes fadeUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 40px 140px;
+}
+
+/* ── Back ── */
+
+.back {
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 24px 0 28px;
+  transition: color 0.15s ease;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+/* ── Agent header ── */
+
+.agentHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: translateY(12px);
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.icon {
+  display: flex;
+  color: var(--text);
+}
+
+.agentName {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tagline {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.stepBadge {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Step 0: Selling page ── */
+
+.pitch {
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  font-weight: 400;
+  color: var(--text);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  margin-bottom: 32px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+}
+
+.sectionLabel {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+}
+
+.capabilitiesSection {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius, 0px);
+  padding: 24px;
+  margin-bottom: 32px;
+  background: var(--card-hover);
+}
+
+.capabilitiesGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.capabilityItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.capabilityLabel {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.capabilityDesc {
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  line-height: 1.5;
+}
+
+.previewSection {
+  margin-bottom: 40px;
+}
+
+/* ── Insight cards (mirrors detail page) ── */
+
+.timelineCards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insightCard {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius, 10px);
+  padding: 16px 20px;
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s ease;
+}
+
+.insightCard:hover {
+  border-color: var(--border);
+}
+
+.insightTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.insightCategory {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.insightDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.mustSee {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.insightTitle {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.insightDetail {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-mid);
+  line-height: 1.5;
+}
+
+/* ── Buttons ── */
+
+.ctaRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.primaryBtn {
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-full, 9999px);
+  padding: 12px 28px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.primaryBtn:hover {
+  opacity: 0.85;
+}
+
+.ghostBtn {
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full, 9999px);
+  padding: 11px 22px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.ghostBtn:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.ctaHint {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+/* ── Step title/subtitle ── */
+
+.stepTitle {
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+}
+
+.stepSubtitle {
+  font-size: 0.88rem;
+  color: var(--text-mid);
+  line-height: 1.5;
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+}
+
+/* ── Step 1: Accounts ── */
+
+.configList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.accountItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--card-hover);
+  border-radius: var(--radius-md, 8px);
+  gap: 16px;
+}
+
+.accountInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.accountName {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.accountDesc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.connectBtn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-full, 9999px);
+  padding: 8px 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.connectBtn:hover {
+  opacity: 0.85;
+}
+
+.connectedBtn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full, 9999px);
+  padding: 7px 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.connectedBtn:hover {
+  color: var(--text);
+}
+
+/* ── Step 2: Goals ── */
+
+.chipsGroup {
+  margin-bottom: 24px;
+}
+
+.chipsLabel {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full, 9999px);
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.chip:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.chipActive {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.chipActive:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  opacity: 0.85;
+}
+
+.chipCustom {
+  color: var(--text);
+  background: var(--card-hover);
+  border-color: var(--border-light);
+  cursor: default;
+}
+
+.chipRemove {
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  transition: color 0.15s ease;
+}
+
+.chipRemove:hover {
+  color: var(--text);
+}
+
+.addGoalRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.addGoalInput {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.addGoalInput:focus {
+  border-color: var(--text);
+}
+
+.addGoalInput::placeholder {
+  color: var(--text-dim);
+}
+
+.addGoalBtn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.addGoalBtn:hover {
+  opacity: 0.85;
+}
+
+/* ── Step 3: Review ── */
+
+.summaryCard {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius, 0px);
+  padding: 24px;
+  margin-bottom: 32px;
+  background: var(--card-hover);
+}
+
+.summaryRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.summaryRow:first-child {
+  padding-top: 0;
+}
+
+.summaryRow:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.summaryLabel {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  width: 100px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.summaryValue {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.skillsSummary {
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  transition: color 0.15s ease;
+}
+
+.skillsSummary:hover {
+  color: var(--text-dim);
+}
+
+.skillsList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+
+.skillItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.skillInactive {
+  color: var(--text-dim);
+}
+
+.toggle {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border-light);
+  padding: 2px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.toggleOn {
+  background: var(--accent);
+}
+
+.toggleDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.2s ease;
+}
+
+.toggleOn .toggleDot {
+  transform: translateX(14px);
+}
+
+/* ── Footer ── */
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.footer .primaryBtn {
+  margin-left: auto;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 640px) {
+  .main {
+    padding: 0 20px 140px;
+  }
+
+  .agentHeader {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .capabilitiesGrid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .capabilitiesSection {
+    padding: 18px;
+  }
+
+  .summaryCard {
+    padding: 18px;
+  }
+
+  .summaryRow {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .summaryLabel {
+    width: auto;
+  }
+
+  .accountItem {
+    padding: 14px 16px;
+  }
+
+  .insightCard {
+    padding: 14px 16px;
+  }
+
+  .ctaRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer {
+    flex-direction: column-reverse;
+  }
+
+  .footer .ghostBtn,
+  .footer .primaryBtn {
+    width: 100%;
+  }
+}

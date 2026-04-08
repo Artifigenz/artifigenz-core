@@ -5,6 +5,8 @@ import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import ChatInput from '@/components/sections/ChatInput';
 import { AGENTS } from '@artifigenz/shared';
+import { useActivatedAgents, agentSlug } from '@/hooks/useActivatedAgents';
+import { buildGreeting } from '@/lib/greeting';
 import * as Icons from '@/components/sections/AgentIcons';
 import styles from './page.module.css';
 
@@ -41,7 +43,6 @@ interface Goal {
 interface AgentPageData {
   since: string;
   lastAnalyzed: string;
-  greeting: string;
   accounts: Account[];
   goals: Goal[];
   skills: Skill[];
@@ -55,7 +56,6 @@ const AGENT_DATA: Record<string, AgentPageData> = {
   finance: {
     since: 'March 15',
     lastAnalyzed: '2 hours ago',
-    greeting: "Good news — you're ahead of your savings target this month. But Netflix quietly raised its price and your DoorDash habit is creeping up again. Worth a look.",
     accounts: [{ name: 'Chase ••••4521' }, { name: 'Amex ••••8832' }],
     goals: [
       { id: '1', text: 'Save $500 per month' },
@@ -98,7 +98,6 @@ const AGENT_DATA: Record<string, AgentPageData> = {
   travel: {
     since: 'March 10',
     lastAnalyzed: '18 minutes ago',
-    greeting: "That Tokyo window I've been watching just opened — fares dropped to $287. Also, your passport is getting close to the 6-month cutoff. Let's not forget that.",
     accounts: [{ name: 'Google Flights' }, { name: 'Kayak alerts' }],
     goals: [
       { id: '1', text: 'Find deals to Tokyo, Bali, or Florida' },
@@ -134,7 +133,6 @@ const AGENT_DATA: Record<string, AgentPageData> = {
   health: {
     since: 'March 8',
     lastAnalyzed: '1 hour ago',
-    greeting: "Your steps are solid — best month in a while. But your sleep took a hit this week. Three nights under 6 hours. I'd keep an eye on that before it becomes a pattern.",
     accounts: [{ name: 'Apple Health' }, { name: 'Fitbit sync' }],
     goals: [
       { id: '1', text: 'Get sleep back above 7 hours' },
@@ -169,7 +167,6 @@ const AGENT_DATA: Record<string, AgentPageData> = {
   research: {
     since: 'March 12',
     lastAnalyzed: '3 hours ago',
-    greeting: "Your competitive report is done — 12 pages, two gaps nobody's filling yet. I also pulled three fresh papers that landed this week. You'll want to see those.",
     accounts: [{ name: 'Google Scholar' }, { name: 'ArXiv' }],
     goals: [
       { id: '1', text: 'Track AI agent adoption research' },
@@ -205,7 +202,6 @@ const AGENT_DATA: Record<string, AgentPageData> = {
   'job-search': {
     since: 'March 20',
     lastAnalyzed: '30 minutes ago',
-    greeting: "Three roles dropped today that fit your profile well. Also, your Stripe application just moved to the interview stage — nice.",
     accounts: [{ name: 'LinkedIn' }, { name: 'Indeed' }],
     goals: [
       { id: '1', text: 'Find a senior product role in AI/ML' },
@@ -247,13 +243,14 @@ const AGENT_DATA: Record<string, AgentPageData> = {
 
 export default function AgentDetail({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
+  const { getActivation, hydrated } = useActivatedAgents();
   const [configOpen, setConfigOpen] = useState(false);
   const [configTab, setConfigTab] = useState<'accounts' | 'instructions' | 'skills'>('accounts');
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [newGoal, setNewGoal] = useState('');
 
   const slug = name.toLowerCase();
-  const agent = AGENTS.find((a) => a.name.toLowerCase().replace(/\s+/g, '-') === slug);
+  const agent = AGENTS.find((a) => agentSlug(a.name) === slug);
   const data = AGENT_DATA[slug];
   const IconComponent = agent ? ICON_MAP[agent.name] : undefined;
   const currentGoals = goals ?? data?.goals ?? [];
@@ -268,6 +265,16 @@ export default function AgentDetail({ params }: { params: Promise<{ name: string
   }
 
   const activeSkills = data.skills.filter((s) => s.active).length;
+
+  const activation = getActivation(slug);
+  const allInsights = data.timeline.flatMap((g) => g.insights);
+  const unreadMustSee = allInsights
+    .filter((i) => i.mustSee && !i.read)
+    .map((i) => ({ title: i.title, detail: i.detail }));
+  const totalUnread = allInsights.filter((i) => !i.read).length;
+  const greeting = hydrated
+    ? buildGreeting(activation, { unreadMustSee, totalUnread })
+    : '';
 
   const addGoal = () => {
     if (!newGoal.trim()) return;
@@ -308,7 +315,7 @@ export default function AgentDetail({ params }: { params: Promise<{ name: string
         </div>
 
         {/* Greeting */}
-        <p className={styles.greeting}>{data.greeting}</p>
+        <p className={styles.greeting}>{greeting}</p>
 
         {/* Configure modal */}
         {configOpen && (

@@ -3,15 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { AGENTS } from '@artifigenz/shared';
+import { useActivatedAgents, agentSlug } from '@/hooks/useActivatedAgents';
 import styles from './ChatInput.module.css';
-
-const activeAgents = AGENTS.filter((a) => a.active);
 
 interface ChatInputProps {
   agent?: string;
 }
 
 export default function ChatInput({ agent }: ChatInputProps) {
+  const { slugs } = useActivatedAgents();
+  const activeAgents = AGENTS.filter((a) => slugs.includes(agentSlug(a.name)));
   const [menuOpen, setMenuOpen] = useState(false);
   const [agentFlyout, setAgentFlyout] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -129,13 +130,13 @@ export default function ChatInput({ agent }: ChatInputProps) {
                             {a.name}
                           </button>
                         ))}
-                        <div className={styles.flyoutDivider} />
+                        {activeAgents.length > 0 && <div className={styles.flyoutDivider} />}
                         <Link
                           href="/explore"
                           className={styles.flyoutExplore}
                           onClick={() => { setMenuOpen(false); setAgentFlyout(false); }}
                         >
-                          Add agents →
+                          {activeAgents.length === 0 ? 'Browse agents →' : 'Add agents →'}
                         </Link>
                       </div>
                     )}

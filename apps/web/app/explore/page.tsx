@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import { AGENTS } from '@artifigenz/shared';
+import { useActivatedAgents, agentSlug } from '@/hooks/useActivatedAgents';
 import * as Icons from '@/components/sections/AgentIcons';
 import styles from './page.module.css';
 
@@ -30,10 +32,12 @@ const ICON_MAP: Record<string, ReactNode> = {
 };
 
 export default function ExplorePage() {
+  const { slugs, hydrated } = useActivatedAgents();
   const [visibleItems, setVisibleItems] = useState<Set<number>>(new Set());
-  const explore = AGENTS.filter((a) => !a.active);
+  const explore = AGENTS.filter((a) => !slugs.includes(agentSlug(a.name)));
 
   useEffect(() => {
+    setVisibleItems(new Set());
     const timeouts: NodeJS.Timeout[] = [];
     explore.forEach((_, index) => {
       const timeout = setTimeout(() => {
@@ -42,7 +46,8 @@ export default function ExplorePage() {
       timeouts.push(timeout);
     });
     return () => timeouts.forEach((t) => clearTimeout(t));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, explore.length]);
 
   return (
     <div className={styles.page}>
@@ -64,7 +69,10 @@ export default function ExplorePage() {
               </div>
               <p className={styles.pitch}>{agent.pitch}</p>
               <div className={styles.bottom}>
-                <button className={styles.activate}>
+                <Link
+                  href={`/agent/${agentSlug(agent.name)}/activate`}
+                  className={styles.activate}
+                >
                   Activate
                   <span className={styles.activateIcon}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -72,7 +80,7 @@ export default function ExplorePage() {
                       <path d="M12 5l7 7-7 7" />
                     </svg>
                   </span>
-                </button>
+                </Link>
               </div>
             </div>
           ))}
