@@ -42,8 +42,8 @@ export default function ProfileMenu() {
 
   if (!isSignedIn) {
     return (
-      <Link href="/sign-in" className={styles.trigger}>
-        <span className={styles.triggerName}>Sign in</span>
+      <Link href="/sign-in" className={styles.signInBtn}>
+        Sign in
       </Link>
     );
   }

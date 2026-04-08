@@ -46,6 +46,31 @@
   color: var(--text);
 }
 
+.signInBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 8px 16px;
+  border-radius: 9999px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.signInBtn:hover {
+  opacity: 0.88;
+}
+
+.signInBtn:active {
+  transform: translateY(1px);
+}
+
 .menu {
   position: absolute;
   top: calc(100% + 10px);
