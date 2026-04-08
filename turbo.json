@@ -11,6 +11,15 @@
     },
     "lint": {
       "dependsOn": ["^build"]
+    },
+    "generate": {
+      "cache": false
+    },
+    "migrate": {
+      "cache": false
+    },
+    "seed": {
+      "cache": false
     }
   }
 }

@@ -12,8 +12,15 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "dev:web": "turbo dev --filter=@artifigenz/web",
+    "dev:api": "turbo dev --filter=@artifigenz/api",
     "dev:mobile": "cd apps/mobile && EXPO_NO_METRO_WORKSPACE_ROOT=1 npx expo start",
-    "build:web": "turbo build --filter=@artifigenz/web"
+    "build:web": "turbo build --filter=@artifigenz/web",
+    "build:api": "turbo build --filter=@artifigenz/api",
+    "db:generate": "turbo generate --filter=@artifigenz/db",
+    "db:migrate": "turbo migrate --filter=@artifigenz/db",
+    "db:push": "cd packages/db && npx drizzle-kit push",
+    "db:seed": "turbo seed --filter=@artifigenz/db",
+    "db:studio": "cd packages/db && npx drizzle-kit studio"
   },
   "devDependencies": {
     "turbo": "^2"
