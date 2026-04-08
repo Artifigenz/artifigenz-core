@@ -1,42 +1,45 @@
 import { Worker } from "bullmq";
-import { eq } from "drizzle-orm";
 import { db, deliveryLog } from "@artifigenz/db";
 import { getRedisConnection } from "../queues";
+import { deliveryService } from "../../delivery/delivery-service";
+import type { InsightForDelivery } from "../../delivery/types";
 
 export function createDeliveryWorker() {
   return new Worker(
     "delivery",
     async (job) => {
-      const { insightId, userId, channel, message } = job.data;
+      const { insightId, userId, channel, insight } = job.data as {
+        insightId: string;
+        userId: string;
+        channel: string;
+        insight: InsightForDelivery;
+      };
 
       console.log(
-        `[DeliveryWorker] Sending "${channel}" delivery for insight "${insightId}"`,
+        `[DeliveryWorker] Sending "${channel}" delivery for insight "${insightId.slice(0, 8)}"`,
       );
 
-      try {
-        // Channel implementations will be added in Phase 3
-        // For now, log the delivery attempt
-        await db.insert(deliveryLog).values({
-          insightId,
-          channel,
-          status: "sent",
-          attemptCount: 1,
-          sentAt: new Date(),
-        });
+      const result = await deliveryService.deliverNow({
+        channelId: channel,
+        userId,
+        insight,
+      });
 
-        console.log(`[DeliveryWorker] Delivered via ${channel}`);
-        return { status: "sent" };
-      } catch (error) {
-        await db.insert(deliveryLog).values({
-          insightId,
-          channel,
-          status: "failed",
-          attemptCount: (job.attemptsMade || 0) + 1,
-          errorMessage: error instanceof Error ? error.message : "Unknown error",
-        });
+      await db.insert(deliveryLog).values({
+        insightId,
+        channel,
+        status: result.success ? "sent" : "failed",
+        attemptCount: (job.attemptsMade || 0) + 1,
+        errorMessage: result.error ?? null,
+        sentAt: result.success ? new Date() : null,
+      });
 
-        throw error;
+      if (!result.success) {
+        throw new Error(result.error ?? "Delivery failed");
       }
+
+      console.log(`[DeliveryWorker] Delivered via ${channel} (${result.externalId ?? "—"})`);
+      return { status: "sent", externalId: result.externalId };
     },
     {
       connection: getRedisConnection(),

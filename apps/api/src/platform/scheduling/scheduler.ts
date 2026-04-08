@@ -1,8 +1,9 @@
-import { eq, and } from "drizzle-orm";
-import { db, agentInstances, agentInstanceSkills } from "@artifigenz/db";
+import { eq } from "drizzle-orm";
+import { db, agentInstances } from "@artifigenz/db";
 import { skillExecutionQueue } from "./queues";
 import { eventBus } from "../events/event-bus";
-import { DATA_SOURCE_SYNCED } from "../events/event-types";
+import { DATA_SOURCE_SYNCED, INSIGHT_CREATED } from "../events/event-types";
+import { deliveryService } from "../delivery/delivery-service";
 import type { AgentRegistry } from "../registry/agent-registry";
 
 export class Scheduler {
@@ -69,6 +70,18 @@ export class Scheduler {
             `[Scheduler] Queued skill "${skill.id}" from event "${DATA_SOURCE_SYNCED}"`,
           );
         }
+      }
+    });
+
+    // When an insight is created, route it to delivery channels
+    eventBus.on(INSIGHT_CREATED, async (payload) => {
+      try {
+        await deliveryService.route(payload.insightId);
+      } catch (err) {
+        console.error(
+          `[Scheduler] Failed to route insight ${payload.insightId}:`,
+          err,
+        );
       }
     });
   }

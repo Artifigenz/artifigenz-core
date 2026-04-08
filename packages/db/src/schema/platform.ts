@@ -240,7 +240,7 @@ export const deliveryLog = pgTable("delivery_log", {
   id: uuid("id").primaryKey().defaultRandom(),
   insightId: uuid("insight_id")
     .notNull()
-    .references(() => insights.id),
+    .references(() => insights.id, { onDelete: "cascade" }),
   channel: varchar("channel", { length: 20 }).notNull(),
   status: varchar("status", { length: 20 }).notNull(),
   attemptCount: integer("attempt_count").default(0),

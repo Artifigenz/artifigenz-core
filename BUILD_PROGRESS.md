@@ -32,11 +32,11 @@
 
 ## Phase 3: Delivery
 
-- [ ] 3.1 `DeliveryService` — route insights to channels based on prefs
-- [ ] 3.2 `EmailChannel` — Resend integration
-- [ ] 3.3 `WhatsAppChannel` — Meta Business API
-- [ ] 3.4 `TelegramChannel` — Telegram Bot API
-- [ ] 3.5 Wire delivery to insight pipeline via BullMQ delivery worker
+- [x] 3.1 `DeliveryService` — route insights to channels based on prefs
+- [x] 3.2 `EmailChannel` — Resend integration — **verified**
+- [ ] 3.3 `WhatsAppChannel` — Meta Business API *(skipped for MVP, requires business verification)*
+- [x] 3.4 `TelegramChannel` — Telegram Bot API — **verified**
+- [x] 3.5 Wire delivery to insight pipeline via BullMQ delivery worker
 
 ## Phase 3.5: Chat
 
