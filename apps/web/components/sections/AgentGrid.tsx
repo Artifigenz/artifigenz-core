@@ -111,13 +111,7 @@ export default function AgentGrid() {
     const available = AGENTS.filter((a) => !slugs.includes(agentSlug(a.name)));
     return (
       <section className={styles.section}>
-        <div className={styles.emptyHeader}>
-          <h2 className={styles.emptyTitle}>Pick your first agent</h2>
-          <p className={styles.emptyText}>
-            These specialists are ready to work for you. Tap <strong>Add agent</strong> and they&apos;ll get started immediately.
-          </p>
-        </div>
-        <ExploreGrid agents={available} ctaLabel="Add agent" />
+        <ExploreGrid agents={available} ctaLabel="Activate" />
       </section>
     );
   }

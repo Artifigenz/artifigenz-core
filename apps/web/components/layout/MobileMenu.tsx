@@ -6,7 +6,11 @@ import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
 import styles from './MobileMenu.module.css';
 
-export default function MobileMenu() {
+interface MobileMenuProps {
+  hasActivations?: boolean;
+}
+
+export default function MobileMenu({ hasActivations = false }: MobileMenuProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -53,30 +57,34 @@ export default function MobileMenu() {
             </div>
 
             <nav className={styles.nav}>
-              <Link
-                href="/"
-                className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}
-                onClick={() => setOpen(false)}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                  <polyline points="9 22 9 12 15 12 15 22" />
-                </svg>
-                Home
-              </Link>
-              <Link
-                href="/explore"
-                className={`${styles.navLink} ${isExplore ? styles.navLinkActive : ''}`}
-                onClick={() => setOpen(false)}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-                </svg>
-                Explore
-              </Link>
+              {hasActivations && (
+                <>
+                  <Link
+                    href="/"
+                    className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}
+                    onClick={() => setOpen(false)}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                      <polyline points="9 22 9 12 15 12 15 22" />
+                    </svg>
+                    Home
+                  </Link>
+                  <Link
+                    href="/explore"
+                    className={`${styles.navLink} ${isExplore ? styles.navLinkActive : ''}`}
+                    onClick={() => setOpen(false)}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                    </svg>
+                    Explore
+                  </Link>
 
-              <div className={styles.divider} />
+                  <div className={styles.divider} />
+                </>
+              )}
 
               <Link href="#" className={styles.navLink} onClick={() => setOpen(false)}>
                 Plan

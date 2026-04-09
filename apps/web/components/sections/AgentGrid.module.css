@@ -159,37 +159,6 @@
   border-color: var(--text-dim);
 }
 
-/* ── Empty state ── */
-
-.emptyHeader {
-  margin-bottom: 28px;
-  opacity: 0;
-  transform: translateY(12px);
-  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
-}
-
-.emptyTitle {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 0 0 8px;
-}
-
-.emptyText {
-  font-size: 0.92rem;
-  font-weight: 400;
-  color: var(--text-mid);
-  line-height: 1.5;
-  margin: 0;
-  max-width: 560px;
-}
-
-.emptyText strong {
-  color: var(--text);
-  font-weight: 600;
-}
 
 @media (max-width: 640px) {
   .section {

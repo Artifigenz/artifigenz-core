@@ -13,6 +13,42 @@ function timeOfDayGreeting(): string {
   return 'Good evening';
 }
 
+export function buildHeroGreeting(
+  activations: ActivationContext[],
+  userName: string
+): string {
+  const time = timeOfDayGreeting();
+
+  if (activations.length === 0) {
+    return `${time}, ${userName} — let's pick your first agent and get you set up.`;
+  }
+
+  const now = Date.now();
+  const freshCount = activations.filter(
+    (a) => a.activatedAt > 0 && now - a.activatedAt < 60 * 60 * 1000
+  ).length;
+  const count = activations.length;
+
+  // All agents are fresh (just activated in the last hour)
+  if (freshCount === count) {
+    if (count === 1) {
+      return `${time}, ${userName} — your first agent is scanning now. Insights will start landing shortly.`;
+    }
+    return `${time}, ${userName} — your ${count} agents are just getting started.`;
+  }
+
+  // Some fresh, some established
+  if (freshCount > 0) {
+    return `${time}, ${userName} — ${freshCount} new agent${freshCount === 1 ? '' : 's'} getting started, the rest have been on it.`;
+  }
+
+  // Established
+  if (count === 1) {
+    return `${time}, ${userName} — here's what your agent has been up to.`;
+  }
+  return `${time}, ${userName} — your ${count} agents found a few things while you were away.`;
+}
+
 function formatList(items: string[]): string {
   if (items.length === 0) return '';
   if (items.length === 1) return items[0];

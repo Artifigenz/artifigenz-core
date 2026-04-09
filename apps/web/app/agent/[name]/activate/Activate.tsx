@@ -47,11 +47,29 @@ interface Capability {
   icon: string;
 }
 
-interface SampleInsight {
+interface InsightMockup {
   category: string;
   title: string;
   detail: string;
   mustSee?: boolean;
+}
+
+interface TelegramMockup {
+  text: string;
+  timestamp: string;
+}
+
+interface EmailMockup {
+  sender: string;
+  subject: string;
+  preview: string;
+  timestamp: string;
+}
+
+interface ChannelSamples {
+  insight: InsightMockup;
+  telegram: TelegramMockup;
+  email: EmailMockup;
 }
 
 interface AccountOption {
@@ -67,7 +85,7 @@ interface ActivationData {
   tagline: string;
   pitch: string;
   capabilities: Capability[];
-  sampleInsights: SampleInsight[];
+  channels: ChannelSamples;
   requiresAccounts: boolean;
   accountOptions: AccountOption[];
   suggestedGoals: string[];
@@ -85,10 +103,24 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
       { label: 'Flag unusual spending', description: 'When a category creeps above your average, I tell you why.', icon: 'alertTriangle' },
       { label: 'Forecast your month', description: "Always-on cash flow projection based on what's already booked.", icon: 'barChart' },
     ],
-    sampleInsights: [
-      { category: 'Bill Change', title: 'Netflix increased by 48%', detail: '$15.49/mo → $22.99/mo. This adds $90/year to your subscriptions.', mustSee: true },
-      { category: 'Spending', title: 'Food & Dining is $200 above your average', detail: '$640 this month vs. $440 average. Most of the increase is DoorDash.' },
-    ],
+    channels: {
+      insight: {
+        category: 'Bill Change',
+        title: 'Netflix increased by 48%',
+        detail: '$15.49/mo → $22.99/mo. Adds $90/year to your subscriptions.',
+        mustSee: true,
+      },
+      telegram: {
+        text: "Heads up — Netflix just jumped from $15.49 to $22.99/mo. That's $90/year extra.",
+        timestamp: '2:47 PM',
+      },
+      email: {
+        sender: 'Artifigenz',
+        subject: 'Your weekly finance summary',
+        preview: 'Spent $1,240 this week. Netflix raised its price, 2 other subscriptions flagged for review...',
+        timestamp: '2h',
+      },
+    },
     requiresAccounts: true,
     accountOptions: [
       { name: 'Chase', description: 'Connect via Plaid — read-only, ~30 seconds' },
@@ -121,10 +153,24 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
       { label: 'Build itineraries fast', description: 'Flights, hotels, and activities in one flow.', icon: 'map' },
       { label: 'Flag visa & passport issues', description: 'Never get blindsided at the airport.', icon: 'passport' },
     ],
-    sampleInsights: [
-      { category: 'Price Drop', title: 'Tokyo flights dropped 34% for April 12–19', detail: 'Round-trip from JFK now $287. Lowest in 90 days.', mustSee: true },
-      { category: 'Document', title: 'Passport expires in 4 months', detail: 'Some countries require 6 months validity. Consider renewing.', mustSee: true },
-    ],
+    channels: {
+      insight: {
+        category: 'Price Drop',
+        title: 'Tokyo flights dropped 34% for April 12–19',
+        detail: 'Round-trip from JFK now $287. Lowest in 90 days.',
+        mustSee: true,
+      },
+      telegram: {
+        text: 'Tokyo window just opened. $287 round-trip JFK for Apr 12–19. Lowest price in 90 days.',
+        timestamp: '11:08 AM',
+      },
+      email: {
+        sender: 'Artifigenz',
+        subject: 'Deal alert: Tokyo under $300',
+        preview: "The Tokyo window you've been watching just opened. $287 round-trip for Apr 12–19...",
+        timestamp: '18m',
+      },
+    },
     requiresAccounts: true,
     accountOptions: [
       { name: 'Google Flights', description: 'Sync your watched routes and price alerts' },
@@ -154,10 +200,24 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
       { label: 'Monitor hydration', description: 'Simple daily check-ins, no guilt trips.', icon: 'droplet' },
       { label: 'Connect habits to outcomes', description: 'Understand what actually moves your numbers.', icon: 'link' },
     ],
-    sampleInsights: [
-      { category: 'Sleep', title: 'Sleep dropped below 6h three nights this week', detail: '14-day average: 5.2 hrs. Your baseline is 7.1 hrs.', mustSee: true },
-      { category: 'Activity', title: 'Step count is up 12% since last month', detail: '8,420 avg daily steps vs. 7,520 last month.' },
-    ],
+    channels: {
+      insight: {
+        category: 'Sleep',
+        title: 'Sleep dropped below 6h three nights this week',
+        detail: '14-day average: 5.2 hrs. Baseline 7.1 hrs.',
+        mustSee: true,
+      },
+      telegram: {
+        text: 'Sleep alert — 5.2h average over 14 days, baseline is 7.1. Want to review what changed?',
+        timestamp: '8:30 AM',
+      },
+      email: {
+        sender: 'Artifigenz',
+        subject: 'Your weekly health digest',
+        preview: 'Sleep is down (3 nights under 6h), steps are up 12%, hydration streak holding at 5 days...',
+        timestamp: '1h',
+      },
+    },
     requiresAccounts: true,
     accountOptions: [
       { name: 'Apple Health', description: 'Sync sleep, steps, heart rate, and workouts' },
@@ -187,10 +247,24 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
       { label: 'Clean summaries', description: 'Every report distilled to what you actually need to know.', icon: 'fileText' },
       { label: 'Trend spotting', description: "Catch shifts in your space before they're obvious.", icon: 'trendingUp' },
     ],
-    sampleInsights: [
-      { category: 'Report', title: 'Competitive analysis ready — 12 pages', detail: '5 competitors analyzed: positioning, pricing, feature gaps.', mustSee: true },
-      { category: 'Papers', title: '3 new papers on AI agent adoption', detail: 'Published in the last 14 days. Consumer trust, onboarding, retention.' },
-    ],
+    channels: {
+      insight: {
+        category: 'Report',
+        title: 'Competitive analysis ready — 12 pages',
+        detail: '5 competitors analyzed: positioning, pricing, feature gaps.',
+        mustSee: true,
+      },
+      telegram: {
+        text: "Your competitive report is done. 12 pages, 5 players, 2 gaps nobody's filling yet.",
+        timestamp: '10:44 AM',
+      },
+      email: {
+        sender: 'Artifigenz',
+        subject: "This week's research digest",
+        preview: 'Competitive analysis ready, 3 new papers on AI adoption, 1 market trend summary...',
+        timestamp: '3h',
+      },
+    },
     requiresAccounts: false,
     accountOptions: [],
     suggestedGoals: [
@@ -217,10 +291,24 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
       { label: 'Benchmark salaries', description: "Real numbers for the roles you're targeting.", icon: 'dollarSign' },
       { label: 'Spot warm intros', description: 'Notice when someone you know joins a target company.', icon: 'users' },
     ],
-    sampleInsights: [
-      { category: 'New Roles', title: '3 new roles matching your profile', detail: 'Senior PM at Anthropic, Staff PM at OpenAI, Head of Product at Cohere. All remote-friendly.', mustSee: true },
-      { category: 'Application', title: 'Stripe application moved to interview', detail: 'Interview invite expected within 48 hours.', mustSee: true },
-    ],
+    channels: {
+      insight: {
+        category: 'New Roles',
+        title: '3 new roles matching your profile',
+        detail: 'Senior PM at Anthropic, Staff PM at OpenAI, Head of Product at Cohere.',
+        mustSee: true,
+      },
+      telegram: {
+        text: '3 roles that fit your profile just posted. Senior PM at Anthropic stands out.',
+        timestamp: '9:12 AM',
+      },
+      email: {
+        sender: 'Artifigenz',
+        subject: '3 new matches this morning',
+        preview: 'Senior PM at Anthropic, Staff PM at OpenAI, Head of Product at Cohere. All remote-friendly...',
+        timestamp: '45m',
+      },
+    },
     requiresAccounts: true,
     accountOptions: [
       { name: 'LinkedIn', description: 'Sync your profile, connections, and saved searches' },
@@ -270,7 +358,6 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
       <div className={styles.page}>
         <Header />
         <main className={styles.main}>
-          <Link href="/explore" className={styles.back}>← Back</Link>
           <p>Agent not found.</p>
         </main>
       </div>
@@ -282,7 +369,6 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
       <div className={styles.page}>
         <Header />
         <main className={styles.main}>
-          <Link href="/explore" className={styles.back}>← Back to explore</Link>
           <div className={styles.agentHeader}>
             <div>
               <div className={styles.nameRow}>
@@ -369,7 +455,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     <div className={styles.page}>
       <Header />
       <main className={styles.main}>
-        <Link href="/explore" className={styles.back}>← Back to explore</Link>
+        <Link href="/" className={styles.back} aria-label="Back">←</Link>
 
         {/* Agent header */}
         <div className={styles.agentHeader}>
@@ -391,8 +477,17 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
           <>
             <p className={styles.pitch}>{data.pitch}</p>
 
+            <div className={styles.ctaRow}>
+              <button className={styles.primaryBtn} onClick={next}>
+                Get started →
+              </button>
+              <span className={styles.ctaHint}>
+                Ready in ~{data.estimatedSetupSeconds} seconds
+              </span>
+            </div>
+
             <div className={styles.capabilitiesSection}>
-              <span className={styles.sectionLabel}>What I&apos;ll do for you</span>
+              <span className={styles.sectionLabel}>Skills</span>
               <div className={styles.capabilitiesGrid}>
                 {data.capabilities.map((cap) => {
                   const CapIcon = CAPABILITY_ICON_MAP[cap.icon];
@@ -414,31 +509,95 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
             </div>
 
             <div className={styles.previewSection}>
-              <span className={styles.sectionLabel}>What your dashboard will look like</span>
-              <div className={styles.timelineCards}>
-                {data.sampleInsights.map((insight) => (
-                  <div key={insight.title} className={styles.insightCard}>
-                    <div className={styles.insightTop}>
-                      <span className={styles.insightCategory}>
-                        <span className={styles.insightDot} />
-                        {insight.category}
+              <h3 className={styles.previewHeading}>Here&apos;s what you&apos;ll get.</h3>
+              <div className={styles.mockupGrid}>
+                {/* In-app insight mockup */}
+                <div className={styles.mockupCard}>
+                  <span className={styles.mockupLabel}>In-app</span>
+                  <div className={styles.screenshotFrame}>
+                    <div className={styles.screenshotChrome}>
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.chromeLogo}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/logo_transparent.png" alt="Artifigenz" width={18} height={18} />
                       </span>
-                      {insight.mustSee && <span className={styles.mustSee}>Must see ⚠</span>}
                     </div>
-                    <p className={styles.insightTitle}>{insight.title}</p>
-                    <p className={styles.insightDetail}>{insight.detail}</p>
+                    <div className={styles.screenshotBody}>
+                      <div className={styles.insightMockupTop}>
+                        <span className={styles.insightMockupCategory}>
+                          <span className={styles.insightMockupCategoryDot} />
+                          {data.channels.insight.category}
+                        </span>
+                        {data.channels.insight.mustSee && (
+                          <span className={styles.insightMockupFlag}>Must see ⚠</span>
+                        )}
+                      </div>
+                      <p className={styles.insightMockupTitle}>{data.channels.insight.title}</p>
+                      <p className={styles.insightMockupDetail}>{data.channels.insight.detail}</p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
 
-            <div className={styles.ctaRow}>
-              <button className={styles.primaryBtn} onClick={next}>
-                Get started →
-              </button>
-              <span className={styles.ctaHint}>
-                Ready in ~{data.estimatedSetupSeconds} seconds
-              </span>
+                {/* Telegram mockup */}
+                <div className={styles.mockupCard}>
+                  <span className={styles.mockupLabel}>Telegram</span>
+                  <div className={styles.screenshotFrame}>
+                    <div className={styles.screenshotChrome}>
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.chromeLogo} aria-label="Telegram">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#2a7dc4" stroke="none">
+                          <path d="M22 2 11 13 2 9l20-7zm0 0-7 20-4-9" fill="none" stroke="#2a7dc4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                    </div>
+                    <div className={styles.screenshotBody}>
+                      <div className={styles.telegramRow}>
+                        <div className={styles.telegramAvatar}>A</div>
+                        <div className={styles.telegramContent}>
+                          <div className={styles.telegramName}>Artifigenz</div>
+                          <div className={styles.telegramBubble}>
+                            {data.channels.telegram.text}
+                          </div>
+                          <div className={styles.telegramTime}>{data.channels.telegram.timestamp}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email mockup */}
+                <div className={styles.mockupCard}>
+                  <span className={styles.mockupLabel}>Email</span>
+                  <div className={styles.screenshotFrame}>
+                    <div className={styles.screenshotChrome}>
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.screenshotDot} />
+                      <span className={styles.chromeLogo} aria-label="Email">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                      </span>
+                    </div>
+                    <div className={styles.screenshotBody}>
+                      <div className={styles.emailHeader}>
+                        <div className={styles.emailSenderIcon}>A</div>
+                        <div className={styles.emailSenderInfo}>
+                          <div className={styles.emailSenderName}>Artifigenz</div>
+                          <div className={styles.emailTime}>{data.channels.email.timestamp} ago</div>
+                        </div>
+                      </div>
+                      <div className={styles.emailSubject}>{data.channels.email.subject}</div>
+                      <div className={styles.emailPreview}>{data.channels.email.preview}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </>
         )}

@@ -14,7 +14,7 @@
 .main {
   flex: 1;
   width: 100%;
-  max-width: 900px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 0 40px 140px;
 }
@@ -22,17 +22,89 @@
 /* ── Back ── */
 
 .back {
-  display: inline-block;
-  font-size: 0.82rem;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 1.15rem;
+  line-height: 1;
+  font-weight: 400;
   color: var(--text-dim);
   text-decoration: none;
-  padding: 24px 0 28px;
+  margin: 48px 0 32px -6px;
   transition: color 0.15s ease;
 }
 
 .back:hover {
   color: var(--text);
+}
+
+/* ── Anon preview banner ── */
+
+.anonBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(-6px);
+  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.anonBannerDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #000);
+  flex-shrink: 0;
+}
+
+.anonBannerText {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text-mid);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.anonBannerCta {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: var(--accent, #000);
+  color: var(--accent-text, #fff);
+  transition: opacity 0.2s ease;
+}
+
+.anonBannerCta:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .anonBanner {
+    padding: 10px 14px;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .anonBannerText {
+    font-size: 0.74rem;
+  }
+
+  .anonBannerCta {
+    font-size: 0.74rem;
+    padding: 5px 10px;
+  }
 }
 
 /* ── Agent header ── */
@@ -150,74 +222,290 @@
   line-height: 1.5;
 }
 
+/* ── Skills preview (subtle chip row) ── */
+
+.skillsPreview {
+  margin-bottom: 40px;
+}
+
+.skillsPreviewLabel {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+
+.skillsPreviewList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skillChip {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-mid);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+
 .previewSection {
   margin-bottom: 40px;
 }
 
-/* ── Insight cards (mirrors detail page) ── */
+.previewHeading {
+  font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0 0 24px;
+  max-width: 640px;
+}
 
-.timelineCards {
+/* ── Channel mockup grid ── */
+
+.mockupGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .mockupGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+.mockupCard {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
-.insightCard {
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius, 10px);
-  padding: 16px 20px;
+.mockupLabel {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Shared screenshot frame (wraps every channel mockup) ── */
+
+.screenshotFrame {
   background: var(--card-bg);
-  box-shadow: var(--shadow);
-  transition: border-color 0.2s ease;
-}
-
-.insightCard:hover {
-  border-color: var(--border);
-}
-
-.insightTop {
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  pointer-events: none;
+  user-select: none;
+  min-height: 200px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+  flex-direction: column;
 }
 
-.insightCategory {
+.screenshotChrome {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.68rem;
+  padding: 8px 14px;
+  background: var(--card-hover);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.screenshotDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border-light);
+  opacity: 0.7;
+}
+
+.chromeLogo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  color: var(--text-dim);
+  line-height: 0;
+}
+
+.chromeLogo img {
+  display: block;
+}
+
+.screenshotBody {
+  padding: 18px 20px 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── In-app insight content ── */
+
+.insightMockupTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.insightMockupCategory {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.65rem;
   font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.insightDot {
+.insightMockupCategoryDot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--text);
 }
 
-.mustSee {
-  font-size: 0.65rem;
+.insightMockupFlag {
+  font-size: 0.62rem;
   font-weight: 500;
   color: var(--text);
 }
 
-.insightTitle {
+.insightMockupTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+  margin: 0 0 4px;
+}
+
+.insightMockupDetail {
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Telegram content ── */
+
+.telegramRow {
+  display: flex;
+  gap: 10px;
+}
+
+.telegramAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4aa0e6, #2a7dc4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.telegramContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.telegramName {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #2a7dc4;
+  margin-bottom: 6px;
+}
+
+.telegramBubble {
+  background: #eef4fa;
+  color: #111;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border-top-left-radius: 4px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.telegramTime {
+  font-size: 0.62rem;
+  color: #999;
+  margin-top: 6px;
+}
+
+/* ── Email content ── */
+
+.emailHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.emailSenderIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.88rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.emailSenderInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.emailSenderName {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.emailTime {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+.emailSubject {
   font-size: 0.88rem;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 4px;
+  line-height: 1.35;
 }
 
-.insightDetail {
+.emailPreview {
   font-size: 0.78rem;
-  font-weight: 400;
   color: var(--text-mid);
   line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ── Buttons ── */
@@ -226,7 +514,8 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-top: 12px;
+  margin-top: 4px;
+  margin-bottom: 48px;
 }
 
 .primaryBtn {
@@ -652,8 +941,9 @@
     padding: 14px 16px;
   }
 
-  .insightCard {
-    padding: 14px 16px;
+  .mockupGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .ctaRow {

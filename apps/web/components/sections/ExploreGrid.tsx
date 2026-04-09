@@ -15,20 +15,9 @@ const ICON_MAP: Record<string, ReactNode> = {
   'Job Search': <Icons.JobSearchIcon />,
   Learning: <Icons.LearningIcon />,
   Shopping: <Icons.ShoppingIcon />,
-  Content: <Icons.ContentIcon />,
-  Time: <Icons.TimeIcon />,
-  Legal: <Icons.LegalIcon />,
-  Career: <Icons.CareerIcon />,
-  'Real Estate': <Icons.RealEstateIcon />,
   Parenting: <Icons.ParentingIcon />,
-  Fitness: <Icons.FitnessIcon />,
-  Nutrition: <Icons.NutritionIcon />,
   Events: <Icons.EventsIcon />,
-  Tax: <Icons.TaxIcon />,
-  News: <Icons.NewsIcon />,
-  Relationships: <Icons.RelationshipsIcon />,
-  Home: <Icons.HomeIcon />,
-  Investments: <Icons.InvestmentsIcon />,
+  Pulse: <Icons.NewsIcon />,
 };
 
 interface ExploreGridProps {
