@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSignIn } from '@clerk/nextjs/legacy';
 import AuthLayout, { authStyles as styles } from '@/components/auth/AuthLayout';
+import OAuthButtons from '@/components/auth/OAuthButtons';
 
 function SignInContent() {
   const { signIn, setActive, isLoaded } = useSignIn();
@@ -60,6 +61,8 @@ function SignInContent() {
         </>
       }
     >
+      <OAuthButtons redirectUrlComplete={redirectUrl} />
+
       <form className={styles.form} onSubmit={handleSubmit} noValidate>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="email">

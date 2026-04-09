@@ -1,10 +1,13 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSignUp } from '@clerk/nextjs/legacy';
 import AuthLayout, { authStyles as styles } from '@/components/auth/AuthLayout';
+import OAuthButtons from '@/components/auth/OAuthButtons';
+
+type Step = 'form' | 'continue' | 'verify';
 
 function SignUpContent() {
   const { signUp, setActive, isLoaded } = useSignUp();
@@ -12,7 +15,7 @@ function SignUpContent() {
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get('redirect_url') || '/';
 
-  const [step, setStep] = useState<'form' | 'verify'>('form');
+  const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -20,9 +23,33 @@ function SignUpContent() {
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
 
+  // Detect in-progress OAuth sign-up that needs additional fields (e.g. X
+  // doesn't return email). When we land on /sign-up with an existing
+  // signUp that has missing_requirements, switch to the continuation step.
+  useEffect(() => {
+    if (!isLoaded || !signUp) return;
+
+    if (signUp.status === 'missing_requirements') {
+      // If email verification is already pending, go straight to verify step
+      if (signUp.unverifiedFields?.includes('email_address') && signUp.emailAddress) {
+        setEmail(signUp.emailAddress);
+        setStep('verify');
+      } else {
+        setStep('continue');
+      }
+    } else if (signUp.status === 'complete' && signUp.createdSessionId) {
+      // Edge case: already complete (e.g. user came back on an old link)
+      setActive({ session: signUp.createdSessionId }).then(() => {
+        router.push(redirectUrl);
+      });
+    }
+    // Intentionally only run when isLoaded changes or signUp ref changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, signUp?.status]);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded || submitting) return;
+    if (!isLoaded || submitting || !signUp) return;
     setError(null);
     setSubmitting(true);
 
@@ -41,9 +68,37 @@ function SignUpContent() {
     }
   }
 
+  async function handleContinue(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isLoaded || submitting || !signUp) return;
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      // Attach the missing email to the in-progress OAuth sign-up
+      const updated = await signUp.update({
+        emailAddress: email.trim(),
+      });
+
+      if (updated.status === 'complete' && updated.createdSessionId) {
+        await setActive({ session: updated.createdSessionId });
+        router.push(redirectUrl);
+        return;
+      }
+
+      // Email needs verification — send the code
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      setStep('verify');
+    } catch (err: unknown) {
+      setError(extractClerkError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded || submitting) return;
+    if (!isLoaded || submitting || !signUp) return;
     setError(null);
     setSubmitting(true);
 
@@ -64,7 +119,7 @@ function SignUpContent() {
   }
 
   async function handleResend() {
-    if (!isLoaded || resending) return;
+    if (!isLoaded || resending || !signUp) return;
     setResending(true);
     setError(null);
     try {
@@ -76,6 +131,7 @@ function SignUpContent() {
     }
   }
 
+  // ─── Step: verify (email code) ──────────────────────────────
   if (step === 'verify') {
     return (
       <AuthLayout
@@ -104,9 +160,6 @@ function SignUpContent() {
 
           <p className={styles.error}>{error ?? ''}</p>
 
-          {/* Clerk CAPTCHA (bot protection) rendered here when needed */}
-          <div id="clerk-captcha" />
-
           <button
             type="submit"
             className={styles.submit}
@@ -126,7 +179,7 @@ function SignUpContent() {
               }}
               disabled={submitting}
             >
-              ← Change email
+              ← Back
             </button>
             <button
               type="button"
@@ -142,6 +195,46 @@ function SignUpContent() {
     );
   }
 
+  // ─── Step: continue (OAuth needs more info) ─────────────────
+  if (step === 'continue') {
+    return (
+      <AuthLayout
+        title="Almost done"
+        subtitle="We just need your email to finish setting up your account."
+      >
+        <form className={styles.form} onSubmit={handleContinue} noValidate>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="email">
+              Email
+            </label>
+            <input
+              id="email"
+              className={styles.input}
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={submitting}
+              autoFocus
+            />
+          </div>
+
+          <p className={styles.error}>{error ?? ''}</p>
+
+          <button
+            type="submit"
+            className={styles.submit}
+            disabled={!isLoaded || submitting || !email}
+          >
+            {submitting ? 'Finishing…' : 'Continue'}
+          </button>
+        </form>
+      </AuthLayout>
+    );
+  }
+
+  // ─── Step: form (default: email/password sign-up) ───────────
   return (
     <AuthLayout
       title="Create your account"
@@ -158,6 +251,8 @@ function SignUpContent() {
         </>
       }
     >
+      <OAuthButtons redirectUrlComplete={redirectUrl} mode="signUp" />
+
       <form className={styles.form} onSubmit={handleCreate} noValidate>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="email">
@@ -193,9 +288,6 @@ function SignUpContent() {
         </div>
 
         <p className={styles.error}>{error ?? ''}</p>
-
-        {/* Clerk CAPTCHA (bot protection) rendered here when needed */}
-        <div id="clerk-captcha" />
 
         <button
           type="submit"

@@ -3,6 +3,7 @@ import { JetBrains_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import ThemeProvider from '@/components/ThemeProvider';
 import AuraGradient from '@/components/effects/AuraGradient';
+import AuthGate from '@/components/auth/AuthGate';
 import './globals.css';
 
 const jetbrainsMono = JetBrains_Mono({
@@ -33,7 +34,10 @@ export default function RootLayout({
         <body className={jetbrainsMono.className}>
           <ThemeProvider>
             <AuraGradient />
-            {children}
+            {/* Clerk bot protection — must exist in DOM when sign-up runs.
+                Kept at root layout level so it's always present. */}
+            <div id="clerk-captcha" style={{ position: 'absolute', left: '-9999px', width: 0, height: 0, overflow: 'hidden' }} />
+            <AuthGate>{children}</AuthGate>
           </ThemeProvider>
         </body>
       </html>
