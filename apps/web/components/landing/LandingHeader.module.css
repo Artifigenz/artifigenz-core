@@ -33,42 +33,24 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-
-.themeToggle {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--border-light);
-  border-radius: 9999px;
-  background: var(--card-bg);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  gap: 20px;
 }
 
 .themeBtn {
-  width: 28px;
-  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 8px;
   border: none;
   background: transparent;
-  color: var(--text-dim);
-  border-radius: 9999px;
+  color: var(--text-mid);
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, transform 0.15s ease;
 }
 
 .themeBtn:hover {
   color: var(--text);
-}
-
-.themeBtnActive {
-  color: var(--text);
-  background: var(--card-hover);
+  transform: translateY(-1px);
 }
 
 .signIn {
@@ -82,29 +64,6 @@
 
 .signIn:hover {
   color: var(--text);
-}
-
-.getStarted {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 9999px;
-  background: var(--accent);
-  color: var(--accent-text);
-  font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-  text-decoration: none;
-  border: 1px solid var(--accent);
-  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.15s ease;
-}
-
-.getStarted:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-  opacity: 0.95;
 }
 
 @media (max-width: 720px) {
@@ -122,21 +81,11 @@
     font-size: 0.78rem;
   }
 
-  .signIn {
-    display: none;
-  }
-
   .actions {
-    gap: 10px;
+    gap: 14px;
   }
 
   .themeBtn {
-    width: 26px;
-    height: 26px;
-  }
-
-  .getStarted {
-    padding: 9px 14px;
-    font-size: 0.78rem;
+    padding: 6px;
   }
 }

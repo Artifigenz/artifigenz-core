@@ -57,9 +57,6 @@ export default function LandingHero() {
               <path d="M12 5l7 7-7 7" />
             </svg>
           </Link>
-          <Link href="/sign-in" className={styles.ctaSecondary}>
-            Already have an account?
-          </Link>
         </div>
       </div>
 
