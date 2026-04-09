@@ -1,0 +1,142 @@
+.header {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.logoIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.logoText {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.themeToggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.themeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.themeBtn:hover {
+  color: var(--text);
+}
+
+.themeBtnActive {
+  color: var(--text);
+  background: var(--card-hover);
+}
+
+.signIn {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-mid);
+  text-decoration: none;
+  padding: 8px 4px;
+  transition: color 0.15s ease;
+}
+
+.signIn:hover {
+  color: var(--text);
+}
+
+.getStarted {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.15s ease;
+}
+
+.getStarted:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  opacity: 0.95;
+}
+
+@media (max-width: 720px) {
+  .header {
+    padding: 20px 20px;
+    gap: 14px;
+  }
+
+  .logoIcon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .logoText {
+    font-size: 0.78rem;
+  }
+
+  .signIn {
+    display: none;
+  }
+
+  .actions {
+    gap: 10px;
+  }
+
+  .themeBtn {
+    width: 26px;
+    height: 26px;
+  }
+
+  .getStarted {
+    padding: 9px 14px;
+    font-size: 0.78rem;
+  }
+}

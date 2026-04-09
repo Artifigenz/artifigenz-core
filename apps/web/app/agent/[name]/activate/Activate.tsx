@@ -455,7 +455,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     <div className={styles.page}>
       <Header />
       <main className={styles.main}>
-        <Link href="/" className={styles.back} aria-label="Back">←</Link>
+        <Link href="/app" className={styles.back} aria-label="Back">←</Link>
 
         {/* Agent header */}
         <div className={styles.agentHeader}>

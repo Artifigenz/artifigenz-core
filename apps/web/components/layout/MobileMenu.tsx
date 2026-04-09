@@ -14,7 +14,7 @@ export default function MobileMenu({ hasActivations = false }: MobileMenuProps) 
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const isHome = pathname === '/';
+  const isHome = pathname === '/app';
   const isExplore = pathname === '/explore';
   const isSettings = pathname === '/settings';
 
@@ -60,7 +60,7 @@ export default function MobileMenu({ hasActivations = false }: MobileMenuProps) 
               {hasActivations && (
                 <>
                   <Link
-                    href="/"
+                    href="/app"
                     className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}
                     onClick={() => setOpen(false)}
                   >

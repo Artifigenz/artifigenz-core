@@ -1,17 +1,21 @@
-import Header from '@/components/layout/Header';
-import Hero from '@/components/sections/Hero';
-import AgentGrid from '@/components/sections/AgentGrid';
-import ChatInput from '@/components/sections/ChatInput';
+import LandingHeader from '@/components/landing/LandingHeader';
+import LandingHero from '@/components/landing/LandingHero';
+import HowItWorks from '@/components/landing/HowItWorks';
+import Consultants from '@/components/landing/Consultants';
+import SocialProof from '@/components/landing/SocialProof';
+import FinalCta from '@/components/landing/FinalCta';
 import styles from './page.module.css';
 
-export default function Home() {
+export default function LandingPage() {
   return (
     <div className={styles.page}>
-      <Header />
+      <LandingHeader />
       <main className={styles.main}>
-        <Hero />
-        <AgentGrid />
-        <ChatInput />
+        <LandingHero />
+        <HowItWorks />
+        <Consultants />
+        <SocialProof />
+        <FinalCta />
       </main>
     </div>
   );

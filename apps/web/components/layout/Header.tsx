@@ -11,13 +11,13 @@ import styles from './Header.module.css';
 export default function Header() {
   const pathname = usePathname();
   const { slugs, hydrated } = useActivatedAgents();
-  const isHome = pathname === '/';
+  const isHome = pathname === '/app';
   const isExplore = pathname === '/explore';
   const hasActivations = hydrated && slugs.length > 0;
 
   return (
     <header className={styles.header}>
-      <Link href="/" className={styles.logoMark}>
+      <Link href="/app" className={styles.logoMark}>
         <Image
           className={styles.logoIcon}
           src="/logo_transparent.png"
@@ -30,7 +30,7 @@ export default function Header() {
       </Link>
       {hasActivations ? (
         <nav className={styles.nav}>
-          <Link href="/" className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}>
+          <Link href="/app" className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
               <polyline points="9 22 9 12 15 12 15 22" />
