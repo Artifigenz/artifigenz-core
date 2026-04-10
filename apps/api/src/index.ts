@@ -27,16 +27,38 @@ const app = new Hono();
 // ─── Middleware ──────────────────────────────────────────────────────
 
 app.use("/*", logger());
+
+// CORS — default to local dev origins, override with ALLOWED_ORIGINS env var
+// (comma-separated list of allowed origins, e.g.
+//   "https://artifigenz.vercel.app,https://artifigenz-web-git-mvp.vercel.app")
+const defaultOrigins = ["http://localhost:3000", "http://localhost:8081"];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : defaultOrigins;
+
 app.use(
   "/*",
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:8081",
-    ],
+    origin: (origin) => {
+      // Allow same-origin or no-origin requests (curl, server-to-server, mobile apps)
+      if (!origin) return origin;
+      // Exact match
+      if (allowedOrigins.includes(origin)) return origin;
+      // Allow any *.vercel.app preview if a vercel.app entry is in the list
+      // (so PR preview deploys work without re-listing every URL)
+      if (
+        allowedOrigins.some((o) => o.includes("vercel.app")) &&
+        origin.endsWith(".vercel.app")
+      ) {
+        return origin;
+      }
+      return null; // Reject
+    },
     credentials: true,
   }),
 );
+
+console.log(`  CORS allowed origins: ${allowedOrigins.join(", ")}`);
 
 // ─── Health ─────────────────────────────────────────────────────────
 
