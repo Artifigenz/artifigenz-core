@@ -1,4 +1,12 @@
 import "dotenv/config";
+
+// Force IPv4 DNS resolution for all outbound connections.
+// Railway/Fly/many PaaS environments can't reach IPv6 addresses, but many
+// managed services (Supabase, Upstash) resolve to IPv6 by default. This
+// must run before any module that opens a network connection.
+import { setDefaultResultOrder } from "node:dns";
+setDefaultResultOrder("ipv4first");
+
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
