@@ -47,9 +47,16 @@ app.post("/", async (c) => {
   const formData = await c.req.formData();
   const file = formData.get("file");
 
-  if (!file || !(file instanceof File)) {
+  if (!file || typeof (file as any).arrayBuffer !== "function") {
     return c.json({ error: "No file provided. Send a 'file' field." }, 400);
   }
+
+  // Cast to a common shape — Node's FormData returns Blob-like objects,
+  // not necessarily the global File class (which may not exist in older Node).
+  const f = file as unknown as { name?: string; type: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> };
+  const fileName = f.name ?? `upload-${Date.now()}`;
+  const fileType = f.type ?? "application/octet-stream";
+  const fileSize = f.size ?? 0;
 
   const allowedTypes = [
     "application/pdf",
@@ -59,16 +66,16 @@ app.post("/", async (c) => {
     "image/png",
     "image/webp",
   ];
-  if (!allowedTypes.some((t) => file.type.startsWith(t.split("/")[0]))) {
+  if (!allowedTypes.some((t) => fileType.startsWith(t.split("/")[0]))) {
     return c.json(
       {
-        error: `Unsupported file type: ${file.type}. Accepted: PDF, CSV, text, JPEG, PNG, WebP.`,
+        error: `Unsupported file type: ${fileType}. Accepted: PDF, CSV, text, JPEG, PNG, WebP.`,
       },
       400,
     );
   }
 
-  if (file.size > 10 * 1024 * 1024) {
+  if (fileSize > 10 * 1024 * 1024) {
     return c.json({ error: "File too large. Max 10MB." }, 400);
   }
 
@@ -95,8 +102,8 @@ app.post("/", async (c) => {
   // ─── 2. Save file to disk ─────────────────────────────────────
   const uploadDir = join(tmpdir(), "artifigenz-uploads", user.id);
   await mkdir(uploadDir, { recursive: true });
-  const filepath = join(uploadDir, `${Date.now()}-${file.name}`);
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const filepath = join(uploadDir, `${Date.now()}-${fileName}`);
+  const buffer = Buffer.from(await f.arrayBuffer());
   await writeFile(filepath, buffer);
 
   // ─── 3. Create/reuse data source connection ───────────────────
@@ -108,14 +115,14 @@ app.post("/", async (c) => {
   // ─── 4. Create file_uploads row ───────────────────────────────
   await db.insert(fileUploads).values({
     dataSourceConnectionId: connection.id,
-    originalFilename: file.name,
-    fileType: file.type.includes("pdf")
+    originalFilename: fileName,
+    fileType: fileType.includes("pdf")
       ? "pdf"
-      : file.type.includes("csv") || file.type.includes("text")
+      : fileType.includes("csv") || fileType.includes("text")
         ? "csv"
         : "image",
     storagePath: filepath,
-    fileSizeBytes: file.size,
+    fileSizeBytes: fileSize,
     extractionStatus: "pending",
   });
 
@@ -131,9 +138,9 @@ app.post("/", async (c) => {
   return c.json({
     status: "processed",
     file: {
-      name: file.name,
-      size: file.size,
-      type: file.type,
+      name: fileName,
+      size: fileSize,
+      type: fileType,
     },
     transactions: syncResult.length,
     insights: skillResult.insightIds.length,
@@ -152,11 +159,16 @@ app.post("/health", async (c) => {
   const formData = await c.req.formData();
   const file = formData.get("file");
 
-  if (!file || !(file instanceof File)) {
+  if (!file || typeof (file as any).arrayBuffer !== "function") {
     return c.json({ error: "No file provided. Send a 'file' field." }, 400);
   }
 
-  if (file.size > 50 * 1024 * 1024) {
+  const f = file as unknown as { name?: string; type: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> };
+  const fileName = f.name ?? `upload-${Date.now()}`;
+  const fileType = f.type ?? "application/octet-stream";
+  const fileSize = f.size ?? 0;
+
+  if (fileSize > 50 * 1024 * 1024) {
     return c.json({ error: "File too large. Max 50MB." }, 400);
   }
 
@@ -180,8 +192,8 @@ app.post("/health", async (c) => {
   // 2. Save file to disk
   const uploadDir = join(tmpdir(), "artifigenz-uploads", user.id);
   await mkdir(uploadDir, { recursive: true });
-  const filepath = join(uploadDir, `${Date.now()}-${file.name}`);
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const filepath = join(uploadDir, `${Date.now()}-${fileName}`);
+  const buffer = Buffer.from(await f.arrayBuffer());
   await writeFile(filepath, buffer);
 
   // 3. Create/reuse data source connection
@@ -193,16 +205,16 @@ app.post("/health", async (c) => {
   // 4. Create file_uploads row
   await db.insert(fileUploads).values({
     dataSourceConnectionId: connection.id,
-    originalFilename: file.name,
-    fileType: file.type.includes("xml")
+    originalFilename: fileName,
+    fileType: fileType.includes("xml")
       ? "xml"
-      : file.type.includes("csv") || file.type.includes("text")
+      : fileType.includes("csv") || fileType.includes("text")
         ? "csv"
-        : file.type.includes("pdf")
+        : fileType.includes("pdf")
           ? "pdf"
           : "image",
     storagePath: filepath,
-    fileSizeBytes: file.size,
+    fileSizeBytes: fileSize,
     extractionStatus: "pending",
   });
 
@@ -217,7 +229,7 @@ app.post("/health", async (c) => {
 
   return c.json({
     status: "processed",
-    file: { name: file.name, size: file.size, type: file.type },
+    file: { name: fileName, size: fileSize, type: fileType },
     metrics: syncResult.length,
     insights: skillResult.insightIds.length,
   });
