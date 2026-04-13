@@ -76,6 +76,8 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
     fetchInsights();
   }, [hydrated, isActivated, slug, fetchInsights]);
 
+  const isHealth = slug === 'health';
+
   // ─── File upload ──────────────────────────────────────────────
   const handleFileUpload = async (file: File) => {
     setUploading(true);
@@ -85,10 +87,17 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await api.uploadFile(formData);
-      setUploadStatus(
-        `Found ${res.transactions} transactions and generated ${res.insights} insights.`,
-      );
+      if (isHealth) {
+        const res = await api.uploadHealthFile(formData);
+        setUploadStatus(
+          `Extracted ${res.metrics} health metrics and generated ${res.insights} insights.`,
+        );
+      } else {
+        const res = await api.uploadFile(formData);
+        setUploadStatus(
+          `Found ${res.transactions} transactions and generated ${res.insights} insights.`,
+        );
+      }
       await fetchInsights();
       setTimeout(() => setUploadStatus(null), 6000);
     } catch (err) {
@@ -167,17 +176,38 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
   }
 
   // ─── Stats from insight data ──────────────────────────────────
-  const visibilityInsight = insights.find((i) => i.insightTypeId === 'finance.subscriptions.visibility');
-  const subCount = (visibilityInsight?.data as { count?: number })?.count ?? 0;
-  const monthlyTotal = (visibilityInsight?.data as { monthlyTotal?: number })?.monthlyTotal ?? 0;
-  const chargeReminders = insights.filter((i) => i.insightTypeId === 'finance.subscriptions.charge-reminder');
+  let stats: Array<{ value: string; label: string }>;
+  let statsTitle: string;
 
-  const stats = [
-    { value: String(subCount), label: 'Subscriptions' },
-    { value: `$${monthlyTotal.toFixed(0)}`, label: 'Monthly recurring' },
-    { value: String(chargeReminders.length), label: 'Upcoming charges' },
-    { value: String(unreadCount), label: 'Unread insights' },
-  ];
+  if (isHealth) {
+    const briefing = insights.find((i) => i.insightTypeId === 'health.wellness.daily-briefing');
+    const bd = briefing?.data as {
+      steps?: number; sleepMinutes?: number; restingHeartRate?: number; activeCalories?: number;
+    } | undefined;
+    const sleepH = bd?.sleepMinutes ? Math.floor(bd.sleepMinutes / 60) : 0;
+    const sleepM = bd?.sleepMinutes ? bd.sleepMinutes % 60 : 0;
+
+    statsTitle = 'Wellness Overview';
+    stats = [
+      { value: bd?.steps?.toLocaleString() ?? '\u2014', label: 'Steps' },
+      { value: bd?.sleepMinutes ? `${sleepH}h ${sleepM}m` : '\u2014', label: 'Sleep' },
+      { value: bd?.restingHeartRate ? `${bd.restingHeartRate} bpm` : '\u2014', label: 'Resting HR' },
+      { value: String(unreadCount), label: 'Unread insights' },
+    ];
+  } else {
+    const visibilityInsight = insights.find((i) => i.insightTypeId === 'finance.subscriptions.visibility');
+    const subCount = (visibilityInsight?.data as { count?: number })?.count ?? 0;
+    const monthlyTotal = (visibilityInsight?.data as { monthlyTotal?: number })?.monthlyTotal ?? 0;
+    const chargeReminders = insights.filter((i) => i.insightTypeId === 'finance.subscriptions.charge-reminder');
+
+    statsTitle = 'Financial Health';
+    stats = [
+      { value: String(subCount), label: 'Subscriptions' },
+      { value: `$${monthlyTotal.toFixed(0)}`, label: 'Monthly recurring' },
+      { value: String(chargeReminders.length), label: 'Upcoming charges' },
+      { value: String(unreadCount), label: 'Unread insights' },
+    ];
+  }
 
   // ─── Group insights by date ───────────────────────────────────
   const groups = new Map<string, Insight[]>();
@@ -202,11 +232,20 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
   }
 
   const categoryLabel = (typeId: string): string => {
+    // Finance
     if (typeId.includes('charge-reminder')) return 'Charge Reminder';
     if (typeId.includes('visibility')) return 'Overview';
     if (typeId.includes('price-change')) return 'Price Change';
     if (typeId.includes('new-detected')) return 'New Subscription';
     if (typeId.includes('duplicate')) return 'Duplicate';
+    // Health
+    if (typeId.includes('daily-briefing')) return 'Daily Briefing';
+    if (typeId.includes('sleep-alert')) return 'Sleep Alert';
+    if (typeId.includes('activity-streak')) return 'Streak';
+    if (typeId.includes('trend')) return 'Trend';
+    if (typeId.includes('anomaly')) return 'Anomaly';
+    if (typeId.includes('weekly-summary')) return 'Weekly Summary';
+    // Generic
     if (typeId.includes('summary')) return 'Summary';
     return 'Insight';
   };
@@ -231,7 +270,7 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
           </div>
         </div>
 
-        {/* Upload bank statement */}
+        {/* Data upload */}
         <div
           style={{
             border: '1px dashed var(--border-light)',
@@ -247,10 +286,12 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
         >
           <div>
             <p style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text)', margin: '0 0 4px' }}>
-              Upload a bank statement
+              {isHealth ? 'Upload Apple Health export' : 'Upload a bank statement'}
             </p>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: 0 }}>
-              PDF, CSV, or image. We&rsquo;ll find your subscriptions automatically.
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: 0, lineHeight: 1.5 }}>
+              {isHealth
+                ? 'Open Health app \u2192 Profile \u2192 Export All Health Data. Upload the export.xml. Also accepts CSV or screenshots.'
+                : 'PDF, CSV, or image. We\u2019ll find your subscriptions automatically.'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -266,7 +307,7 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.csv,.txt,.jpg,.jpeg,.png,.webp"
+              accept={isHealth ? '.xml,.csv,.txt,.pdf,.jpg,.jpeg,.png,.webp' : '.pdf,.csv,.txt,.jpg,.jpeg,.png,.webp'}
               style={{ display: 'none' }}
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -299,7 +340,7 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
         {/* Stats */}
         {insights.length > 0 && (
           <div className={styles.statsSection}>
-            <span className={styles.statsTitle}>Financial Health</span>
+            <span className={styles.statsTitle}>{statsTitle}</span>
             <div className={styles.statsGrid}>
               {stats.map((s) => (
                 <div key={s.label}>
@@ -318,8 +359,9 @@ function AgentDetailContent({ params }: { params: Promise<{ name: string }> }) {
           <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-dim)' }}>
             <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>No insights yet</p>
             <p style={{ fontSize: '0.78rem' }}>
-              Upload a bank statement above to get started. We&rsquo;ll find your subscriptions,
-              detect price changes, and alert you about upcoming charges.
+              {isHealth
+                ? 'Upload your Apple Health export above to get started. We\u2019ll analyze your sleep, activity, heart rate, and more.'
+                : 'Upload a bank statement above to get started. We\u2019ll find your subscriptions, detect price changes, and alert you about upcoming charges.'}
             </p>
           </div>
         ) : (

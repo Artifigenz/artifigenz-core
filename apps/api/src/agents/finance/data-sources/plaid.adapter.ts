@@ -64,7 +64,7 @@ export const plaidAdapter: DataSourceTypeDefinition = {
       user: { client_user_id: user.id },
       client_name: "Artifigenz",
       products: [Products.Transactions],
-      country_codes: [CountryCode.Us],
+      country_codes: [CountryCode.Us, CountryCode.Ca, CountryCode.Gb],
       language: "en",
     });
 

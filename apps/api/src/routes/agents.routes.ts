@@ -57,11 +57,16 @@ export function createAgentRoutes(registry: AgentRegistry) {
 
     const body = await c.req.json().catch(() => ({}));
 
+    // status defaults to 'active'; pass status: 'onboarding' to create
+    // a hidden instance for use during the activation wizard
+    const status = body.status === "onboarding" ? "onboarding" : "active";
+
     const [instance] = await db
       .insert(agentInstances)
       .values({
         userId: user.id,
         agentTypeId,
+        status,
         goal: body.goal ?? null,
       })
       .onConflictDoNothing()

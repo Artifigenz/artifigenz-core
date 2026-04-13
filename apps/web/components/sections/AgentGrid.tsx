@@ -4,6 +4,7 @@ import React, { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { AGENTS } from '@artifigenz/shared';
 import { useActivatedAgents, agentSlug } from '@/hooks/useActivatedAgents';
+import { useApiClient } from '@/hooks/useApiClient';
 import ExploreGrid from './ExploreGrid';
 import * as Icons from './AgentIcons';
 import styles from './AgentGrid.module.css';
@@ -59,10 +60,50 @@ function CyclingInsight({ insights, tick }: { insights: string[]; tick: number }
 }
 
 export default function AgentGrid() {
-  const { slugs, hydrated } = useActivatedAgents();
+  const { slugs, activations, hydrated } = useActivatedAgents();
+  const api = useApiClient();
   const active = AGENTS.filter((a) => slugs.includes(agentSlug(a.name)));
   const [visibleItems, setVisibleItems] = useState<Set<number>>(new Set());
   const [ticks, setTicks] = useState<number[]>([]);
+
+  // Fetch real latest insight per agent
+  const [realInsights, setRealInsights] = useState<Record<string, string>>({});
+  const [lastAnalyzed, setLastAnalyzed] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!hydrated || slugs.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.getInsights({ limit: 50 });
+        if (cancelled) return;
+        const byAgent: Record<string, string> = {};
+        const byAgentTime: Record<string, string> = {};
+        for (const insight of data.insights) {
+          // Find which agent this insight belongs to
+          const activation = activations.find((a) => a.agentInstanceId &&
+            insight.insightTypeId?.startsWith(a.slug));
+          const slug = activation?.slug;
+          if (slug && !byAgent[slug]) {
+            byAgent[slug] = insight.title;
+            const date = new Date(insight.createdAt);
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffMin = Math.floor(diffMs / 60000);
+            if (diffMin < 1) byAgentTime[slug] = 'just now';
+            else if (diffMin < 60) byAgentTime[slug] = `${diffMin} min ago`;
+            else if (diffMin < 1440) byAgentTime[slug] = `${Math.floor(diffMin / 60)}h ago`;
+            else byAgentTime[slug] = `${Math.floor(diffMin / 1440)}d ago`;
+          }
+        }
+        setRealInsights(byAgent);
+        setLastAnalyzed(byAgentTime);
+      } catch {
+        // Fall back to mock data silently
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [hydrated, slugs, activations, api]);
 
   useEffect(() => {
     setVisibleItems(new Set());
@@ -132,9 +173,12 @@ export default function AgentGrid() {
                 <div className={styles.activeNameRow}>
                   <span className={styles.activeName}>{agent.name}</span>
                   <span className={styles.dot} />
-                  <span className={styles.activeTime}>{agent.lastActive}</span>
+                  <span className={styles.activeTime}>{lastAnalyzed[agentSlug(agent.name)] ?? agent.lastActive}</span>
                 </div>
-                {agent.insights && <CyclingInsight insights={agent.insights} tick={ticks[index] ?? 0} />}
+                {realInsights[agentSlug(agent.name)]
+                  ? <p className={styles.activeInsight}>{realInsights[agentSlug(agent.name)]}</p>
+                  : agent.insights && <CyclingInsight insights={agent.insights} tick={ticks[index] ?? 0} />
+                }
               </div>
             </div>
             <span className={styles.activeArrow}>

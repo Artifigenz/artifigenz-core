@@ -11,17 +11,19 @@ import {
 } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { fileUploadAdapter } from "../agents/finance/data-sources/file-upload.adapter";
+import { appleHealthAdapter } from "../agents/health/data-sources/apple-health.adapter";
 import { SkillExecutor } from "../platform/execution/skill-executor";
 import { AgentRegistry } from "../platform/registry/agent-registry";
 import { register as registerFinance } from "../agents/finance";
+import { register as registerHealth } from "../agents/health";
 
 const app = new Hono();
 app.use("/*", clerkAuth);
 
-// Inline registry for skill execution (no import from bootstrap to avoid
-// circular deps — just register finance here)
+// Inline registry for skill execution
 const inlineRegistry = new AgentRegistry();
 registerFinance(inlineRegistry);
+registerHealth(inlineRegistry);
 const executor = new SkillExecutor(inlineRegistry);
 
 /**
@@ -139,6 +141,89 @@ app.post("/", async (c) => {
 });
 
 /**
+ * POST /api/upload/health
+ *
+ * Accepts an Apple Health export (XML, CSV, PDF, image).
+ * Same inline-processing pattern as finance uploads.
+ */
+app.post("/health", async (c) => {
+  const user = c.get("user");
+
+  const formData = await c.req.formData();
+  const file = formData.get("file");
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: "No file provided. Send a 'file' field." }, 400);
+  }
+
+  if (file.size > 50 * 1024 * 1024) {
+    return c.json({ error: "File too large. Max 50MB." }, 400);
+  }
+
+  // 1. Find health agent instance
+  const [agentInstance] = await db
+    .select()
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "health"),
+        eq(agentInstances.status, "active"),
+      ),
+    )
+    .limit(1);
+
+  if (!agentInstance) {
+    return c.json({ error: "Health agent not activated. Activate it first." }, 400);
+  }
+
+  // 2. Save file to disk
+  const uploadDir = join(tmpdir(), "artifigenz-uploads", user.id);
+  await mkdir(uploadDir, { recursive: true });
+  const filepath = join(uploadDir, `${Date.now()}-${file.name}`);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await writeFile(filepath, buffer);
+
+  // 3. Create/reuse data source connection
+  const connection = await appleHealthAdapter.finalizeConnection({
+    agentInstanceId: agentInstance.id,
+    dataSourceTypeId: "apple-health",
+  });
+
+  // 4. Create file_uploads row
+  await db.insert(fileUploads).values({
+    dataSourceConnectionId: connection.id,
+    originalFilename: file.name,
+    fileType: file.type.includes("xml")
+      ? "xml"
+      : file.type.includes("csv") || file.type.includes("text")
+        ? "csv"
+        : file.type.includes("pdf")
+          ? "pdf"
+          : "image",
+    storagePath: filepath,
+    fileSizeBytes: file.size,
+    extractionStatus: "pending",
+  });
+
+  // 5. Parse with Claude (inline, ~20-30s)
+  const syncResult = await appleHealthAdapter.sync(connection);
+
+  // 6. Run wellness skill on the new data
+  const skillResult = await executor.execute({
+    agentInstanceId: agentInstance.id,
+    skillId: "health.wellness",
+  });
+
+  return c.json({
+    status: "processed",
+    file: { name: file.name, size: file.size, type: file.type },
+    metrics: syncResult.length,
+    insights: skillResult.insightIds.length,
+  });
+});
+
+/**
  * GET /api/upload/:fileId/status
  * Check status of a file upload (for future async processing)
  */
@@ -155,6 +240,100 @@ app.get("/:fileId/status", async (c) => {
     status: file.extractionStatus,
     transactionCount: file.transactionCount,
     processedAt: file.processedAt,
+  });
+});
+
+/**
+ * POST /api/upload/sync/:agentInstanceId
+ *
+ * Syncs all Plaid connections for an agent instance inline, then runs
+ * the subscriptions skill. Used after Plaid Link finishes — since
+ * workers are disabled, this does everything in one request.
+ *
+ * For Plaid sandbox, waits 5s for transactions to be generated.
+ */
+app.post("/sync/:agentInstanceId", async (c) => {
+  const user = c.get("user");
+  const agentInstanceId = c.req.param("agentInstanceId");
+
+  // Verify the agent instance belongs to this user
+  const [instance] = await db
+    .select()
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.id, agentInstanceId),
+        eq(agentInstances.userId, user.id),
+      ),
+    )
+    .limit(1);
+
+  if (!instance) {
+    return c.json({ error: "Agent instance not found" }, 404);
+  }
+
+  // Find all active Plaid connections for this instance
+  const connections = await db
+    .select()
+    .from(dataSourceConnections)
+    .where(
+      and(
+        eq(dataSourceConnections.agentInstanceId, agentInstanceId),
+        eq(dataSourceConnections.dataSourceTypeId, "plaid"),
+        eq(dataSourceConnections.status, "active"),
+      ),
+    );
+
+  if (connections.length === 0) {
+    return c.json({ error: "No Plaid connections found" }, 400);
+  }
+
+  // Import the Plaid adapter
+  const { plaidAdapter } = await import(
+    "../agents/finance/data-sources/plaid.adapter"
+  );
+
+  // Wait a bit for sandbox transactions to be generated
+  if (process.env.PLAID_ENV === "sandbox") {
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+
+  let totalTransactions = 0;
+
+  for (const conn of connections) {
+    try {
+      const result = await plaidAdapter.sync({
+        id: conn.id,
+        agentInstanceId: conn.agentInstanceId,
+        dataSourceTypeId: conn.dataSourceTypeId,
+        displayName: conn.displayName ?? "",
+        status: conn.status,
+        credentials: (conn.credentialsEncrypted ?? {}) as Record<string, unknown>,
+        metadata: (conn.metadata ?? {}) as Record<string, unknown>,
+      });
+      totalTransactions += result.length;
+    } catch (err) {
+      console.error(`[sync] Failed to sync connection ${conn.id}:`, err);
+    }
+  }
+
+  // Run the subscriptions skill
+  let insightCount = 0;
+  try {
+    const skillResult = await executor.execute({
+      agentInstanceId,
+      skillId: "finance.subscriptions",
+    });
+    insightCount = skillResult.insightIds.length;
+  } catch (err) {
+    console.error(`[sync] Failed to run skill:`, err);
+  }
+
+  return c.json({
+    status: "synced",
+    connections: connections.length,
+    transactions: totalTransactions,
+    insights: insightCount,
   });
 });
 

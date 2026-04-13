@@ -345,7 +345,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
 function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const router = useRouter();
-  const { activate } = useActivatedAgents();
+  const { activate, finalizeActivation } = useActivatedAgents();
   const api = useApiClient();
   const slug = name.toLowerCase();
   const agent = AGENTS.find((a) => a.name.toLowerCase().replace(/\s+/g, '-') === slug);
@@ -386,6 +386,22 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
           { name: metadata.institution?.name ?? 'Bank Account', id: publicToken.slice(0, 8) },
         ]);
         setLinkToken(null);
+
+        // Sync transactions + run skill inline (~10-15s in sandbox)
+        setConnectError(null);
+        setPlaidLoading(true);
+        try {
+          const syncResult = await api.syncAgent(agentInstanceId);
+          setConnectedBanks((prev) =>
+            prev.map((b) =>
+              b.id === publicToken.slice(0, 8)
+                ? { ...b, name: `${b.name} (${syncResult.transactions} transactions)` }
+                : b,
+            ),
+          );
+        } catch {
+          // Sync failure is non-fatal — transactions will be available later
+        }
       } catch (err) {
         setConnectError(err instanceof Error ? err.message : 'Failed to connect bank');
       } finally {
@@ -430,12 +446,19 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
     setUploadLoading(true);
     setConnectError(null);
     try {
-      const result = await api.uploadFile((() => {
+      if (slug === 'health') {
         const fd = new FormData();
         fd.append('file', file);
-        return fd;
-      })());
-      setUploadedFiles((prev) => [...prev, { name: file.name, transactions: result.transactions }]);
+        const result = await api.uploadHealthFile(fd);
+        setUploadedFiles((prev) => [...prev, { name: file.name, transactions: result.metrics }]);
+      } else {
+        const result = await api.uploadFile((() => {
+          const fd = new FormData();
+          fd.append('file', file);
+          return fd;
+        })());
+        setUploadedFiles((prev) => [...prev, { name: file.name, transactions: result.transactions }]);
+      }
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -515,28 +538,33 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
 
   const next = async () => {
     if (step === 0) {
-      // Create agent instance when entering step 1 so Plaid/upload have an ID
+      // Create agent instance in 'onboarding' status so it doesn't appear
+      // on the dashboard yet. Plaid Link + upload need the instance ID.
       if (data.requiresAccounts && !agentInstanceId) {
         try {
-          const result = await activate({
+          const instanceId = await activate({
             slug,
             activatedAt: Date.now(),
             accounts: [],
             goals: [],
             skills: activeSkills,
+            status: 'onboarding',
           });
-          // Get the instance ID from the backend response
-          const agents = await api.getMyAgents();
-          const instance = agents.find((a: { agentTypeId: string }) => a.agentTypeId === slug);
-          if (instance) setAgentInstanceId(instance.id);
+          if (instanceId) {
+            setAgentInstanceId(instanceId);
+          } else {
+            // Fallback: fetch from API
+            const agents = await api.getMyAgents();
+            const inst = agents.find((a: { agentTypeId: string }) => a.agentTypeId === slug);
+            if (inst) setAgentInstanceId(inst.id);
+          }
         } catch {
-          // May already exist — try to get the ID anyway
           try {
             const agents = await api.getMyAgents();
-            const instance = agents.find((a: { agentTypeId: string }) => a.agentTypeId === slug);
-            if (instance) setAgentInstanceId(instance.id);
+            const inst = agents.find((a: { agentTypeId: string }) => a.agentTypeId === slug);
+            if (inst) setAgentInstanceId(inst.id);
           } catch {
-            // Continue without ID — Plaid/upload won't work but goals still will
+            // Continue without ID
           }
         }
       }
@@ -546,7 +574,24 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
     } else if (step === 2) {
       setStep(3);
     } else if (step === 3) {
-      // Agent was already activated at step 0→1, just redirect
+      // Finalize: flip status from 'onboarding' to 'active'
+      if (agentInstanceId) {
+        await finalizeActivation(slug, agentInstanceId, {
+          slug,
+          activatedAt: Date.now(),
+          agentInstanceId,
+          accounts: connectedAccounts,
+          goals: selectedGoals,
+          skills: activeSkills,
+        });
+        // Update goal if set
+        if (selectedGoals.length > 0) {
+          await api.updateAgentInstance(agentInstanceId, {
+            goal: selectedGoals.join('; '),
+            status: 'active',
+          });
+        }
+      }
       router.push(`/agent/${slug}`);
     }
   };
@@ -723,8 +768,128 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
           </>
         )}
 
-        {/* ── Step 1: Connect accounts (redesigned) ── */}
-        {step === 1 && data.requiresAccounts && (
+        {/* ── Step 1: Connect accounts ── */}
+        {step === 1 && data.requiresAccounts && slug === 'health' && (
+          <>
+            <h2 className={styles.stepTitle}>Upload your health data</h2>
+            <p className={styles.stepSubtitle}>
+              Export your data from Apple Health and upload it here. We&apos;ll extract sleep, steps, heart rate, workouts, and more.
+            </p>
+
+            {connectError && (
+              <p style={{ fontSize: '0.78rem', color: '#c44', marginBottom: '16px' }}>{connectError}</p>
+            )}
+
+            {/* ── Apple Health Export ── */}
+            <div
+              style={{
+                border: '1px solid var(--border-light)',
+                borderRadius: '14px',
+                padding: '24px',
+                marginBottom: '16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '16px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--card-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 4px' }}>
+                    Apple Health Export
+                  </h3>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', margin: 0, lineHeight: 1.55 }}>
+                    Open the <strong style={{ color: 'var(--text)' }}>Health</strong> app on your iPhone &rarr; tap your profile icon (top right) &rarr; <strong style={{ color: 'var(--text)' }}>Export All Health Data</strong>.
+                    Upload the <code style={{ fontSize: '0.75rem', background: 'var(--card-hover)', padding: '1px 5px', borderRadius: '4px' }}>export.xml</code> file here.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--card-hover)', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: 0, lineHeight: 1.6 }}>
+                  <strong style={{ color: 'var(--text)' }}>What we extract:</strong> Steps, sleep duration, resting heart rate, HRV, workouts, active calories, distance, flights climbed, and weight.
+                  All data stays private and is only used for your personal insights.
+                </p>
+              </div>
+
+              {/* Uploaded files list */}
+              {uploadedFiles.map((file, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 14px',
+                    background: 'var(--card-hover)',
+                    borderRadius: '8px',
+                    marginBottom: '8px',
+                    fontSize: '0.82rem',
+                    color: 'var(--text)',
+                  }}
+                >
+                  <span style={{ color: '#22c55e' }}>&#10003;</span>
+                  {file.name}
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                    {file.transactions} metrics
+                  </span>
+                </div>
+              ))}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xml,.csv,.txt,.pdf,.jpg,.jpeg,.png,.webp"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadLoading || !agentInstanceId}
+                style={{
+                  fontFamily: 'inherit',
+                  fontSize: '0.78rem',
+                  fontWeight: 500,
+                  color: 'var(--accent-text)',
+                  background: 'var(--accent)',
+                  border: '1px solid var(--accent)',
+                  padding: '9px 18px',
+                  borderRadius: '9999px',
+                  cursor: uploadLoading ? 'not-allowed' : 'pointer',
+                  opacity: uploadLoading ? 0.5 : 1,
+                  marginTop: uploadedFiles.length > 0 ? '8px' : '0',
+                }}
+              >
+                {uploadLoading
+                  ? 'Analyzing your health data...'
+                  : uploadedFiles.length > 0
+                    ? '+ Upload another file'
+                    : 'Upload export.xml \u2192'}
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', lineHeight: 1.55 }}>
+              Also works with CSV exports from Fitbit, Google Fit, Oura, and other health apps. Screenshots of health dashboards work too.
+            </p>
+
+            <div className={styles.footer}>
+              <button className={styles.ghostBtn} onClick={next}>
+                {uploadedFiles.length === 0 ? 'Skip for now' : 'Continue \u2192'}
+              </button>
+              {uploadedFiles.length > 0 && (
+                <button className={styles.primaryBtn} onClick={next}>
+                  Continue &rarr;
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── Step 1: Connect accounts (finance / other) ── */}
+        {step === 1 && data.requiresAccounts && slug !== 'health' && (
           <>
             <h2 className={styles.stepTitle}>Connect your financial data</h2>
             <p className={styles.stepSubtitle}>
@@ -775,7 +940,7 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
                     color: 'var(--text)',
                   }}
                 >
-                  <span style={{ color: '#22c55e' }}>✓</span>
+                  <span style={{ color: '#22c55e' }}>&#10003;</span>
                   {bank.name}
                 </div>
               ))}
@@ -801,7 +966,7 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
                   ? 'Connecting...'
                   : connectedBanks.length > 0
                     ? '+ Add another bank'
-                    : 'Connect bank →'}
+                    : 'Connect bank \u2192'}
               </button>
             </div>
 
@@ -851,7 +1016,7 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
                     color: 'var(--text)',
                   }}
                 >
-                  <span style={{ color: '#22c55e' }}>✓</span>
+                  <span style={{ color: '#22c55e' }}>&#10003;</span>
                   {file.name}
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginLeft: 'auto' }}>
                     {file.transactions} transactions
@@ -891,17 +1056,17 @@ function ActivateContent({ params }: { params: Promise<{ name: string }> }) {
                   ? 'Analyzing... (~30s)'
                   : uploadedFiles.length > 0
                     ? '+ Upload another file'
-                    : 'Choose file →'}
+                    : 'Choose file \u2192'}
               </button>
             </div>
 
             <div className={styles.footer}>
               <button className={styles.ghostBtn} onClick={next}>
-                {connectedBanks.length === 0 && uploadedFiles.length === 0 ? 'Skip for now' : 'Continue →'}
+                {connectedBanks.length === 0 && uploadedFiles.length === 0 ? 'Skip for now' : 'Continue \u2192'}
               </button>
               {(connectedBanks.length > 0 || uploadedFiles.length > 0) && (
                 <button className={styles.primaryBtn} onClick={next}>
-                  Continue →
+                  Continue &rarr;
                 </button>
               )}
             </div>
