@@ -120,6 +120,11 @@
   animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
 }
 
+.agentHeader > div {
+  flex: 1;
+  min-width: 0;
+}
+
 .nameRow {
   display: flex;
   align-items: center;
@@ -142,6 +147,15 @@
   font-size: 0.78rem;
   color: var(--text-dim);
   font-style: italic;
+}
+
+.greeting {
+  font-size: clamp(1.9rem, 3.6vw, 3rem);
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 14px 0 0;
 }
 
 .stepBadge {

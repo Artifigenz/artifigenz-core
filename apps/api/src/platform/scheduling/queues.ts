@@ -12,6 +12,8 @@ function getConnection(): ConnectionOptions {
     username: parsed.username || undefined,
     tls: useTls ? {} : undefined,
     maxRetriesPerRequest: null,
+    // Force IPv4 — Railway/Fly containers can't reach Upstash via IPv6
+    family: 4,
   };
 }
 

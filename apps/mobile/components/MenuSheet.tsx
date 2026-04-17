@@ -6,6 +6,7 @@ import {
 import Svg, { Line, Path, Circle, Polyline, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import { useTheme } from './ThemeContext';
 import { type ColorTheme } from '../constants/theme';
 
@@ -35,9 +36,15 @@ function DrawerMenu({ visible, onClose }: { visible: boolean; onClose: () => voi
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
+  const { signOut } = useAuth();
+  const { user } = useUser();
   const slideAnim = useRef(new Animated.Value(DRAWER_W)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const s = createStyles(c);
+
+  const displayName = user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] ?? '';
+  const displayEmail = user?.primaryEmailAddress?.emailAddress ?? '';
+  const initial = displayName ? displayName[0].toUpperCase() : 'U';
 
   useEffect(() => {
     if (visible) {
@@ -76,12 +83,10 @@ function DrawerMenu({ visible, onClose }: { visible: boolean; onClose: () => voi
         <View style={s.drawerHeader}>
           <View style={s.profile}>
             {/* web: 36px avatar, 0.78rem initial */}
-            <View style={s.avatar}><Text style={s.avatarInitial}>C</Text></View>
+            <View style={s.avatar}><Text style={s.avatarInitial}>{initial}</Text></View>
             <View>
-              {/* web: 0.88rem=14px weight 600 */}
-              <Text style={s.profileName}>Cooper</Text>
-              {/* web: 0.65rem=10.4px */}
-              <Text style={s.profileEmail}>suba@artifigenz.com</Text>
+              <Text style={s.profileName}>{displayName}</Text>
+              <Text style={s.profileEmail}>{displayEmail}</Text>
             </View>
           </View>
           {/* Close — web: 32x32, X icon 18x18 */}
@@ -124,7 +129,7 @@ function DrawerMenu({ visible, onClose }: { visible: boolean; onClose: () => voi
             <Text style={[s.navText, { color: linkColor('/settings') }]}>Settings</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={s.navLink} onPress={() => nav('#')}>
+          <TouchableOpacity style={s.navLink} onPress={() => { onClose(); signOut(); }}>
             <Text style={[s.navText, { color: c.textDim }]}>Sign out</Text>
           </TouchableOpacity>
         </View>

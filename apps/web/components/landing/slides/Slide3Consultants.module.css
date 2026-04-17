@@ -1,0 +1,208 @@
+.slide3 {
+  /* slide-specific overrides */
+}
+
+.inner {
+  text-align: center;
+}
+
+.cta {
+  margin-top: 40px;
+}
+
+/* ─── Constellation ─── */
+
+.constellation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  margin: 16px auto 40px;
+}
+
+.orb {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  transition: color 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: inherit;
+  padding: 0;
+}
+
+.orb:hover {
+  color: var(--text);
+  transform: scale(1.12);
+}
+
+.orbFeatured {
+  color: var(--text);
+  transform: scale(1.18);
+}
+
+.orbFeatured:hover {
+  transform: scale(1.18);
+}
+
+/* Icon swap: outline by default, filled on hover/active */
+
+.iconOutline,
+.iconFilled {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.25s ease;
+}
+
+.iconOutline {
+  opacity: 1;
+}
+
+.iconFilled {
+  opacity: 0;
+}
+
+.orb:hover .iconOutline {
+  opacity: 0;
+}
+
+.orb:hover .iconFilled {
+  opacity: 1;
+}
+
+.orbFeatured .iconOutline {
+  opacity: 0;
+}
+
+.orbFeatured .iconFilled {
+  opacity: 1;
+}
+
+/* ─── Featured spotlight ─── */
+
+.featured {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 22px 28px;
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  max-width: 620px;
+  width: 100%;
+  text-align: left;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  transition: opacity 0.4s ease;
+}
+
+.featuredIcon {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.featuredIconFilled,
+.featuredIconOutline {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.featuredIconFilled {
+  opacity: 1;
+}
+
+.featuredIconOutline {
+  opacity: 0;
+}
+
+.featuredBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.featuredName {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.featuredPitch {
+  font-size: 0.96rem;
+  line-height: 1.45;
+  color: var(--text);
+  font-style: italic;
+  margin-bottom: 14px;
+}
+
+/* ─── Subtle skill chips ─── */
+
+.featuredSkills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skillChip {
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 4px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  white-space: nowrap;
+  letter-spacing: 0.005em;
+}
+
+@media (max-width: 720px) {
+  .constellation {
+    gap: 18px;
+  }
+
+  .orb {
+    width: 42px;
+    height: 42px;
+  }
+
+  .featured {
+    padding: 18px 22px;
+    gap: 14px;
+  }
+
+  .featuredIcon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .featuredPitch {
+    font-size: 0.88rem;
+  }
+
+  .skillChip {
+    font-size: 0.62rem;
+    padding: 3px 9px;
+  }
+}

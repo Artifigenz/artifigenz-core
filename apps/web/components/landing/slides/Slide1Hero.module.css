@@ -1,0 +1,564 @@
+/* ──────────────────────────────────────────
+   Slide 1 — Hero with dashboard "peeking"
+   from below the fold (Blox-style reveal).
+   ────────────────────────────────────────── */
+
+.slide1 {
+  align-items: stretch !important;
+  padding-top: 80px !important;
+  padding-bottom: 0 !important;
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 1280px;
+  height: 100%;
+  text-align: center;
+  position: relative;
+}
+
+/* ─── Top text ─── */
+
+.text {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 820px;
+  margin: 0 auto;
+  margin-bottom: 64px;
+}
+
+.title {
+  text-align: center;
+  font-size: clamp(2rem, 4.6vw, 3.6rem) !important;
+  margin-bottom: 18px !important;
+}
+
+.subtitle {
+  text-align: center;
+  margin-bottom: 28px !important;
+  max-width: 600px;
+}
+
+/* ─── Devices showcase: peeks up from below ─── */
+
+.devices {
+  flex: 1 1 auto;
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  /* Important: do NOT clip — slide's overflow:hidden does the cropping */
+  overflow: visible;
+}
+
+.glow {
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  height: 200px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(120, 130, 200, 0.16) 0%,
+    transparent 65%
+  );
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(28px);
+}
+
+:global(.dark) .glow {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(140, 160, 240, 0.18) 0%,
+    transparent 65%
+  );
+}
+
+/* ─────────────────────────────────────────
+   Desktop dashboard mockup
+   ───────────────────────────────────────── */
+
+.desktop {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1180px;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  background: transparent;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.04);
+  text-align: left;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+
+.dHeader {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 14px 32px;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.dBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.dBrandIcon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.dBrandText {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.dNavLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 6px 12px;
+}
+
+.dNavLinkActive {
+  color: var(--text);
+}
+
+.dProfile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  justify-content: flex-end;
+}
+
+.dAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--card-hover);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dProfileName {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-mid);
+}
+
+/* ── Body ── */
+
+.dBody {
+  padding: 22px 32px 24px;
+}
+
+.dGreeting {
+  font-size: clamp(1.05rem, 1.6vw, 1.4rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--text);
+  margin: 0 0 18px;
+  max-width: 820px;
+}
+
+/* ── Agent rows ── */
+
+.dAgentList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.dAgentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 18px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: transparent;
+}
+
+.dAgentIcon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.dAgentIcon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.dAgentBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.dAgentMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.dAgentName {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.metaDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.dAgentTime {
+  font-size: 0.66rem;
+  color: var(--text-dim);
+}
+
+.dAgentInsight {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-mid);
+}
+
+.dAddAgent {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 8px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  margin-bottom: 14px;
+}
+
+/* ── Chat bar ── */
+
+.dChatBar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: transparent;
+}
+
+.dChatPlaceholder {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.dChatToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dChatPlus {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  color: var(--text-dim);
+}
+
+.dChatSend {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ─────────────────────────────────────────
+   Mobile dashboard overlay (in front)
+   ───────────────────────────────────────── */
+
+.mobile {
+  position: absolute;
+  z-index: 2;
+  right: -1%;
+  top: 64px;
+  width: 240px;
+  border: 1px solid var(--border-light);
+  border-radius: 28px;
+  background: var(--bg);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.18), 0 6px 18px rgba(0, 0, 0, 0.08);
+  text-align: left;
+  overflow: hidden;
+  padding-bottom: 14px;
+}
+
+/* ── Mobile header ── */
+
+.mHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+}
+
+.mBrand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.mBrandIcon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.mBrandText {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mHamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-mid);
+}
+
+/* ── Mobile body ── */
+
+.mBody {
+  padding: 0 14px 12px;
+}
+
+.mGreeting {
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  margin: 6px 0 14px;
+}
+
+.mAgentList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.mAgentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: transparent;
+}
+
+.mAgentIcon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.mAgentIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mAgentBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.mAgentMeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 1px;
+}
+
+.mAgentName {
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mAgentTime {
+  font-size: 0.54rem;
+  color: var(--text-dim);
+}
+
+.mAgentInsight {
+  font-size: 0.6rem;
+  line-height: 1.35;
+  color: var(--text-mid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mAddAgent {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.55rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 5px 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+}
+
+/* ── Mobile chat bar ── */
+
+.mChatBar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 11px;
+  margin: 0 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: transparent;
+}
+
+.mChatPlaceholder {
+  font-size: 0.58rem;
+  color: var(--text-dim);
+}
+
+.mChatToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mChatPlus {
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  color: var(--text-dim);
+}
+
+.mChatSend {
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ─── Responsive ─── */
+
+@media (max-width: 1100px) {
+  .desktop {
+    max-width: 100%;
+  }
+
+  .mobile {
+    width: 210px;
+    right: 2%;
+  }
+}
+
+@media (max-width: 900px) {
+  .slide1 {
+    padding-top: 60px !important;
+  }
+
+  .text {
+    margin-bottom: 24px;
+  }
+
+  .mobile {
+    width: 188px;
+  }
+}
+
+@media (max-width: 720px) {
+  .text {
+    max-width: 100%;
+  }
+
+  .desktop {
+    display: none;
+  }
+
+  .mobile {
+    position: relative;
+    right: auto;
+    top: auto;
+    width: 260px;
+    margin: 0 auto;
+  }
+
+  .devices {
+    align-items: flex-start;
+    justify-content: center;
+  }
+}

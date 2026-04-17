@@ -1,8 +1,9 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
 import Header from '@/components/layout/Header';
 import { AGENTS } from '@artifigenz/shared';
 import { useActivatedAgents } from '@/hooks/useActivatedAgents';
@@ -83,6 +84,7 @@ interface ActivationSkill {
 
 interface ActivationData {
   tagline: string;
+  greeting: string; // Use {name} as placeholder for the user's first name
   pitch: string;
   capabilities: Capability[];
   channels: ChannelSamples;
@@ -96,6 +98,7 @@ interface ActivationData {
 const ACTIVATION_DATA: Record<string, ActivationData> = {
   finance: {
     tagline: "I watch your money so you don't have to.",
+    greeting: "Hey {name} \u2014 let\u2019s put your finances on autopilot.",
     pitch: "I'll quietly track every charge, flag the ones that change, and tell you when something's off — before it costs you. No spreadsheets, no thinking required.",
     capabilities: [
       { label: 'Spot forgotten subscriptions', description: 'Every recurring charge across all accounts, in one place.', icon: 'repeat' },
@@ -146,6 +149,7 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
   },
   travel: {
     tagline: "I'll find the deal before the seat's gone.",
+    greeting: "Hey {name} \u2014 let\u2019s make your next trip effortless.",
     pitch: "I watch fares, hotel availability, and travel docs for the places you care about — and tell you the moment something worth booking shows up.",
     capabilities: [
       { label: 'Track fares automatically', description: 'Set destinations once; I watch prices 24/7.', icon: 'tag' },
@@ -193,6 +197,7 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
   },
   health: {
     tagline: 'I notice the patterns before you do.',
+    greeting: "Hey {name} \u2014 let\u2019s make healthy habits stick.",
     pitch: "I quietly track your sleep, activity, and habits — and flag the trends worth paying attention to before they become problems.",
     capabilities: [
       { label: 'Spot sleep trends early', description: 'Catch patterns in your rest before they become chronic.', icon: 'moon' },
@@ -240,6 +245,7 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
   },
   research: {
     tagline: 'I go deep so you get the short version.',
+    greeting: "Hey {name} \u2014 let\u2019s keep you ahead of the curve.",
     pitch: 'I monitor papers, competitors, and trends on the topics you care about — and hand you the 2-minute version when something matters.',
     capabilities: [
       { label: 'Daily topic scans', description: 'New papers, news, and posts filtered to what you care about.', icon: 'scan' },
@@ -284,6 +290,7 @@ const ACTIVATION_DATA: Record<string, ActivationData> = {
   },
   'job-search': {
     tagline: "I'll find the roles worth your time.",
+    greeting: "Hey {name} \u2014 let\u2019s find a role that actually fits.",
     pitch: 'I match new openings to your profile, track your applications, and keep tabs on salary benchmarks — so you stop refreshing job boards.',
     capabilities: [
       { label: 'Match roles automatically', description: 'New postings filtered to your skills and ambitions.', icon: 'target' },
@@ -335,6 +342,12 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   const { name } = use(params);
   const router = useRouter();
   const { activate } = useActivatedAgents();
+  const { user } = useUser();
+  const firstName =
+    user?.firstName ||
+    user?.username ||
+    user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] ||
+    '';
   const slug = name.toLowerCase();
   const agent = AGENTS.find((a) => a.name.toLowerCase().replace(/\s+/g, '-') === slug);
   const data = ACTIVATION_DATA[slug];
@@ -352,6 +365,37 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     return init;
   });
   const [skillsExpanded, setSkillsExpanded] = useState(false);
+
+  // Shuffle animation for example insights (Step 0)
+  const [shuffleIndex, setShuffleIndex] = useState(0);
+  useEffect(() => {
+    if (step !== 0) return;
+    const interval = setInterval(() => {
+      setShuffleIndex((i) => i + 1);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, [step]);
+
+  // Location-aware bank list for Step 0 Card 1
+  const bankList = (() => {
+    const BANKS_BY_REGION: Record<string, string[]> = {
+      US: ['Chase', 'Bank of America', 'Wells Fargo', 'Citi', 'Capital One', 'American Express'],
+      CA: ['TD', 'RBC', 'BMO', 'Scotiabank', 'CIBC', 'Tangerine'],
+      GB: ['Barclays', 'HSBC', 'Lloyds', 'NatWest', 'Santander', 'Monzo'],
+      AU: ['Commonwealth', 'Westpac', 'NAB', 'ANZ', 'Macquarie', 'Bendigo'],
+      IN: ['HDFC Bank', 'ICICI Bank', 'SBI', 'Axis Bank', 'Kotak', 'Yes Bank'],
+      DE: ['Deutsche Bank', 'Commerzbank', 'ING', 'Sparkasse', 'DKB', 'N26'],
+      FR: ['BNP Paribas', 'Crédit Agricole', 'Société Générale', 'LCL', 'La Banque Postale', 'BPCE'],
+    };
+    if (typeof navigator === 'undefined') return BANKS_BY_REGION.US;
+    try {
+      const locale = new Intl.Locale(navigator.language);
+      const region = locale.maximize().region ?? 'US';
+      return BANKS_BY_REGION[region] ?? BANKS_BY_REGION.US;
+    } catch {
+      return BANKS_BY_REGION.US;
+    }
+  })();
 
   if (!agent) {
     return (
@@ -465,179 +509,402 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
               <h1 className={styles.agentName}>{agent.name}</h1>
             </div>
             {step === 0 ? (
-              <p className={styles.tagline}>{data.tagline}</p>
+              <h2 className={styles.greeting}>
+                {data.greeting.replace('{name}', firstName || 'there')}
+              </h2>
             ) : (
               <p className={styles.stepBadge}>{stepBadge}</p>
             )}
           </div>
         </div>
 
-        {/* ── Step 0: Selling page ── */}
-        {step === 0 && (
-          <>
-            <p className={styles.pitch}>{data.pitch}</p>
+        {/* ── Step 0: How it works ── */}
+        {step === 0 && (() => {
+          const flowArrow = (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', opacity: 0.5 }}>
+              <svg width="56" height="10" viewBox="0 0 56 10" fill="none" aria-hidden="true">
+                <circle cx="4" cy="5" r="1.4" fill="currentColor" opacity="0.35"/>
+                <circle cx="16" cy="5" r="1.4" fill="currentColor" opacity="0.55"/>
+                <circle cx="28" cy="5" r="1.4" fill="currentColor" opacity="0.75"/>
+                <path d="M40 1 L46 5 L40 9" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          );
 
-            <div className={styles.ctaRow}>
-              <button className={styles.primaryBtn} onClick={next}>
+          const cardShellStyle: React.CSSProperties = {
+            borderRadius: '20px',
+            padding: '36px 28px',
+            background: 'var(--card-hover)',
+            border: '1px solid var(--border-light)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+            minHeight: '460px',
+          };
+
+          const iconWrapperStyle: React.CSSProperties = {
+            width: '52px', height: '52px', borderRadius: '14px',
+            background: 'var(--bg)', border: '1px solid var(--border-light)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          };
+
+          const stepLabelStyle: React.CSSProperties = {
+            fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-dim)',
+            textTransform: 'uppercase', letterSpacing: '0.08em',
+            display: 'block', marginBottom: '10px',
+          };
+
+          const titleStyle: React.CSSProperties = {
+            fontSize: '1.05rem', fontWeight: 600, color: 'var(--text)',
+            margin: '0 0 8px', lineHeight: 1.3,
+          };
+
+          const descStyle: React.CSSProperties = {
+            fontSize: '0.8rem', color: 'var(--text-dim)', lineHeight: 1.6, margin: 0,
+          };
+
+          const insights = [
+            { skill: 'Subscription Radar', title: 'Spotify charges $9.99 tomorrow', detail: 'From your Amex \u2022\u20228832.' },
+            { skill: 'Spending Breakdown', title: 'Dining up 45% this month', detail: '$640 spent \u2014 $200 over your average.' },
+            { skill: 'Cash Flow Forecast', title: 'On track for $1,133 surplus', detail: 'Based on current pace through month-end.' },
+            { skill: 'Bill Watch', title: 'Internet bill jumped $89 \u2192 $109', detail: 'Rogers increased your plan silently.' },
+            { skill: 'Subscription Radar', title: '3 subscriptions unused in 60+ days', detail: 'Hulu, NYT Games, Audible \u2014 $34/mo.' },
+          ];
+
+          return (
+            <>
+              {/* Keyframes for the transaction scroller */}
+              <style>{`
+                @keyframes artifigenzTxnScroll {
+                  from { transform: translateY(0); }
+                  to { transform: translateY(-50%); }
+                }
+              `}</style>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 72px 1fr 72px 1fr',
+                gap: '0',
+                alignItems: 'stretch',
+                margin: '16px 0 48px',
+              }}>
+
+                {/* Card 1: Connect */}
+                <div style={cardShellStyle}>
+                  <div style={iconWrapperStyle}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
+                      <path d="M2 10h20"/>
+                    </svg>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={stepLabelStyle}>You connect</span>
+                    <h3 style={titleStyle}>Link your bank accounts</h3>
+                    <p style={descStyle}>
+                      Securely through Plaid. Read-only access. Takes 30 seconds per account.
+                    </p>
+                  </div>
+                  {/* Visual flourish: vertical stack of banks — fade only at bottom */}
+                  <div style={{
+                    marginTop: 'auto',
+                    position: 'relative',
+                    height: '180px',
+                    overflow: 'hidden',
+                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+                    maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {bankList.map((name) => (
+                        <div
+                          key={name}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '9px 14px',
+                            borderRadius: '10px',
+                            background: 'var(--bg)',
+                            border: '1px solid var(--border-light)',
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          <div style={{
+                            width: '24px', height: '24px', borderRadius: '6px',
+                            background: 'color-mix(in srgb, var(--bg), var(--text) 8%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.62rem', fontWeight: 700, color: 'var(--text)',
+                            flexShrink: 0,
+                          }}>
+                            {name.charAt(0)}
+                          </div>
+                          <span style={{ color: 'var(--text)', fontWeight: 500 }}>{name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {flowArrow}
+
+                {/* Card 2: Watch */}
+                <div style={cardShellStyle}>
+                  <div style={iconWrapperStyle}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={stepLabelStyle}>I watch</span>
+                    <h3 style={titleStyle}>Every transaction, always</h3>
+                    <p style={descStyle}>
+                      Subscriptions, spending patterns, price changes, recurring charges — 24/7.
+                    </p>
+                  </div>
+                  {/* Visual flourish: auto-scrolling transaction feed with top+bottom fade */}
+                  {(() => {
+                    const transactions = [
+                      { label: 'Whole Foods', amount: '$87.43', income: false },
+                      { label: 'Netflix', amount: '$22.99', income: false },
+                      { label: 'Shell', amount: '$52.00', income: false },
+                      { label: 'Payroll deposit', amount: '+$4,200.00', income: true },
+                      { label: 'Starbucks', amount: '$6.75', income: false },
+                      { label: 'Amazon', amount: '$34.99', income: false },
+                      { label: 'TD Mortgage', amount: '$2,100.00', income: false },
+                      { label: 'Uber', amount: '$15.40', income: false },
+                      { label: 'Spotify', amount: '$9.99', income: false },
+                      { label: 'Chipotle', amount: '$12.50', income: false },
+                      { label: 'Equinox', amount: '$49.99', income: false },
+                      { label: 'Hydro bill', amount: '$89.12', income: false },
+                    ];
+                    // Duplicate the list so translateY(-50%) wraps seamlessly
+                    const doubled = [...transactions, ...transactions];
+                    return (
+                      <div style={{
+                        marginTop: 'auto',
+                        position: 'relative',
+                        height: '180px',
+                        overflow: 'hidden',
+                        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 70%, transparent 100%)',
+                        maskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 70%, transparent 100%)',
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          animation: 'artifigenzTxnScroll 16s linear infinite',
+                        }}>
+                          {doubled.map((row, i) => (
+                            <div key={i} style={{
+                              display: 'flex', alignItems: 'center', gap: '10px',
+                              padding: '9px 14px', borderRadius: '10px',
+                              background: 'var(--bg)', border: '1px solid var(--border-light)',
+                              fontSize: '0.75rem',
+                              flexShrink: 0,
+                            }}>
+                              <span style={{
+                                width: '6px', height: '6px', borderRadius: '50%',
+                                background: row.income ? '#22c55e' : 'var(--text-dim)',
+                                flexShrink: 0,
+                              }} />
+                              <span style={{ color: 'var(--text)', fontWeight: 500, flex: 1 }}>{row.label}</span>
+                              <span style={{
+                                color: row.income ? '#22c55e' : 'var(--text-dim)',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}>
+                                {row.amount}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {flowArrow}
+
+                {/* Card 3: Get — with shuffling insight stack inside */}
+                <div style={cardShellStyle}>
+                  <div style={iconWrapperStyle}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                      <path d="M13.73 21a2 2 0 01-3.46 0"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <span style={stepLabelStyle}>You receive</span>
+                    <h3 style={titleStyle}>Insights that save you money</h3>
+                    <p style={descStyle}>
+                      In-app, email, or Telegram — wherever you want them.
+                    </p>
+                  </div>
+                  {/* Shuffling insight stack */}
+                  <div style={{
+                    position: 'relative',
+                    height: '110px',
+                    marginTop: 'auto',
+                  }}>
+                    {insights.map((insight, i) => {
+                      const depth = ((i - shuffleIndex) % insights.length + insights.length) % insights.length;
+                      const isActive = depth === 0;
+                      const isVisible = depth <= 2;
+                      const tintPct = 3 + depth * 2;
+                      const cardBg = `color-mix(in srgb, var(--bg), var(--text) ${tintPct}%)`;
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            padding: '14px 16px',
+                            borderRadius: '12px',
+                            background: cardBg,
+                            border: '1px solid var(--border-light)',
+                            boxShadow: isActive
+                              ? '0 8px 24px rgba(0,0,0,0.1)'
+                              : '0 3px 14px rgba(0,0,0,0.04)',
+                            transform: `translateY(${depth * 8}px) scale(${1 - depth * 0.035})`,
+                            opacity: isVisible ? 1 : 0,
+                            zIndex: insights.length - depth,
+                            transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.6s ease, box-shadow 0.6s ease, background 0.6s ease',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--text)' }} />
+                            <span style={{ fontSize: '0.6rem', fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                              {insight.skill}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 2px', lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {insight.title}
+                          </p>
+                          <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)', margin: 0, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {insight.detail}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <button className={styles.primaryBtn} onClick={next} style={{ padding: '14px 36px', fontSize: '0.9rem' }}>
                 Get started →
               </button>
-              <span className={styles.ctaHint}>
-                Ready in ~{data.estimatedSetupSeconds} seconds
-              </span>
-            </div>
+            </>
+          );
+        })()}
 
-            <div className={styles.capabilitiesSection}>
-              <span className={styles.sectionLabel}>Skills</span>
-              <div className={styles.capabilitiesGrid}>
-                {data.capabilities.map((cap) => {
-                  const CapIcon = CAPABILITY_ICON_MAP[cap.icon];
-                  return (
-                    <div key={cap.label} className={styles.capabilityItem}>
-                      {CapIcon && (
-                        <span className={styles.capabilityIcon}>
-                          <CapIcon />
-                        </span>
-                      )}
-                      <div className={styles.capabilityText}>
-                        <span className={styles.capabilityLabel}>{cap.label}</span>
-                        <span className={styles.capabilityDesc}>{cap.description}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className={styles.previewSection}>
-              <h3 className={styles.previewHeading}>Here&apos;s what you&apos;ll get.</h3>
-              <div className={styles.mockupGrid}>
-                {/* In-app insight mockup */}
-                <div className={styles.mockupCard}>
-                  <span className={styles.mockupLabel}>In-app</span>
-                  <div className={styles.screenshotFrame}>
-                    <div className={styles.screenshotChrome}>
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.chromeLogo}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/logo_transparent.png" alt="Artifigenz" width={18} height={18} />
-                      </span>
-                    </div>
-                    <div className={styles.screenshotBody}>
-                      <div className={styles.insightMockupTop}>
-                        <span className={styles.insightMockupCategory}>
-                          <span className={styles.insightMockupCategoryDot} />
-                          {data.channels.insight.category}
-                        </span>
-                        {data.channels.insight.mustSee && (
-                          <span className={styles.insightMockupFlag}>Must see ⚠</span>
-                        )}
-                      </div>
-                      <p className={styles.insightMockupTitle}>{data.channels.insight.title}</p>
-                      <p className={styles.insightMockupDetail}>{data.channels.insight.detail}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Telegram mockup */}
-                <div className={styles.mockupCard}>
-                  <span className={styles.mockupLabel}>Telegram</span>
-                  <div className={styles.screenshotFrame}>
-                    <div className={styles.screenshotChrome}>
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.chromeLogo} aria-label="Telegram">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#2a7dc4" stroke="none">
-                          <path d="M22 2 11 13 2 9l20-7zm0 0-7 20-4-9" fill="none" stroke="#2a7dc4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </span>
-                    </div>
-                    <div className={styles.screenshotBody}>
-                      <div className={styles.telegramRow}>
-                        <div className={styles.telegramAvatar}>A</div>
-                        <div className={styles.telegramContent}>
-                          <div className={styles.telegramName}>Artifigenz</div>
-                          <div className={styles.telegramBubble}>
-                            {data.channels.telegram.text}
-                          </div>
-                          <div className={styles.telegramTime}>{data.channels.telegram.timestamp}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Email mockup */}
-                <div className={styles.mockupCard}>
-                  <span className={styles.mockupLabel}>Email</span>
-                  <div className={styles.screenshotFrame}>
-                    <div className={styles.screenshotChrome}>
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.screenshotDot} />
-                      <span className={styles.chromeLogo} aria-label="Email">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                          <polyline points="22,6 12,13 2,6" />
-                        </svg>
-                      </span>
-                    </div>
-                    <div className={styles.screenshotBody}>
-                      <div className={styles.emailHeader}>
-                        <div className={styles.emailSenderIcon}>A</div>
-                        <div className={styles.emailSenderInfo}>
-                          <div className={styles.emailSenderName}>Artifigenz</div>
-                          <div className={styles.emailTime}>{data.channels.email.timestamp} ago</div>
-                        </div>
-                      </div>
-                      <div className={styles.emailSubject}>{data.channels.email.subject}</div>
-                      <div className={styles.emailPreview}>{data.channels.email.preview}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ── Step 1: Connect accounts ── */}
+        {/* ── Step 1: Connect bank accounts ── */}
         {step === 1 && data.requiresAccounts && (
           <>
-            <h2 className={styles.stepTitle}>Connect your accounts</h2>
+            <h2 className={styles.stepTitle}>Your accounts</h2>
             <p className={styles.stepSubtitle}>
-              I need access to these so I can pull your data. Read-only, always.
+              Connect the accounts you want me to watch.
             </p>
 
-            <div className={styles.configList}>
-              {data.accountOptions.map((opt) => {
-                const isConnected = connectedAccounts.includes(opt.name);
-                return (
-                  <div key={opt.name} className={styles.accountItem}>
-                    <div className={styles.accountInfo}>
-                      <span className={styles.accountName}>{opt.name}</span>
-                      <span className={styles.accountDesc}>{opt.description}</span>
-                    </div>
-                    <button
-                      className={isConnected ? styles.connectedBtn : styles.connectBtn}
-                      onClick={() => toggleAccount(opt.name)}
-                    >
-                      {isConnected ? '✓ Connected' : 'Connect'}
-                    </button>
+            {/* Account grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '14px',
+              margin: '8px 0 32px',
+            }}>
+              {/* Connected account cards */}
+              {connectedAccounts.map((name) => (
+                <div
+                  key={name}
+                  style={{
+                    borderRadius: '16px',
+                    padding: '24px 20px',
+                    background: 'var(--card-hover)',
+                    border: '1px solid var(--border-light)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    minHeight: '160px',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <div style={{
+                    width: '44px', height: '44px', borderRadius: '50%',
+                    background: '#22c55e15', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5"/>
+                    </svg>
                   </div>
-                );
-              })}
+                  <span style={{ fontSize: '0.88rem', fontWeight: 500, color: 'var(--text)', textAlign: 'center' }}>{name}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Connected</span>
+                </div>
+              ))}
+
+              {/* Add account card */}
+              <div
+                onClick={() => toggleAccount(`Account ${connectedAccounts.length + 1}`)}
+                style={{
+                  borderRadius: '16px',
+                  padding: '24px 20px',
+                  background: connectedAccounts.length === 0 ? 'var(--card-hover)' : 'transparent',
+                  border: connectedAccounts.length === 0 ? '1px solid var(--border-light)' : '1px dashed var(--border-light)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  minHeight: '160px',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.15s ease, background 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  const el = e.currentTarget;
+                  el.style.borderColor = 'var(--text)';
+                  el.style.background = 'var(--card-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget;
+                  el.style.borderColor = 'var(--border-light)';
+                  el.style.background = connectedAccounts.length === 0 ? 'var(--card-hover)' : 'transparent';
+                }}
+              >
+                <div style={{
+                  width: '44px', height: '44px', borderRadius: '50%',
+                  border: '1.5px dashed var(--border-light)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </div>
+                <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text)' }}>
+                  {connectedAccounts.length === 0 ? 'Add bank account' : 'Add another'}
+                </span>
+              </div>
             </div>
 
-            <div className={styles.footer}>
-              <button className={styles.ghostBtn} onClick={next}>
-                Skip for now
-              </button>
-              <button className={styles.primaryBtn} onClick={next}>
-                Continue →
-              </button>
-            </div>
+            {/* Trust line — one sentence, not a wall */}
+            <p style={{
+              fontSize: '0.72rem', color: 'var(--text-dim)', lineHeight: 1.6,
+              maxWidth: '480px', margin: '0 0 32px',
+            }}>
+              Connected securely through <strong style={{ color: 'var(--text)', fontWeight: 500 }}>Plaid</strong>.
+              Read-only access. We never see your login. Disconnect anytime.
+            </p>
+
+            {/* Continue — only when at least one account is connected */}
+            {connectedAccounts.length > 0 && (
+              <div className={styles.footer}>
+                <button className={styles.primaryBtn} onClick={next}>
+                  Continue →
+                </button>
+              </div>
+            )}
           </>
         )}
 

@@ -41,6 +41,12 @@ export interface ChatPromptContext {
     monthlyTotal: number;
     upcomingCharges: number;
   } | null;
+  healthSnapshot: {
+    avgSteps: number | null;
+    avgSleepHours: number | null;
+    avgRestingHR: number | null;
+    daysWithData: number;
+  } | null;
   anchoredInsight: InsightRow | null;
 }
 

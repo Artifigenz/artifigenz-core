@@ -7,12 +7,17 @@ import { useRouter } from 'expo-router';
 import { AGENTS } from '@artifigenz/shared';
 import { type ColorTheme } from '../constants/theme';
 import { useTheme } from '../components/ThemeContext';
+import { useActivatedAgents, agentSlug } from '../hooks/useActivatedAgents';
 
 export default function ExploreScreen() {
   const { c, isAura, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const explore = AGENTS.filter((a) => !a.active);
+  const { slugs } = useActivatedAgents();
+
+  // Show agents that are NOT activated by the user
+  const explore = AGENTS.filter((a) => !slugs.includes(agentSlug(a.name)));
+
   const s = createStyles(c);
 
   const bgColors = isAura
@@ -37,7 +42,11 @@ export default function ExploreScreen() {
           <View key={agent.name} style={s.card}>
             <Text style={s.cardName}>{agent.name}</Text>
             <Text style={s.cardPitch}>{agent.pitch}</Text>
-            <TouchableOpacity style={s.activateBtn} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={s.activateBtn}
+              activeOpacity={0.7}
+              onPress={() => router.push(`/agent/${agent.name.toLowerCase()}`)}
+            >
               <Text style={s.activateText}>Activate →</Text>
             </TouchableOpacity>
           </View>
@@ -53,9 +62,7 @@ const createStyles = (c: ColorTheme) =>
     header: { paddingHorizontal: 20, paddingBottom: 4 },
     dismiss: { fontSize: 15, fontWeight: '500', color: c.textDim },
     scroll: { paddingHorizontal: 20, paddingBottom: 48 },
-    // web 640px: 1.4rem=22px, margin-bottom 8px
     title: { fontSize: 22, fontWeight: '400', color: c.text, letterSpacing: -0.3, paddingTop: 24, marginBottom: 8 },
-    // web 640px: 0.82rem=13px
     sub: { fontSize: 13, fontWeight: '400', color: c.textDim, lineHeight: 19, marginBottom: 20 },
     card: {
       borderWidth: 1,
@@ -66,11 +73,8 @@ const createStyles = (c: ColorTheme) =>
       backgroundColor: c.cardBg,
       ...(c.shadow ? { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 8 } : {}),
     },
-    // web 640px: 0.92rem=14.7px
     cardName: { fontSize: 15, fontWeight: '600', color: c.text, marginBottom: 4 },
-    // web 640px: 0.78rem=12.5px, line 1.45
     cardPitch: { fontSize: 12, fontWeight: '400', color: c.textMid, lineHeight: 18, marginBottom: 10 },
-    // web 640px: 0.68rem=10.9px, padding 5px 12px
     activateBtn: { borderWidth: 1, borderColor: c.borderLight, borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 5, alignSelf: 'flex-start' },
     activateText: { fontSize: 11, fontWeight: '500', color: c.textDim },
   });

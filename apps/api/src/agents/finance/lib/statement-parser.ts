@@ -61,7 +61,7 @@ export async function parseStatement(params: {
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 8192,
+    max_tokens: 16384,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
   });
@@ -72,9 +72,17 @@ export async function parseStatement(params: {
     throw new Error("Claude returned no text content");
   }
 
-  // Parse JSON from response
-  const jsonText = extractJson(textBlock.text);
-  let parsed: {
+  // Parse JSON from response — handle truncation from max_tokens
+  let jsonText = extractJson(textBlock.text);
+
+  // If the response was truncated (stop_reason === 'max_tokens'), try to
+  // salvage partial JSON by closing open arrays/objects
+  if (response.stop_reason === "max_tokens") {
+    console.warn("[statement-parser] Response truncated — attempting to salvage partial JSON");
+    jsonText = salvageTruncatedJson(jsonText);
+  }
+
+  type ParsedResult = {
     account_name?: string | null;
     statement_period?: { start: string; end: string } | null;
     transactions: Array<{
@@ -86,11 +94,36 @@ export async function parseStatement(params: {
       account_name?: string | null;
     }>;
   };
+
+  let parsed: ParsedResult;
   try {
     parsed = JSON.parse(jsonText);
   } catch (err) {
-    console.error("Claude returned invalid JSON:", textBlock.text.slice(0, 500));
-    throw new Error(`Failed to parse Claude response as JSON: ${err}`);
+    // Last resort: try to extract whatever transactions we can find
+    console.error("Claude returned invalid JSON, attempting line-by-line extraction:", textBlock.text.slice(0, 200));
+    try {
+      // Find the transactions array and close it
+      const txStart = jsonText.indexOf('"transactions"');
+      if (txStart !== -1) {
+        const arrStart = jsonText.indexOf("[", txStart);
+        if (arrStart !== -1) {
+          // Find the last complete object (ends with })
+          const lastBrace = jsonText.lastIndexOf("}");
+          if (lastBrace > arrStart) {
+            const salvaged = jsonText.slice(0, lastBrace + 1) + "]}";
+            parsed = JSON.parse(salvaged);
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    } catch {
+      throw new Error(`Failed to parse Claude response as JSON: ${err}`);
+    }
   }
 
   return {
@@ -172,7 +205,8 @@ function buildMessageContent(params: {
 
 function extractJson(text: string): string {
   // Handle cases where Claude wraps in markdown code blocks
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  // Use a greedy match for truncated responses (no closing ```)
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/);
   if (codeBlockMatch) return codeBlockMatch[1].trim();
 
   // Find the first { and last }
@@ -182,5 +216,38 @@ function extractJson(text: string): string {
     return text.slice(firstBrace, lastBrace + 1);
   }
 
+  // If truncated, just take everything from the first {
+  if (firstBrace !== -1) {
+    return text.slice(firstBrace);
+  }
+
   return text.trim();
+}
+
+/**
+ * Attempts to fix truncated JSON by closing open arrays and objects.
+ * Best-effort — may lose the last partial transaction.
+ */
+function salvageTruncatedJson(json: string): string {
+  // Find the last complete transaction object (ends with })
+  const lastCompleteBrace = json.lastIndexOf("}");
+  if (lastCompleteBrace === -1) return json;
+
+  let salvaged = json.slice(0, lastCompleteBrace + 1);
+
+  // Count open brackets to close them
+  let openBrackets = 0;
+  let openBraces = 0;
+  for (const ch of salvaged) {
+    if (ch === "[") openBrackets++;
+    if (ch === "]") openBrackets--;
+    if (ch === "{") openBraces++;
+    if (ch === "}") openBraces--;
+  }
+
+  // Close any remaining open brackets/braces
+  for (let i = 0; i < openBrackets; i++) salvaged += "]";
+  for (let i = 0; i < openBraces; i++) salvaged += "}";
+
+  return salvaged;
 }

@@ -127,13 +127,27 @@ export class ApiClient {
       status: string;
       goal: string | null;
       lastAnalyzedAt: string | null;
-    }>>('/api/me/instances');
+    }>>('/api/agents/me/instances');
   }
 
-  async activateAgent(agentTypeId: string, goal?: string) {
+  async activateAgent(agentTypeId: string, goal?: string, status?: 'active' | 'onboarding') {
     return this.post<{ agentInstance: { id: string; agentTypeId: string; status: string } }>(
       `/api/agents/me/${agentTypeId}/activate`,
-      { goal },
+      { goal, status },
+    );
+  }
+
+  async updateAgentInstance(agentInstanceId: string, updates: { goal?: string; status?: string }) {
+    return this.patch<{ agentInstance: { id: string; status: string } }>(
+      `/api/agents/me/instances/${agentInstanceId}`,
+      updates,
+    );
+  }
+
+  /** Sync all Plaid connections + run skill inline. Takes ~10-15s in sandbox. */
+  async syncAgent(agentInstanceId: string) {
+    return this.post<{ transactions: number; insights: number }>(
+      `/api/upload/sync/${agentInstanceId}`,
     );
   }
 
@@ -156,6 +170,7 @@ export class ApiClient {
         id: string;
         title: string;
         description: string | null;
+        insightTypeId: string;
         data: Record<string, unknown>;
         isCritical: boolean;
         isRead: boolean;
@@ -168,6 +183,57 @@ export class ApiClient {
 
   async markInsightRead(insightId: string) {
     return this.patch<void>(`/api/me/insights/${insightId}/read`);
+  }
+
+  /**
+   * Upload a bank statement file. Uses FormData (not JSON), so we bypass
+   * the normal request() method and construct the fetch manually.
+   */
+  async uploadFile(formData: FormData): Promise<{ transactions: number; insights: number }> {
+    const token = await this.getToken();
+    if (!token) throw { status: 401, message: 'Not authenticated' } satisfies ApiError;
+
+    const res = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw {
+        status: res.status,
+        message: (data as { error?: string }).error ?? `Upload failed (${res.status})`,
+      } satisfies ApiError;
+    }
+
+    return data as { transactions: number; insights: number };
+  }
+
+  /**
+   * Upload a health data export (Apple Health XML, CSV, etc.).
+   */
+  async uploadHealthFile(formData: FormData): Promise<{ metrics: number; insights: number }> {
+    const token = await this.getToken();
+    if (!token) throw { status: 401, message: 'Not authenticated' } satisfies ApiError;
+
+    const res = await fetch(`${API_URL}/api/upload/health`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw {
+        status: res.status,
+        message: (data as { error?: string }).error ?? `Upload failed (${res.status})`,
+      } satisfies ApiError;
+    }
+
+    return data as { metrics: number; insights: number };
   }
 
   async getDeliveryPreferences() {

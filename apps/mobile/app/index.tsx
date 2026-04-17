@@ -1,27 +1,34 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, TouchableOpacity, Modal,
-  StyleSheet, KeyboardAvoidingView, Platform, Pressable, Animated,
+  StyleSheet, KeyboardAvoidingView, Platform, Pressable,
 } from 'react-native';
 import Svg, { Line, Polyline } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useUser } from '@clerk/clerk-expo';
 import { AGENTS } from '@artifigenz/shared';
 import { type ColorTheme } from '../constants/theme';
 import { useTheme } from '../components/ThemeContext';
 import { ICON_MAP } from '../components/AgentIcons';
 import Header from '../components/Header';
+import { useActivatedAgents, agentSlug } from '../hooks/useActivatedAgents';
 
-function getGreeting(): string {
+function timeOfDayGreeting(): string {
   const h = new Date().getHours();
-  if (h >= 5 && h < 12) return 'Good morning';
-  if (h >= 12 && h < 17) return 'Good afternoon';
-  if (h >= 17 && h < 21) return 'Good evening';
-  return 'Good night';
+  if (h < 5) return 'Late night';
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
 }
 
-const activeAgents = AGENTS.filter((a) => a.active);
+function buildHeroGreeting(count: number, name: string): string {
+  const time = timeOfDayGreeting();
+  if (count === 0) return `${time}, ${name} — let's pick your first agent and get you set up.`;
+  if (count === 1) return `${time}, ${name} — here's what your agent has been up to.`;
+  return `${time}, ${name} — your ${count} agents found a few things while you were away.`;
+}
 
 // Scrolling single-line insight
 function ScrollingInsight({ text, color }: { text: string; color: string }) {
@@ -34,10 +41,10 @@ function ScrollingInsight({ text, color }: { text: string; color: string }) {
     if (!overflows || !scrollRef.current) return;
     let mounted = true;
     const animate = async () => {
-      await new Promise(r => setTimeout(r, 800)); // pause before scroll
+      await new Promise(r => setTimeout(r, 800));
       if (!mounted) return;
       scrollRef.current?.scrollTo({ x: contentWidth - containerWidth, animated: true });
-      await new Promise(r => setTimeout(r, 2000)); // pause at end
+      await new Promise(r => setTimeout(r, 2000));
       if (!mounted) return;
       scrollRef.current?.scrollTo({ x: 0, animated: true });
     };
@@ -68,21 +75,45 @@ export default function HomeScreen() {
   const { c, isAura, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [greeting] = useState(getGreeting);
-  const [ticks, setTicks] = useState<number[]>(activeAgents.map(() => 0));
+  const { user } = useUser();
+  const { activations, hydrated } = useActivatedAgents();
+
+  // Map activated slugs to agent metadata from shared constants
+  const activeAgents = AGENTS.filter((a) =>
+    activations.some((act) => act.slug === agentSlug(a.name)),
+  );
+
+  const userName =
+    user?.firstName ??
+    user?.username ??
+    user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] ??
+    'there';
+
+  const [greeting] = useState(() => '');
+  const heroText = hydrated
+    ? buildHeroGreeting(activeAgents.length, userName)
+    : '';
+
+  const [ticks, setTicks] = useState<number[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [agentPicker, setAgentPicker] = useState(false);
   const s = createStyles(c);
 
+  // Reset ticks when active agents change
   useEffect(() => {
+    setTicks(activeAgents.map(() => 0));
+  }, [activeAgents.length]);
+
+  useEffect(() => {
+    if (activeAgents.length === 0) return;
     let cur = 0;
     const iv = setInterval(() => {
-      setTicks((p) => { const n = [...p]; n[cur] = p[cur] + 1; return n; });
+      setTicks((p) => { const n = [...p]; n[cur] = (p[cur] ?? 0) + 1; return n; });
       cur = (cur + 1) % activeAgents.length;
     }, 4000);
     return () => clearInterval(iv);
-  }, []);
+  }, [activeAgents.length]);
 
   const bgColors = isAura
     ? isDark
@@ -102,16 +133,21 @@ export default function HomeScreen() {
         <View style={s.flex}>
           <ScrollView style={s.flex} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
             <View style={s.hero}>
-              <Text style={s.heroTitle}>
-                {greeting}, Cooper — your agents found a few things while you were away.
-              </Text>
+              <Text style={s.heroTitle}>{heroText}</Text>
             </View>
 
             {activeAgents.map((agent, index) => {
-              const insight = agent.insights?.[ticks[index] % (agent.insights?.length || 1)];
+              const insight = agent.insights?.[
+                (ticks[index] ?? 0) % (agent.insights?.length || 1)
+              ];
               const Icon = ICON_MAP[agent.name];
               return (
-                <TouchableOpacity key={agent.name} style={s.card} activeOpacity={0.7} onPress={() => router.push(`/agent/${agent.name.toLowerCase()}`)}>
+                <TouchableOpacity
+                  key={agent.name}
+                  style={s.card}
+                  activeOpacity={0.7}
+                  onPress={() => router.push(`/agent/${agent.name.toLowerCase()}`)}
+                >
                   <View style={s.cardInner}>
                     {Icon && (
                       <View style={s.cardIcon}>
@@ -147,7 +183,7 @@ export default function HomeScreen() {
             pointerEvents="none"
           />
 
-          {/* Chat input — transparent bg so gradient shows through */}
+          {/* Chat input */}
           <View style={[s.chatBar, { paddingBottom: Math.max(insets.bottom - 12, 8) }]}>
             <View style={s.chatBox}>
               <TextInput
@@ -226,13 +262,10 @@ const createStyles = (c: ColorTheme) =>
   StyleSheet.create({
     flex: { flex: 1 },
     scroll: { paddingHorizontal: 20 },
-    // Tighter hero padding for mobile
     hero: { paddingTop: 32, paddingBottom: 24 },
-    // web 640px: 1.4rem=22.4px, line 1.25
     heroTitle: {
       fontSize: 22, fontWeight: '400', letterSpacing: -0.3, lineHeight: 28, color: c.text,
     },
-    // Tighter card padding — 14px instead of 20px
     card: {
       paddingVertical: c.radius > 0 ? 14 : 14,
       paddingHorizontal: c.radius > 0 ? 14 : 0,
@@ -257,9 +290,7 @@ const createStyles = (c: ColorTheme) =>
     name: { fontSize: 14, fontWeight: '600', color: c.text },
     dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },
     time: { fontSize: 11, fontWeight: '400', color: c.textDim },
-    // Fade overlays the bottom of scroll content
     fade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, zIndex: 1 },
-    // Chat bar — no background so gradient bleeds through
     chatBar: { paddingHorizontal: 16, paddingTop: 0, zIndex: 2 },
     chatBox: {
       borderWidth: 1,

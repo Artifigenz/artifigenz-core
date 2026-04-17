@@ -1,0 +1,314 @@
+.slide2 {
+  /* slide-specific overrides */
+}
+
+.inner {
+  text-align: center;
+}
+
+.title {
+  font-size: clamp(2rem, 4vw, 3.6rem);
+}
+
+.cta {
+  margin-top: 56px;
+}
+
+/* ─── Flow ─── */
+
+.flow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  margin-top: 16px;
+}
+
+.stage {
+  position: relative;
+  flex: 0 0 auto;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 16px 24px;
+}
+
+.stageNumber {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 5rem;
+  font-weight: 700;
+  color: var(--text);
+  opacity: 0.05;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.stageVisual {
+  position: relative;
+  z-index: 1;
+  height: 150px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 22px;
+}
+
+.stageHeading {
+  position: relative;
+  z-index: 1;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  margin-bottom: 8px;
+}
+
+.stageCopy {
+  position: relative;
+  z-index: 1;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-mid);
+  max-width: 220px;
+}
+
+.connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+  padding: 0 4px;
+  margin-top: 88px;
+  opacity: 0.55;
+}
+
+/* ─── Stage 1: agent cluster ─── */
+
+.agentsCluster {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 200px;
+}
+
+.agentOrb {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--card-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease, background 0.3s ease;
+}
+
+.agentOrbActive {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.stage:hover .agentOrb {
+  transform: scale(1.18);
+  transition-delay: var(--orb-delay, 0s);
+}
+
+/* ─── Stage 2: source cards (monochrome) ─── */
+
+.sourcesStack {
+  position: relative;
+  width: 180px;
+  height: 130px;
+}
+
+.sourceCard {
+  position: absolute;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.stage:hover .sourceCardBank {
+  transform: translate(-46px, -10px) rotate(-12deg);
+}
+.stage:hover .sourceCardCalendar {
+  transform: translate(0, -16px) rotate(3deg);
+}
+.stage:hover .sourceCardHealth {
+  transform: translate(46px, -10px) rotate(12deg);
+}
+
+.sourceCardBank {
+  width: 104px;
+  height: 66px;
+  left: 14px;
+  top: 36px;
+  padding: 10px 12px;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  transform: rotate(-6deg);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.sourceStripe {
+  width: 20px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.3;
+}
+
+.sourceRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.sourceChip {
+  width: 18px;
+  height: 11px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.4;
+}
+
+.sourceDots {
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+.sourceCardCalendar {
+  width: 64px;
+  height: 76px;
+  left: 58px;
+  top: 22px;
+  padding: 9px 0 12px;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 4px;
+  transform: rotate(1deg);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-light);
+}
+
+.sourceCalendarHeader {
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sourceCalendarDay {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.sourceCardHealth {
+  width: 64px;
+  height: 64px;
+  left: 100px;
+  top: 38px;
+  background: var(--accent);
+  color: var(--accent-text);
+  transform: rotate(8deg);
+}
+
+/* ─── Stage 3: notification preview ─── */
+
+.notificationPreview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  background: var(--bg);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
+}
+
+.stage:hover .notificationPreview {
+  transform: translateY(-6px) scale(1.04);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.16);
+}
+
+.previewIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.previewBody {
+  flex: 1;
+  min-width: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-align: left;
+}
+
+.previewMeta {
+  font-size: 0.55rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.previewTitle {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.previewDetail {
+  font-size: 0.68rem;
+  color: var(--text-mid);
+  margin-top: 2px;
+}
+
+@media (max-width: 1060px) {
+  .flow {
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .stage {
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .connector {
+    margin: 0;
+    transform: rotate(90deg);
+  }
+}

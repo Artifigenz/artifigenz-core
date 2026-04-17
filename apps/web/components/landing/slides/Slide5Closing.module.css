@@ -1,0 +1,108 @@
+.slide5 {
+  /* slide-specific overrides */
+}
+
+.inner {
+  text-align: center;
+}
+
+.title {
+  font-size: clamp(2.6rem, 6vw, 5rem) !important;
+}
+
+.subtitle {
+  margin-bottom: 56px;
+}
+
+/* ─── Pulse visual ─── */
+
+.pulseWrap {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 56px;
+}
+
+.pulseRing {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--text);
+  border-radius: 50%;
+  opacity: 0;
+  animation: pulse 3s ease-out infinite;
+}
+
+.pulseRing:nth-child(2) {
+  animation-delay: 1s;
+}
+
+.pulseRing:nth-child(3) {
+  animation-delay: 2s;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.pulseCore {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
+}
+
+.cta {
+  padding: 20px 38px !important;
+  font-size: 1.05rem !important;
+}
+
+.footnote {
+  margin-top: 18px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  letter-spacing: 0.005em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulseRing {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .pulseWrap {
+    width: 160px;
+    height: 160px;
+    margin-bottom: 40px;
+  }
+
+  .pulseCore {
+    width: 64px;
+    height: 64px;
+  }
+
+  .subtitle {
+    margin-bottom: 36px;
+  }
+}

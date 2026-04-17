@@ -4,6 +4,7 @@ import type {
 } from "./types";
 import { platformTools } from "./platform-tools";
 import { financeTools } from "../../agents/finance/chat/finance-tools";
+import { healthTools } from "../../agents/health/chat/health-tools";
 
 export class ToolExecutor {
   private tools: Map<string, ChatToolDefinition>;
@@ -14,8 +15,11 @@ export class ToolExecutor {
     for (const tool of platformTools) {
       this.tools.set(tool.name, tool);
     }
-    // Register agent-specific tools (finance for now)
+    // Register agent-specific tools
     for (const tool of financeTools) {
+      this.tools.set(tool.name, tool);
+    }
+    for (const tool of healthTools) {
       this.tools.set(tool.name, tool);
     }
   }

@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup",
     "lint": "tsc --noEmit",
-    "start": "node dist/index.js"
+    "start": "node dist/index.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.85.0",

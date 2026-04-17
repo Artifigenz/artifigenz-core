@@ -4,6 +4,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useUser } from '@clerk/clerk-expo';
 import { useTheme } from '../components/ThemeContext';
 import { type ColorTheme } from '../constants/theme';
 
@@ -22,7 +23,15 @@ export default function SettingsScreen() {
   const { mode, setMode, visualTheme, setVisualTheme, c, isAura, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useUser();
   const s = createStyles(c);
+
+  const displayName =
+    user?.firstName ??
+    user?.username ??
+    user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] ??
+    '';
+  const displayEmail = user?.primaryEmailAddress?.emailAddress ?? '';
 
   const bgColors = isAura
     ? isDark
@@ -44,9 +53,9 @@ export default function SettingsScreen() {
 
         <Text style={s.sectionLabel}>PROFILE</Text>
         <View style={s.card}>
-          <View style={s.row}><Text style={s.rowLabel}>Name</Text><Text style={s.rowValue}>Cooper</Text></View>
+          <View style={s.row}><Text style={s.rowLabel}>Name</Text><Text style={s.rowValue}>{displayName}</Text></View>
           <View style={s.rowSep} />
-          <View style={s.row}><Text style={s.rowLabel}>Email</Text><Text style={s.rowValue}>suba@artifigenz.com</Text></View>
+          <View style={s.row}><Text style={s.rowLabel}>Email</Text><Text style={s.rowValue}>{displayEmail}</Text></View>
         </View>
 
         <Text style={s.sectionLabel}>MODE</Text>

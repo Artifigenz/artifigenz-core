@@ -1,10 +1,11 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, gte } from "drizzle-orm";
 import {
   db,
   users,
   agentInstances,
   insights,
   financeSubscriptions,
+  healthDailySummaries,
 } from "@artifigenz/db";
 import type { ChatPromptContext } from "./types";
 
@@ -88,6 +89,46 @@ export async function loadPromptContext(params: {
     };
   }
 
+  // Build health snapshot if user has a health agent
+  let healthSnapshot: ChatPromptContext["healthSnapshot"] = null;
+  const healthAgent = activeAgents.find((a) => a.agentTypeId === "health");
+  if (healthAgent) {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+
+    const summaries = await db
+      .select()
+      .from(healthDailySummaries)
+      .where(
+        and(
+          eq(healthDailySummaries.agentInstanceId, healthAgent.id),
+          gte(healthDailySummaries.summaryDate, sevenDaysAgoStr),
+        ),
+      );
+
+    if (summaries.length > 0) {
+      const stepsArr = summaries.map((s) => s.steps).filter((v): v is number => v != null);
+      const sleepArr = summaries.map((s) => s.sleepMinutes).filter((v): v is number => v != null);
+      const hrArr = summaries
+        .map((s) => (s.restingHeartRate ? Number(s.restingHeartRate) : null))
+        .filter((v): v is number => v != null);
+
+      healthSnapshot = {
+        avgSteps: stepsArr.length > 0
+          ? Math.round(stepsArr.reduce((a, b) => a + b, 0) / stepsArr.length)
+          : null,
+        avgSleepHours: sleepArr.length > 0
+          ? +((sleepArr.reduce((a, b) => a + b, 0) / sleepArr.length) / 60).toFixed(1)
+          : null,
+        avgRestingHR: hrArr.length > 0
+          ? Math.round(hrArr.reduce((a, b) => a + b, 0) / hrArr.length)
+          : null,
+        daysWithData: summaries.length,
+      };
+    }
+  }
+
   // Load anchored insight if specified
   let anchoredInsight: ChatPromptContext["anchoredInsight"] = null;
   if (params.anchoredInsightId) {
@@ -104,6 +145,7 @@ export async function loadPromptContext(params: {
     activeAgents,
     recentInsights,
     financeSnapshot,
+    healthSnapshot,
     anchoredInsight,
   };
 }
@@ -161,6 +203,23 @@ export function buildSystemPrompt(ctx: ChatPromptContext): string {
     );
   }
 
+  // Layer 5b: Health snapshot
+  if (ctx.healthSnapshot) {
+    const parts: string[] = [];
+    if (ctx.healthSnapshot.avgSteps !== null) {
+      parts.push(`${ctx.healthSnapshot.avgSteps.toLocaleString()} avg daily steps`);
+    }
+    if (ctx.healthSnapshot.avgSleepHours !== null) {
+      parts.push(`${ctx.healthSnapshot.avgSleepHours}h avg sleep`);
+    }
+    if (ctx.healthSnapshot.avgRestingHR !== null) {
+      parts.push(`${ctx.healthSnapshot.avgRestingHR} bpm avg resting HR`);
+    }
+    layers.push(
+      `## Health Snapshot (last 7 days)\n- ${parts.join("\n- ")}\n- ${ctx.healthSnapshot.daysWithData} days of data`,
+    );
+  }
+
   // Layer 6: Anchored insight (contextual mode)
   if (ctx.anchoredInsight) {
     const ai = ctx.anchoredInsight;
@@ -177,7 +236,7 @@ The user is asking about this specific insight:
   // Tool usage guidance
   layers.push(
     `## Tool Usage
-You have tools available to query the user's real data. Use them when the conversation calls for specific data — never guess. For example, if the user asks "which subscriptions charge this week?", call getUpcomingCharges. If they ask about spending, call getSpendingSummary or getTransactions.`,
+You have tools available to query the user's real data. Use them when the conversation calls for specific data — never guess. For example, if the user asks "which subscriptions charge this week?", call getUpcomingCharges. If they ask about spending, call getSpendingSummary or getTransactions. If they ask about sleep, steps, or heart rate, use the health tools (getSleepHistory, getActivityHistory, getHeartRateHistory, getWorkoutHistory, getHealthSummary, getHealthTrends).`,
   );
 
   return layers.join("\n\n");
