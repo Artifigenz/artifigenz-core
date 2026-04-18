@@ -114,6 +114,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  margin-top: 56px;
   margin-bottom: 28px;
   opacity: 0;
   transform: translateY(12px);
@@ -150,12 +151,19 @@
 }
 
 .greeting {
-  font-size: clamp(1.9rem, 3.6vw, 3rem);
-  font-weight: 500;
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 400;
   color: var(--text);
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   margin: 14px 0 0;
+}
+
+@media (max-width: 640px) {
+  .greeting {
+    font-size: 1.4rem;
+    line-height: 1.25;
+  }
 }
 
 .stepBadge {

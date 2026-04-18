@@ -95,6 +95,43 @@ interface ActivationData {
   estimatedSetupSeconds: number;
 }
 
+interface MockAccount {
+  label: string;
+  last4: string;
+}
+interface MockBank {
+  bank: string;
+  accounts: MockAccount[];
+}
+
+// UI mockup: cycled through as the user taps "Add another" during onboarding.
+const MOCK_BANK_POOL: MockBank[] = [
+  { bank: 'Chase', accounts: [
+    { label: 'Checking', last4: '4521' },
+    { label: 'Sapphire Preferred', last4: '8832' },
+  ]},
+  { bank: 'American Express', accounts: [
+    { label: 'Platinum', last4: '1007' },
+  ]},
+  { bank: 'Wells Fargo', accounts: [
+    { label: 'Everyday Checking', last4: '3310' },
+    { label: 'Way2Save', last4: '7821' },
+    { label: 'Active Cash', last4: '2244' },
+  ]},
+  { bank: 'Bank of America', accounts: [
+    { label: 'Advantage Plus', last4: '9921' },
+    { label: 'Cash Rewards', last4: '3347' },
+  ]},
+  { bank: 'Capital One', accounts: [
+    { label: '360 Checking', last4: '1155' },
+    { label: 'Venture', last4: '6602' },
+  ]},
+  { bank: 'Citi', accounts: [
+    { label: 'Priority Checking', last4: '7789' },
+    { label: 'Double Cash', last4: '4410' },
+  ]},
+];
+
 const ACTIVATION_DATA: Record<string, ActivationData> = {
   finance: {
     tagline: "I watch your money so you don't have to.",
@@ -354,7 +391,11 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   const IconComponent = agent ? ICON_MAP[agent.name] : undefined;
 
   const [step, setStep] = useState(0);
-  const [connectedAccounts, setConnectedAccounts] = useState<string[]>([]);
+  const [connectedBanks, setConnectedBanks] = useState<MockBank[]>([]);
+  const connectedAccountNames = connectedBanks.flatMap((cb) =>
+    cb.accounts.map((a) => `${cb.bank} ${a.label}`)
+  );
+  const totalAccountCount = connectedAccountNames.length;
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [newGoal, setNewGoal] = useState('');
   const [activeSkills, setActiveSkills] = useState<Record<string, boolean>>(() => {
@@ -375,6 +416,34 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     }, 2800);
     return () => clearInterval(interval);
   }, [step]);
+
+  // Typewriter greeting — persona adapts to current step + state
+  const targetGreeting = (() => {
+    if (!data) return '';
+    const name = firstName || 'there';
+    if (step === 0) return data.greeting.replace('{name}', name);
+    if (step === 1 && data.requiresAccounts) {
+      return `Alright ${name} \u2014 connect the banks you want me to watch, then hit Activate.`;
+    }
+    return data.greeting.replace('{name}', name);
+  })();
+  const [typedChars, setTypedChars] = useState(0);
+  useEffect(() => {
+    setTypedChars(0);
+    if (!targetGreeting) return;
+    const interval = setInterval(() => {
+      setTypedChars((prev) => {
+        if (prev >= targetGreeting.length) {
+          clearInterval(interval);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 26);
+    return () => clearInterval(interval);
+  }, [targetGreeting]);
+  const displayedGreeting = targetGreeting.slice(0, typedChars);
+  const isTyping = typedChars < targetGreeting.length;
 
   // Location-aware bank list for Step 0 Card 1
   const bankList = (() => {
@@ -427,10 +496,16 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     );
   }
 
-  const toggleAccount = (acctName: string) => {
-    setConnectedAccounts((prev) =>
-      prev.includes(acctName) ? prev.filter((n) => n !== acctName) : [...prev, acctName]
-    );
+  const addNextBank = () => {
+    setConnectedBanks((prev) => {
+      const taken = new Set(prev.map((b) => b.bank));
+      const next = MOCK_BANK_POOL.find((b) => !taken.has(b.bank));
+      if (!next) return prev;
+      return [...prev, next];
+    });
+  };
+  const removeBank = (bankName: string) => {
+    setConnectedBanks((prev) => prev.filter((b) => b.bank !== bankName));
   };
 
   const toggleGoal = (goal: string) => {
@@ -460,13 +535,23 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
 
   const next = () => {
     if (step === 0) setStep(data.requiresAccounts ? 1 : 2);
-    else if (step === 1) setStep(2);
+    else if (step === 1) {
+      // Bank connect is the final step for account-based agents
+      activate({
+        slug,
+        activatedAt: Date.now(),
+        accounts: connectedAccountNames,
+        goals: selectedGoals,
+        skills: activeSkills,
+      });
+      router.push(`/agent/${slug}`);
+    }
     else if (step === 2) setStep(3);
     else if (step === 3) {
       activate({
         slug,
         activatedAt: Date.now(),
-        accounts: connectedAccounts,
+        accounts: connectedAccountNames,
         goals: selectedGoals,
         skills: activeSkills,
       });
@@ -499,8 +584,6 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     <div className={styles.page}>
       <Header />
       <main className={styles.main}>
-        <Link href="/app" className={styles.back} aria-label="Back">←</Link>
-
         {/* Agent header */}
         <div className={styles.agentHeader}>
           <div>
@@ -508,9 +591,22 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
               {IconComponent && <span className={styles.icon}><IconComponent /></span>}
               <h1 className={styles.agentName}>{agent.name}</h1>
             </div>
-            {step === 0 ? (
+            {(step === 0 || (step === 1 && data.requiresAccounts)) ? (
               <h2 className={styles.greeting}>
-                {data.greeting.replace('{name}', firstName || 'there')}
+                {displayedGreeting}
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '0.06em',
+                    height: '0.9em',
+                    background: 'currentColor',
+                    marginLeft: '0.08em',
+                    verticalAlign: '-0.1em',
+                    opacity: isTyping ? 1 : 0,
+                    transition: 'opacity 0.2s ease 0.3s',
+                  }}
+                  aria-hidden="true"
+                />
               </h2>
             ) : (
               <p className={styles.stepBadge}>{stepBadge}</p>
@@ -518,17 +614,25 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
           </div>
         </div>
 
-        {/* ── Step 0: How it works ── */}
-        {step === 0 && (() => {
+        {/* ── Step 0 & Step 1: How it works → Connect accounts (morphing layout) ── */}
+        {(step === 0 || (step === 1 && data.requiresAccounts)) && (() => {
+          const isExpanded = step === 1;
+
           const flowArrow = (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', opacity: 0.5 }}>
-              <svg width="56" height="10" viewBox="0 0 56 10" fill="none" aria-hidden="true">
-                <circle cx="4" cy="5" r="1.4" fill="currentColor" opacity="0.35"/>
-                <circle cx="16" cy="5" r="1.4" fill="currentColor" opacity="0.55"/>
-                <circle cx="28" cy="5" r="1.4" fill="currentColor" opacity="0.75"/>
-                <path d="M40 1 L46 5 L40 9" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
+            <svg width="56" height="10" viewBox="0 0 56 10" fill="none" aria-hidden="true">
+              <circle cx="4" cy="5" r="1.6" fill="currentColor" opacity="0.25">
+                <animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.25;1" dur="2.4s" begin="0s" repeatCount="indefinite" />
+              </circle>
+              <circle cx="16" cy="5" r="1.6" fill="currentColor" opacity="0.25">
+                <animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.25;1" dur="2.4s" begin="0.35s" repeatCount="indefinite" />
+              </circle>
+              <circle cx="28" cy="5" r="1.6" fill="currentColor" opacity="0.25">
+                <animate attributeName="opacity" values="0.25;1;0.25" keyTimes="0;0.25;1" dur="2.4s" begin="0.7s" repeatCount="indefinite" />
+              </circle>
+              <path d="M40 1 L46 5 L40 9" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.35">
+                <animate attributeName="opacity" values="0.35;1;0.35" keyTimes="0;0.25;1" dur="2.4s" begin="1.05s" repeatCount="indefinite" />
+              </path>
+            </svg>
           );
 
           const cardShellStyle: React.CSSProperties = {
@@ -539,13 +643,13 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
             display: 'flex',
             flexDirection: 'column',
             gap: '20px',
-            minHeight: '460px',
           };
 
           const iconWrapperStyle: React.CSSProperties = {
             width: '52px', height: '52px', borderRadius: '14px',
             background: 'var(--bg)', border: '1px solid var(--border-light)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
           };
 
           const stepLabelStyle: React.CSSProperties = {
@@ -571,6 +675,30 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
             { skill: 'Subscription Radar', title: '3 subscriptions unused in 60+ days', detail: 'Hulu, NYT Games, Audible \u2014 $34/mo.' },
           ];
 
+          const sideCardFade: React.CSSProperties = {
+            opacity: isExpanded ? 0 : 1,
+            maxHeight: isExpanded ? '0px' : '900px',
+            minHeight: isExpanded ? 0 : '460px',
+            transition: 'opacity 0.3s ease, max-height 0.55s cubic-bezier(0.22, 1, 0.36, 1), min-height 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+            transitionDelay: isExpanded ? '100ms,200ms,200ms' : '600ms,500ms,500ms',
+            minWidth: 0,
+            overflow: 'hidden',
+            pointerEvents: isExpanded ? 'none' : 'auto',
+          };
+
+          const arrowFade: React.CSSProperties = {
+            opacity: isExpanded ? 0 : 1,
+            transition: 'opacity 0.3s ease',
+            transitionDelay: isExpanded ? '100ms' : '650ms',
+            minWidth: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text)',
+            pointerEvents: 'none',
+          };
+
           return (
             <>
               {/* Keyframes for the transaction scroller */}
@@ -581,35 +709,81 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                 }
               `}</style>
 
+              {/* Top CTA — collapses height AND fades out FIRST when expanding */}
+              <div style={{
+                overflow: 'hidden',
+                maxHeight: isExpanded ? '0px' : '120px',
+                marginTop: isExpanded ? '0px' : '8px',
+                marginBottom: isExpanded ? '0px' : '8px',
+                opacity: isExpanded ? 0 : 1,
+                transition: 'max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1), margin-top 0.45s cubic-bezier(0.22, 1, 0.36, 1), margin-bottom 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease',
+                transitionDelay: isExpanded ? '0ms' : '850ms',
+                pointerEvents: isExpanded ? 'none' : 'auto',
+              }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <button className={styles.primaryBtn} onClick={next} style={{ padding: '14px 36px', fontSize: '0.9rem' }}>
+                    Get started →
+                  </button>
+                  <Link href="/app" className={styles.ghostBtn} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                    Cancel
+                  </Link>
+                </div>
+              </div>
+
+              {/* Morphing grid — transition column tracks so Card 1 expands smoothly */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 72px 1fr 72px 1fr',
-                gap: '0',
+                gridTemplateColumns: isExpanded
+                  ? 'minmax(0, 1fr) 0px minmax(0, 0fr) 0px minmax(0, 0fr)'
+                  : 'minmax(0, 1fr) 72px minmax(0, 1fr) 72px minmax(0, 1fr)',
+                transition: 'grid-template-columns 0.55s cubic-bezier(0.22, 1, 0.36, 1), margin-top 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+                transitionDelay: isExpanded ? '200ms,0ms' : '500ms,850ms',
+                gap: 0,
                 alignItems: 'stretch',
-                margin: '16px 0 48px',
+                marginTop: isExpanded ? '24px' : '64px',
+                marginBottom: '48px',
               }}>
 
-                {/* Card 1: Connect */}
-                <div style={cardShellStyle}>
+                {/* Card 1: Connect — persists, expands to full width on step 1, hugs content */}
+                <div style={{
+                  ...cardShellStyle,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  minHeight: isExpanded ? 0 : '460px',
+                  transition: 'min-height 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+                  transitionDelay: isExpanded ? '200ms' : '500ms',
+                }}>
                   <div style={iconWrapperStyle}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
                       <path d="M2 10h20"/>
                     </svg>
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: '0 0 auto' }}>
                     <span style={stepLabelStyle}>You connect</span>
                     <h3 style={titleStyle}>Link your bank accounts</h3>
-                    <p style={descStyle}>
-                      Securely through Plaid. Read-only access. Takes 30 seconds per account.
-                    </p>
+                    {/* Description collapses on step 1 — greeting carries the context */}
+                    <div style={{
+                      maxHeight: isExpanded ? '0px' : '80px',
+                      opacity: isExpanded ? 0 : 1,
+                      overflow: 'hidden',
+                      transition: 'max-height 0.4s ease, opacity 0.25s ease',
+                      transitionDelay: isExpanded ? '300ms,300ms' : '800ms,900ms',
+                    }}>
+                      <p style={descStyle}>
+                        Securely through Plaid. Read-only access. Takes 30 seconds per account.
+                      </p>
+                    </div>
                   </div>
-                  {/* Visual flourish: vertical stack of banks — fade only at bottom */}
+
+                  {/* Step 0: mock bank list with fade mask — collapses on step 1 */}
                   <div style={{
-                    marginTop: 'auto',
-                    position: 'relative',
-                    height: '180px',
+                    marginTop: isExpanded ? 0 : 'auto',
+                    maxHeight: isExpanded ? '0px' : '180px',
+                    opacity: isExpanded ? 0 : 1,
                     overflow: 'hidden',
+                    transition: 'max-height 0.4s ease, opacity 0.25s ease, margin-top 0.4s ease',
+                    transitionDelay: isExpanded ? '300ms,300ms,300ms' : '800ms,900ms,800ms',
                     WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
                     maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
                   }}>
@@ -642,12 +816,165 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                       ))}
                     </div>
                   </div>
+
+                  {/* Step 1: bank tile grid — collapsed on step 0, expands + fades in on step 1 */}
+                  <div style={{
+                    maxHeight: isExpanded ? '1200px' : '0px',
+                    opacity: isExpanded ? 1 : 0,
+                    overflow: 'hidden',
+                    transition: 'max-height 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease',
+                    transitionDelay: isExpanded ? '800ms,900ms' : '0ms,0ms',
+                    pointerEvents: isExpanded ? 'auto' : 'none',
+                  }}>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                      gap: '12px',
+                    }}>
+                      {connectedBanks.map((cb) => (
+                        <div
+                          key={cb.bank}
+                          style={{
+                            borderRadius: '14px',
+                            padding: '18px 18px 16px',
+                            background: 'var(--bg)',
+                            border: '1px solid var(--border-light)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '14px',
+                            position: 'relative',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                              width: '32px', height: '32px', borderRadius: '9px',
+                              background: 'color-mix(in srgb, var(--bg), var(--text) 8%)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)',
+                              flexShrink: 0,
+                            }}>
+                              {cb.bank.charAt(0)}
+                            </div>
+                            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {cb.bank}
+                            </div>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${cb.bank}`}
+                              onClick={() => removeBank(cb.bank)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                padding: 0,
+                                width: '22px',
+                                height: '22px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--text-dim)',
+                                cursor: 'pointer',
+                                borderRadius: '6px',
+                                flexShrink: 0,
+                                transition: 'color 0.15s ease, background 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = 'var(--text)';
+                                e.currentTarget.style.background = 'color-mix(in srgb, var(--bg), var(--text) 6%)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = 'var(--text-dim)';
+                                e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {cb.accounts.map((acc) => (
+                              <div
+                                key={acc.last4}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  fontSize: '0.74rem',
+                                  color: 'var(--text-mid)',
+                                }}
+                              >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                  <path d="M20 6L9 17l-5-5" />
+                                </svg>
+                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.label}</span>
+                                <span style={{ color: 'var(--text-dim)', fontVariantNumeric: 'tabular-nums', fontSize: '0.7rem' }}>
+                                  &bull;&bull;{acc.last4}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Add tile — always present, disabled when pool is exhausted */}
+                      {connectedBanks.length < MOCK_BANK_POOL.length && (
+                        <button
+                          type="button"
+                          onClick={addNextBank}
+                          style={{
+                            borderRadius: '14px',
+                            padding: '20px 16px',
+                            background: 'transparent',
+                            border: '1.5px dashed var(--border-light)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            minHeight: '120px',
+                            fontFamily: 'inherit',
+                            color: 'var(--text)',
+                            cursor: 'pointer',
+                            transition: 'border-color 0.15s ease, background 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--text)';
+                            e.currentTarget.style.background = 'var(--bg)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--border-light)';
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <div style={{
+                            width: '34px', height: '34px', borderRadius: '50%',
+                            border: '1.5px dashed var(--border-light)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19"/>
+                              <line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                          </div>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>
+                            {connectedBanks.length === 0 ? 'Connect a bank' : 'Add another bank'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {flowArrow}
+                {/* Arrow 1 — collapses & fades */}
+                <div style={arrowFade}>
+                  {flowArrow}
+                </div>
 
-                {/* Card 2: Watch */}
-                <div style={cardShellStyle}>
+                {/* Card 2: Watch — collapses & fades */}
+                <div style={{
+                  ...cardShellStyle,
+                  ...sideCardFade,
+                }}>
                   <div style={iconWrapperStyle}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -660,7 +987,6 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                       Subscriptions, spending patterns, price changes, recurring charges — 24/7.
                     </p>
                   </div>
-                  {/* Visual flourish: auto-scrolling transaction feed with top+bottom fade */}
                   {(() => {
                     const transactions = [
                       { label: 'Whole Foods', amount: '$87.43', income: false },
@@ -676,7 +1002,6 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                       { label: 'Equinox', amount: '$49.99', income: false },
                       { label: 'Hydro bill', amount: '$89.12', income: false },
                     ];
-                    // Duplicate the list so translateY(-50%) wraps seamlessly
                     const doubled = [...transactions, ...transactions];
                     return (
                       <div style={{
@@ -721,10 +1046,16 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                   })()}
                 </div>
 
-                {flowArrow}
+                {/* Arrow 2 — collapses & fades */}
+                <div style={arrowFade}>
+                  {flowArrow}
+                </div>
 
-                {/* Card 3: Get — with shuffling insight stack inside */}
-                <div style={cardShellStyle}>
+                {/* Card 3: Get — collapses & fades */}
+                <div style={{
+                  ...cardShellStyle,
+                  ...sideCardFade,
+                }}>
                   <div style={iconWrapperStyle}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -738,7 +1069,6 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                       In-app, email, or Telegram — wherever you want them.
                     </p>
                   </div>
-                  {/* Shuffling insight stack */}
                   <div style={{
                     position: 'relative',
                     height: '110px',
@@ -791,122 +1121,38 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                 </div>
               </div>
 
-              <button className={styles.primaryBtn} onClick={next} style={{ padding: '14px 36px', fontSize: '0.9rem' }}>
-                Get started →
-              </button>
+              {/* Bottom CTA — appears LAST when moving to step 1 (Back + Activate) */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                opacity: isExpanded ? 1 : 0,
+                transition: 'opacity 0.3s ease',
+                transitionDelay: isExpanded ? '1050ms' : '0ms',
+                pointerEvents: isExpanded ? 'auto' : 'none',
+                marginTop: '8px',
+              }}>
+                <button className={styles.ghostBtn} onClick={back}>
+                  ← Back
+                </button>
+                <button
+                  className={styles.primaryBtn}
+                  onClick={next}
+                  disabled={connectedBanks.length === 0}
+                  style={{
+                    padding: '14px 36px',
+                    fontSize: '0.9rem',
+                    opacity: connectedBanks.length === 0 ? 0.4 : 1,
+                    cursor: connectedBanks.length === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Activate {agent.name} →
+                </button>
+              </div>
             </>
           );
         })()}
-
-        {/* ── Step 1: Connect bank accounts ── */}
-        {step === 1 && data.requiresAccounts && (
-          <>
-            <h2 className={styles.stepTitle}>Your accounts</h2>
-            <p className={styles.stepSubtitle}>
-              Connect the accounts you want me to watch.
-            </p>
-
-            {/* Account grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: '14px',
-              margin: '8px 0 32px',
-            }}>
-              {/* Connected account cards */}
-              {connectedAccounts.map((name) => (
-                <div
-                  key={name}
-                  style={{
-                    borderRadius: '16px',
-                    padding: '24px 20px',
-                    background: 'var(--card-hover)',
-                    border: '1px solid var(--border-light)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '12px',
-                    minHeight: '160px',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <div style={{
-                    width: '44px', height: '44px', borderRadius: '50%',
-                    background: '#22c55e15', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 6L9 17l-5-5"/>
-                    </svg>
-                  </div>
-                  <span style={{ fontSize: '0.88rem', fontWeight: 500, color: 'var(--text)', textAlign: 'center' }}>{name}</span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Connected</span>
-                </div>
-              ))}
-
-              {/* Add account card */}
-              <div
-                onClick={() => toggleAccount(`Account ${connectedAccounts.length + 1}`)}
-                style={{
-                  borderRadius: '16px',
-                  padding: '24px 20px',
-                  background: connectedAccounts.length === 0 ? 'var(--card-hover)' : 'transparent',
-                  border: connectedAccounts.length === 0 ? '1px solid var(--border-light)' : '1px dashed var(--border-light)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '12px',
-                  minHeight: '160px',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'border-color 0.15s ease, background 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  const el = e.currentTarget;
-                  el.style.borderColor = 'var(--text)';
-                  el.style.background = 'var(--card-hover)';
-                }}
-                onMouseLeave={(e) => {
-                  const el = e.currentTarget;
-                  el.style.borderColor = 'var(--border-light)';
-                  el.style.background = connectedAccounts.length === 0 ? 'var(--card-hover)' : 'transparent';
-                }}
-              >
-                <div style={{
-                  width: '44px', height: '44px', borderRadius: '50%',
-                  border: '1.5px dashed var(--border-light)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                </div>
-                <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text)' }}>
-                  {connectedAccounts.length === 0 ? 'Add bank account' : 'Add another'}
-                </span>
-              </div>
-            </div>
-
-            {/* Trust line — one sentence, not a wall */}
-            <p style={{
-              fontSize: '0.72rem', color: 'var(--text-dim)', lineHeight: 1.6,
-              maxWidth: '480px', margin: '0 0 32px',
-            }}>
-              Connected securely through <strong style={{ color: 'var(--text)', fontWeight: 500 }}>Plaid</strong>.
-              Read-only access. We never see your login. Disconnect anytime.
-            </p>
-
-            {/* Continue — only when at least one account is connected */}
-            {connectedAccounts.length > 0 && (
-              <div className={styles.footer}>
-                <button className={styles.primaryBtn} onClick={next}>
-                  Continue →
-                </button>
-              </div>
-            )}
-          </>
-        )}
 
         {/* ── Step 2: Set goals ── */}
         {step === 2 && (
@@ -991,8 +1237,8 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                 <div className={styles.summaryRow}>
                   <span className={styles.summaryLabel}>Accounts</span>
                   <span className={styles.summaryValue}>
-                    {connectedAccounts.length > 0
-                      ? connectedAccounts.join(', ')
+                    {connectedAccountNames.length > 0
+                      ? connectedAccountNames.join(', ')
                       : 'None — you can connect later'}
                   </span>
                 </div>
