@@ -130,6 +130,28 @@ const MOCK_BANK_POOL: MockBank[] = [
     { label: 'Priority Checking', last4: '7789' },
     { label: 'Double Cash', last4: '4410' },
   ]},
+  { bank: 'US Bank', accounts: [
+    { label: 'Easy Checking', last4: '5508' },
+    { label: 'Altitude Go', last4: '2217' },
+  ]},
+  { bank: 'PNC', accounts: [
+    { label: 'Virtual Wallet', last4: '8833' },
+  ]},
+  { bank: 'Charles Schwab', accounts: [
+    { label: 'High Yield Checking', last4: '4471' },
+    { label: 'Brokerage', last4: '9924' },
+  ]},
+  { bank: 'Ally', accounts: [
+    { label: 'Interest Checking', last4: '3390' },
+    { label: 'Online Savings', last4: '1122' },
+  ]},
+  { bank: 'SoFi', accounts: [
+    { label: 'Checking & Savings', last4: '6673' },
+  ]},
+  { bank: 'Discover', accounts: [
+    { label: 'Cashback Debit', last4: '4405' },
+    { label: 'It Card', last4: '8890' },
+  ]},
 ];
 
 const ACTIVATION_DATA: Record<string, ActivationData> = {
@@ -423,7 +445,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     const name = firstName || 'there';
     if (step === 0) return data.greeting.replace('{name}', name);
     if (step === 1 && data.requiresAccounts) {
-      return `Alright ${name} \u2014 connect the banks you want me to watch, then hit Activate.`;
+      return `Alright ${name} \u2014 let\u2019s hook up your banks.`;
     }
     return data.greeting.replace('{name}', name);
   })();
@@ -500,8 +522,13 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     setConnectedBanks((prev) => {
       const taken = new Set(prev.map((b) => b.bank));
       const next = MOCK_BANK_POOL.find((b) => !taken.has(b.bank));
-      if (!next) return prev;
-      return [...prev, next];
+      if (next) return [...prev, next];
+      // Pool exhausted — synthesize a generic mock bank so the flow keeps working
+      const n = prev.length + 1;
+      return [...prev, {
+        bank: `Bank ${n}`,
+        accounts: [{ label: 'Checking', last4: String(4000 + n).slice(-4) }],
+      }];
     });
   };
   const removeBank = (bankName: string) => {
@@ -744,46 +771,58 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                 marginBottom: '48px',
               }}>
 
-                {/* Card 1: Connect — persists, expands to full width on step 1, hugs content */}
+                {/* Card 1: Connect — vertical on step 0, two-column (left text / right grid) on step 1 */}
                 <div style={{
                   ...cardShellStyle,
+                  flexDirection: isExpanded ? 'row' : 'column',
+                  alignItems: isExpanded ? 'flex-start' : 'stretch',
+                  gap: isExpanded ? '40px' : '20px',
                   minWidth: 0,
                   overflow: 'hidden',
                   minHeight: isExpanded ? 0 : '460px',
-                  transition: 'min-height 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
-                  transitionDelay: isExpanded ? '200ms' : '500ms',
+                  transition: 'min-height 0.55s cubic-bezier(0.22, 1, 0.36, 1), gap 0.4s ease',
+                  transitionDelay: isExpanded ? '200ms,200ms' : '500ms,500ms',
                 }}>
-                  <div style={iconWrapperStyle}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
-                      <path d="M2 10h20"/>
-                    </svg>
-                  </div>
-                  <div style={{ flex: '0 0 auto' }}>
-                    <span style={stepLabelStyle}>You connect</span>
-                    <h3 style={titleStyle}>Link your bank accounts</h3>
-                    {/* Description collapses on step 1 — greeting carries the context */}
-                    <div style={{
-                      maxHeight: isExpanded ? '0px' : '80px',
-                      opacity: isExpanded ? 0 : 1,
-                      overflow: 'hidden',
-                      transition: 'max-height 0.4s ease, opacity 0.25s ease',
-                      transitionDelay: isExpanded ? '300ms,300ms' : '800ms,900ms',
-                    }}>
+                  {/* LEFT column on step 1 / TOP block on step 0: icon + label + title + Plaid info */}
+                  <div style={{
+                    flexShrink: 0,
+                    width: isExpanded ? '300px' : '100%',
+                    maxWidth: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
+                  }}>
+                    <div style={iconWrapperStyle}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z"/>
+                        <path d="M2 10h20"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <span style={stepLabelStyle}>You connect</span>
+                      <h3 style={titleStyle}>Link your bank accounts</h3>
                       <p style={descStyle}>
                         Securely through Plaid. Read-only access. Takes 30 seconds per account.
                       </p>
                     </div>
                   </div>
 
+                  {/* RIGHT column on step 1 / BOTTOM block on step 0: mock bank list OR tile grid */}
+                  <div style={{
+                    flex: '1 1 0',
+                    minWidth: 0,
+                    alignSelf: 'stretch',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: isExpanded ? 'flex-start' : 'flex-end',
+                  }}>
                   {/* Step 0: mock bank list with fade mask — collapses on step 1 */}
                   <div style={{
-                    marginTop: isExpanded ? 0 : 'auto',
                     maxHeight: isExpanded ? '0px' : '180px',
                     opacity: isExpanded ? 0 : 1,
                     overflow: 'hidden',
-                    transition: 'max-height 0.4s ease, opacity 0.25s ease, margin-top 0.4s ease',
-                    transitionDelay: isExpanded ? '300ms,300ms,300ms' : '800ms,900ms,800ms',
+                    transition: 'max-height 0.4s ease, opacity 0.25s ease',
+                    transitionDelay: isExpanded ? '300ms,300ms' : '800ms,900ms',
                     WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
                     maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 100%)',
                   }}>
@@ -842,6 +881,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '14px',
+                            minHeight: '220px',
                             position: 'relative',
                           }}
                         >
@@ -916,9 +956,8 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                           </div>
                         </div>
                       ))}
-                      {/* Add tile — always present, disabled when pool is exhausted */}
-                      {connectedBanks.length < MOCK_BANK_POOL.length && (
-                        <button
+                      {/* Add tile — always present */}
+                      <button
                           type="button"
                           onClick={addNextBank}
                           style={{
@@ -931,7 +970,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: '10px',
-                            minHeight: '120px',
+                            minHeight: '220px',
                             fontFamily: 'inherit',
                             color: 'var(--text)',
                             cursor: 'pointer',
@@ -960,8 +999,8 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                             {connectedBanks.length === 0 ? 'Connect a bank' : 'Add another bank'}
                           </span>
                         </button>
-                      )}
                     </div>
+                  </div>
                   </div>
                 </div>
 
