@@ -1002,12 +1002,12 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                         const logo = inst?.logo;
                         const name = inst?.name ?? conn?.institutionName ?? conn?.displayName ?? 'Bank';
                         const bg = inst?.primaryColor
-                          ? `${inst.primaryColor}14`
-                          : 'color-mix(in srgb, var(--bg), var(--text) 8%)';
+                          ? `${inst.primaryColor}1a`
+                          : 'color-mix(in srgb, var(--bg), var(--text) 6%)';
                         if (logo) {
                           return (
                             <div style={{
-                              width: '36px', height: '36px', borderRadius: '9px',
+                              width: '56px', height: '56px', borderRadius: '14px',
                               background: bg,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               flexShrink: 0, overflow: 'hidden',
@@ -1015,8 +1015,8 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                               <img
                                 src={`data:image/png;base64,${logo}`}
                                 alt={name}
-                                width={28}
-                                height={28}
+                                width={40}
+                                height={40}
                                 style={{ objectFit: 'contain' }}
                               />
                             </div>
@@ -1024,10 +1024,10 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                         }
                         return (
                           <div style={{
-                            width: '36px', height: '36px', borderRadius: '9px',
+                            width: '56px', height: '56px', borderRadius: '14px',
                             background: bg,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)',
+                            fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)',
                             flexShrink: 0,
                           }}>
                             {name.charAt(0)}
@@ -1038,81 +1038,71 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                       return (
                         <div style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                          gap: '12px',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                          gap: '10px',
                         }}>
                           {tiles.map(({ key, institution, connection }) => {
                             const bankName = institution?.name ?? connection?.institutionName ?? connection?.displayName ?? 'Bank';
                             const isConnected = !!connection;
                             const isConnecting = connectingInstitutionId === institution?.id && plaidBusy;
+                            const accountCount = connection?.accounts.length ?? 0;
 
                             if (isConnected) {
                               return (
                                 <div
                                   key={key}
                                   style={{
+                                    position: 'relative',
                                     borderRadius: '14px',
-                                    padding: '18px 18px 16px',
+                                    padding: '18px 12px 16px',
                                     background: 'var(--bg)',
                                     border: '1px solid var(--border-light)',
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    gap: '14px',
-                                    minHeight: '220px',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '12px',
+                                    minHeight: '150px',
                                   }}
                                 >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    {renderLogo(institution, connection)}
-                                    <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${bankName}`}
+                                    onClick={() => disconnectBank(connection.id)}
+                                    style={{
+                                      position: 'absolute',
+                                      top: '8px', right: '8px',
+                                      background: 'transparent', border: 'none', padding: 0,
+                                      width: '20px', height: '20px',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      color: 'var(--text-dim)', cursor: 'pointer', borderRadius: '6px',
+                                      transition: 'color 0.15s ease, background 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.color = 'var(--text)';
+                                      e.currentTarget.style.background = 'color-mix(in srgb, var(--bg), var(--text) 6%)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.color = 'var(--text-dim)';
+                                      e.currentTarget.style.background = 'transparent';
+                                    }}
+                                  >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <line x1="18" y1="6" x2="6" y2="18" />
+                                      <line x1="6" y1="6" x2="18" y2="18" />
+                                    </svg>
+                                  </button>
+                                  {renderLogo(institution, connection)}
+                                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '100%' }}>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {bankName}
                                     </div>
-                                    <button
-                                      type="button"
-                                      aria-label={`Remove ${bankName}`}
-                                      onClick={() => disconnectBank(connection.id)}
-                                      style={{
-                                        background: 'transparent', border: 'none', padding: 0,
-                                        width: '22px', height: '22px',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        color: 'var(--text-dim)', cursor: 'pointer', borderRadius: '6px',
-                                        flexShrink: 0,
-                                        transition: 'color 0.15s ease, background 0.15s ease',
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.color = 'var(--text)';
-                                        e.currentTarget.style.background = 'color-mix(in srgb, var(--bg), var(--text) 6%)';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.color = 'var(--text-dim)';
-                                        e.currentTarget.style.background = 'transparent';
-                                      }}
-                                    >
-                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="18" y1="6" x2="6" y2="18" />
-                                        <line x1="6" y1="6" x2="18" y2="18" />
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '0.68rem', color: '#22c55e', fontWeight: 500 }}>
+                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M20 6L9 17l-5-5" />
                                       </svg>
-                                    </button>
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {connection.accounts.map((acc) => (
-                                      <div
-                                        key={acc.id}
-                                        style={{
-                                          display: 'flex', alignItems: 'center', gap: '8px',
-                                          fontSize: '0.74rem', color: 'var(--text-mid)',
-                                        }}
-                                      >
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                          <path d="M20 6L9 17l-5-5" />
-                                        </svg>
-                                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</span>
-                                        {acc.mask && (
-                                          <span style={{ color: 'var(--text-dim)', fontVariantNumeric: 'tabular-nums', fontSize: '0.7rem' }}>
-                                            &bull;&bull;{acc.mask}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ))}
+                                      {accountCount} account{accountCount === 1 ? '' : 's'}
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -1127,15 +1117,17 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                                 disabled={plaidBusy || !agentInstanceId}
                                 style={{
                                   borderRadius: '14px',
-                                  padding: '18px 18px 16px',
+                                  padding: '18px 12px 16px',
                                   background: 'var(--bg)',
                                   border: '1px solid var(--border-light)',
                                   display: 'flex',
                                   flexDirection: 'column',
-                                  gap: '14px',
-                                  minHeight: '220px',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '12px',
+                                  minHeight: '150px',
                                   fontFamily: 'inherit',
-                                  textAlign: 'left',
+                                  textAlign: 'center',
                                   cursor: plaidBusy ? 'wait' : 'pointer',
                                   opacity: plaidBusy && !isConnecting ? 0.5 : 1,
                                   transition: 'border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease',
@@ -1144,7 +1136,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                                   if (plaidBusy || !agentInstanceId) return;
                                   e.currentTarget.style.borderColor = 'var(--text)';
                                   e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.04)';
+                                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.05)';
                                 }}
                                 onMouseLeave={(e) => {
                                   e.currentTarget.style.borderColor = 'var(--border-light)';
@@ -1152,32 +1144,17 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                                   e.currentTarget.style.boxShadow = 'none';
                                 }}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                  {renderLogo(institution, connection)}
-                                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {bankName}
-                                  </div>
-                                </div>
+                                {renderLogo(institution, connection)}
                                 <div style={{
-                                  marginTop: 'auto',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '6px',
-                                  padding: '8px 12px',
-                                  borderRadius: '8px',
-                                  background: 'color-mix(in srgb, var(--bg), var(--text) 5%)',
-                                  fontSize: '0.78rem',
+                                  fontSize: '0.82rem',
                                   fontWeight: 500,
                                   color: 'var(--text)',
+                                  maxWidth: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
                                 }}>
-                                  {isConnecting ? 'Opening Plaid…' : 'Connect'}
-                                  {!isConnecting && (
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                      <path d="M5 12h14" />
-                                      <path d="M12 5l7 7-7 7" />
-                                    </svg>
-                                  )}
+                                  {isConnecting ? 'Opening Plaid…' : bankName}
                                 </div>
                               </button>
                             );
@@ -1190,17 +1167,18 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                             disabled={plaidBusy || !agentInstanceId}
                             style={{
                               borderRadius: '14px',
-                              padding: '20px 16px',
+                              padding: '18px 12px 16px',
                               background: 'transparent',
                               border: '1.5px dashed var(--border-light)',
                               display: 'flex',
                               flexDirection: 'column',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              gap: '10px',
-                              minHeight: '220px',
+                              gap: '12px',
+                              minHeight: '150px',
                               fontFamily: 'inherit',
                               color: 'var(--text)',
+                              textAlign: 'center',
                               cursor: plaidBusy ? 'wait' : 'pointer',
                               opacity: plaidBusy || !agentInstanceId ? 0.6 : 1,
                               transition: 'border-color 0.15s ease, background 0.15s ease',
@@ -1216,11 +1194,11 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                             }}
                           >
                             <div style={{
-                              width: '34px', height: '34px', borderRadius: '50%',
+                              width: '56px', height: '56px', borderRadius: '50%',
                               border: '1.5px dashed var(--border-light)',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                             }}>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="12" y1="5" x2="12" y2="19"/>
                                 <line x1="5" y1="12" x2="19" y2="12"/>
                               </svg>
