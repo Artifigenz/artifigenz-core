@@ -55,9 +55,6 @@ export default function LandingHeader() {
           )}
         </button>
 
-        <Link href="/sign-in" className={styles.signIn}>
-          Sign in
-        </Link>
       </div>
     </header>
   );
