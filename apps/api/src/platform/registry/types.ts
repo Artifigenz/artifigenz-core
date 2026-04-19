@@ -31,7 +31,7 @@ export interface DataSourceTypeDefinition {
 
   getConnectionConfig(
     agentInstanceId: string,
-    options?: { redirectUri?: string },
+    options?: { redirectUri?: string; institutionId?: string },
   ): Promise<ConnectionConfig>;
   finalizeConnection(params: FinalizeParams): Promise<DataSourceConnectionResult>;
   testConnection(connection: DataSourceConnectionResult): Promise<boolean>;

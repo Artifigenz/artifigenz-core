@@ -27,6 +27,7 @@ import deliveryRoutes from "./routes/delivery.routes";
 import webhookRoutes from "./routes/webhooks.routes";
 import chatRoutes from "./routes/chat.routes";
 import uploadRoutes from "./routes/upload.routes";
+import { createPlaidRoutes } from "./routes/plaid.routes";
 
 // ─── Bootstrap ──────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ app.route("/api/me/chat", chatRoutes);
 app.route("/api/upload", uploadRoutes);
 app.route("/api/me", chatRoutes); // exposes /conversations under /api/me
 app.route("/api/webhooks", webhookRoutes);
+app.route("/api/plaid", createPlaidRoutes());
 
 // ─── Start ──────────────────────────────────────────────────────────
 

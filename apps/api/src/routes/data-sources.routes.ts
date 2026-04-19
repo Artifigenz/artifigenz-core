@@ -65,6 +65,7 @@ export function createDataSourceRoutes(registry: AgentRegistry) {
 
       const config = await adapter.getConnectionConfig(agentInstanceId, {
         redirectUri: body.redirectUri,
+        institutionId: body.institutionId,
       });
       return c.json(config);
     },

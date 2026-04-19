@@ -45,7 +45,7 @@ export const plaidAdapter: DataSourceTypeDefinition = {
    */
   async getConnectionConfig(
     agentInstanceId: string,
-    options?: { redirectUri?: string },
+    options?: { redirectUri?: string; institutionId?: string },
   ) {
     // Look up user from agent instance
     const [instance] = await db
@@ -72,6 +72,7 @@ export const plaidAdapter: DataSourceTypeDefinition = {
       country_codes: [CountryCode.Us, CountryCode.Ca],
       language: "en",
       ...(options?.redirectUri ? { redirect_uri: options.redirectUri } : {}),
+      ...(options?.institutionId ? { institution_id: options.institutionId } : {}),
     });
 
     return {

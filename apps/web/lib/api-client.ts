@@ -180,12 +180,27 @@ export class ApiClient {
   async initConnection(
     agentInstanceId: string,
     dataSourceTypeId: string,
-    options?: { redirectUri?: string },
+    options?: { redirectUri?: string; institutionId?: string },
   ) {
     return this.post<{ linkToken: string; expiration: string }>(
       `/api/me/agents/${agentInstanceId}/connections/${dataSourceTypeId}/init`,
       options ?? {},
     );
+  }
+
+  async getPopularInstitutions(country: string) {
+    return this.get<{
+      institutions: Array<{
+        id: string;
+        name: string;
+        logo: string | null;
+        primaryColor: string | null;
+        url: string | null;
+        countries: string[];
+      }>;
+      country: string;
+      supported: boolean;
+    }>(`/api/plaid/institutions?country=${encodeURIComponent(country)}`);
   }
 
   async finalizeConnection(

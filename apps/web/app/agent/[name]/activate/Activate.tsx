@@ -25,6 +25,25 @@ interface PlaidConnection {
   accounts: Array<{ id: string; name: string; mask: string | null }>;
 }
 
+interface PopularInstitution {
+  id: string;
+  name: string;
+  logo: string | null;
+  primaryColor: string | null;
+  url: string | null;
+  countries: string[];
+}
+
+function detectCountry(): string {
+  if (typeof navigator === 'undefined') return 'US';
+  try {
+    const locale = new Intl.Locale(navigator.language);
+    return locale.maximize().region ?? 'US';
+  } catch {
+    return 'US';
+  }
+}
+
 const ICON_MAP: Record<string, React.ComponentType> = {
   Finance: Icons.FinanceIcon,
   Travel: Icons.TravelIcon,
@@ -376,6 +395,9 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   const [plaidBusy, setPlaidBusy] = useState(false); // true while finalizing + syncing
   const [activating, setActivating] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [institutions, setInstitutions] = useState<PopularInstitution[]>([]);
+  const [connectingInstitutionId, setConnectingInstitutionId] = useState<string | null>(null);
+  const country = typeof window !== 'undefined' ? detectCountry() : 'US';
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [newGoal, setNewGoal] = useState('');
   const [activeSkills, setActiveSkills] = useState<Record<string, boolean>>(() => {
@@ -485,12 +507,14 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
         clearPlaidPending();
         setPlaidBusy(false);
         setLinkToken(null);
+        setConnectingInstitutionId(null);
       }
     },
     onExit: () => {
       clearPlaidPending();
       setLinkToken(null);
       setPlaidBusy(false);
+      setConnectingInstitutionId(null);
     },
   });
 
@@ -499,14 +523,31 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     if (linkToken && plaidReady) openPlaidLink();
   }, [linkToken, plaidReady, openPlaidLink]);
 
-  const connectBank = async () => {
+  // Fetch popular banks for the user's country once Step 1 opens.
+  useEffect(() => {
+    if (step !== 1 || !data?.requiresAccounts) return;
+    if (institutions.length > 0) return;
+    let cancelled = false;
+    api.getPopularInstitutions(country)
+      .then((res) => {
+        if (!cancelled) setInstitutions(res.institutions);
+      })
+      .catch(() => {
+        // Non-blocking: grid just falls back to the "Other bank" tile.
+      });
+    return () => { cancelled = true; };
+  }, [step, data?.requiresAccounts, country, api, institutions.length]);
+
+  const connectBank = async (institutionId?: string) => {
     if (!agentInstanceId || plaidBusy) return;
     setConnectError(null);
     setPlaidBusy(true);
+    setConnectingInstitutionId(institutionId ?? null);
     try {
       const redirectUri = `${window.location.origin}/plaid/oauth`;
       const { linkToken: token } = await api.initConnection(agentInstanceId, 'plaid', {
         redirectUri,
+        institutionId,
       });
       // Cache so the /plaid/oauth page can resume Link after an OAuth bank
       // redirects the browser back.
@@ -518,6 +559,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
       setLinkToken(token);
     } catch (err) {
       setPlaidBusy(false);
+      setConnectingInstitutionId(null);
       setConnectError(err instanceof Error ? err.message : 'Failed to open Plaid');
     }
   };
@@ -924,153 +966,272 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                     transitionDelay: isExpanded ? '800ms,900ms' : '0ms,0ms',
                     pointerEvents: isExpanded ? 'auto' : 'none',
                   }}>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                      gap: '12px',
-                    }}>
-                      {connections.map((conn) => {
-                        const bankName = conn.institutionName ?? conn.displayName ?? 'Bank';
+                    {(() => {
+                      // Build a merged list: every popular institution + any
+                      // connected banks that aren't in the popular set. Tiles
+                      // render in the same order each render so the layout is
+                      // stable across state changes.
+                      const connByInstitution = new Map(
+                        connections
+                          .filter((c) => !!c.institutionId)
+                          .map((c) => [c.institutionId as string, c]),
+                      );
+                      const extraConns = connections.filter(
+                        (c) => !c.institutionId || !institutions.some((i) => i.id === c.institutionId),
+                      );
+                      const tiles: Array<{
+                        key: string;
+                        institution?: PopularInstitution;
+                        connection?: PlaidConnection;
+                      }> = [];
+                      for (const inst of institutions) {
+                        tiles.push({
+                          key: `inst-${inst.id}`,
+                          institution: inst,
+                          connection: connByInstitution.get(inst.id),
+                        });
+                      }
+                      for (const conn of extraConns) {
+                        tiles.push({ key: `conn-${conn.id}`, connection: conn });
+                      }
+
+                      const renderLogo = (
+                        inst: PopularInstitution | undefined,
+                        conn: PlaidConnection | undefined,
+                      ) => {
+                        const logo = inst?.logo;
+                        const name = inst?.name ?? conn?.institutionName ?? conn?.displayName ?? 'Bank';
+                        const bg = inst?.primaryColor
+                          ? `${inst.primaryColor}14`
+                          : 'color-mix(in srgb, var(--bg), var(--text) 8%)';
+                        if (logo) {
+                          return (
+                            <div style={{
+                              width: '36px', height: '36px', borderRadius: '9px',
+                              background: bg,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0, overflow: 'hidden',
+                            }}>
+                              <img
+                                src={`data:image/png;base64,${logo}`}
+                                alt={name}
+                                width={28}
+                                height={28}
+                                style={{ objectFit: 'contain' }}
+                              />
+                            </div>
+                          );
+                        }
                         return (
-                          <div
-                            key={conn.id}
-                            style={{
-                              borderRadius: '14px',
-                              padding: '18px 18px 16px',
-                              background: 'var(--bg)',
-                              border: '1px solid var(--border-light)',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '14px',
-                              minHeight: '220px',
-                              position: 'relative',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div style={{
-                                width: '32px', height: '32px', borderRadius: '9px',
-                                background: 'color-mix(in srgb, var(--bg), var(--text) 8%)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)',
-                                flexShrink: 0,
-                              }}>
-                                {bankName.charAt(0)}
-                              </div>
-                              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {bankName}
-                              </div>
+                          <div style={{
+                            width: '36px', height: '36px', borderRadius: '9px',
+                            background: bg,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)',
+                            flexShrink: 0,
+                          }}>
+                            {name.charAt(0)}
+                          </div>
+                        );
+                      };
+
+                      return (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                          gap: '12px',
+                        }}>
+                          {tiles.map(({ key, institution, connection }) => {
+                            const bankName = institution?.name ?? connection?.institutionName ?? connection?.displayName ?? 'Bank';
+                            const isConnected = !!connection;
+                            const isConnecting = connectingInstitutionId === institution?.id && plaidBusy;
+
+                            if (isConnected) {
+                              return (
+                                <div
+                                  key={key}
+                                  style={{
+                                    borderRadius: '14px',
+                                    padding: '18px 18px 16px',
+                                    background: 'var(--bg)',
+                                    border: '1px solid var(--border-light)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '14px',
+                                    minHeight: '220px',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    {renderLogo(institution, connection)}
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {bankName}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove ${bankName}`}
+                                      onClick={() => disconnectBank(connection.id)}
+                                      style={{
+                                        background: 'transparent', border: 'none', padding: 0,
+                                        width: '22px', height: '22px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: 'var(--text-dim)', cursor: 'pointer', borderRadius: '6px',
+                                        flexShrink: 0,
+                                        transition: 'color 0.15s ease, background 0.15s ease',
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.color = 'var(--text)';
+                                        e.currentTarget.style.background = 'color-mix(in srgb, var(--bg), var(--text) 6%)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.color = 'var(--text-dim)';
+                                        e.currentTarget.style.background = 'transparent';
+                                      }}
+                                    >
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18" />
+                                        <line x1="6" y1="6" x2="18" y2="18" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {connection.accounts.map((acc) => (
+                                      <div
+                                        key={acc.id}
+                                        style={{
+                                          display: 'flex', alignItems: 'center', gap: '8px',
+                                          fontSize: '0.74rem', color: 'var(--text-mid)',
+                                        }}
+                                      >
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                          <path d="M20 6L9 17l-5-5" />
+                                        </svg>
+                                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</span>
+                                        {acc.mask && (
+                                          <span style={{ color: 'var(--text-dim)', fontVariantNumeric: 'tabular-nums', fontSize: '0.7rem' }}>
+                                            &bull;&bull;{acc.mask}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // Unconnected popular-bank tile — clickable.
+                            return (
                               <button
+                                key={key}
                                 type="button"
-                                aria-label={`Remove ${bankName}`}
-                                onClick={() => disconnectBank(conn.id)}
+                                onClick={() => institution && connectBank(institution.id)}
+                                disabled={plaidBusy || !agentInstanceId}
                                 style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  padding: 0,
-                                  width: '22px',
-                                  height: '22px',
+                                  borderRadius: '14px',
+                                  padding: '18px 18px 16px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border-light)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '14px',
+                                  minHeight: '220px',
+                                  fontFamily: 'inherit',
+                                  textAlign: 'left',
+                                  cursor: plaidBusy ? 'wait' : 'pointer',
+                                  opacity: plaidBusy && !isConnecting ? 0.5 : 1,
+                                  transition: 'border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (plaidBusy || !agentInstanceId) return;
+                                  e.currentTarget.style.borderColor = 'var(--text)';
+                                  e.currentTarget.style.transform = 'translateY(-1px)';
+                                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.04)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  {renderLogo(institution, connection)}
+                                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {bankName}
+                                  </div>
+                                </div>
+                                <div style={{
+                                  marginTop: 'auto',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  color: 'var(--text-dim)',
-                                  cursor: 'pointer',
-                                  borderRadius: '6px',
-                                  flexShrink: 0,
-                                  transition: 'color 0.15s ease, background 0.15s ease',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.color = 'var(--text)';
-                                  e.currentTarget.style.background = 'color-mix(in srgb, var(--bg), var(--text) 6%)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.color = 'var(--text-dim)';
-                                  e.currentTarget.style.background = 'transparent';
-                                }}
-                              >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <line x1="18" y1="6" x2="6" y2="18" />
-                                  <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                              </button>
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {conn.accounts.map((acc) => (
-                                <div
-                                  key={acc.id}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    fontSize: '0.74rem',
-                                    color: 'var(--text-mid)',
-                                  }}
-                                >
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                    <path d="M20 6L9 17l-5-5" />
-                                  </svg>
-                                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</span>
-                                  {acc.mask && (
-                                    <span style={{ color: 'var(--text-dim)', fontVariantNumeric: 'tabular-nums', fontSize: '0.7rem' }}>
-                                      &bull;&bull;{acc.mask}
-                                    </span>
+                                  gap: '6px',
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  background: 'color-mix(in srgb, var(--bg), var(--text) 5%)',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 500,
+                                  color: 'var(--text)',
+                                }}>
+                                  {isConnecting ? 'Opening Plaid…' : 'Connect'}
+                                  {!isConnecting && (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M5 12h14" />
+                                      <path d="M12 5l7 7-7 7" />
+                                    </svg>
                                   )}
                                 </div>
-                              ))}
+                              </button>
+                            );
+                          })}
+
+                          {/* "Other bank" — opens Plaid's full picker (no pre-selected institution). */}
+                          <button
+                            type="button"
+                            onClick={() => connectBank()}
+                            disabled={plaidBusy || !agentInstanceId}
+                            style={{
+                              borderRadius: '14px',
+                              padding: '20px 16px',
+                              background: 'transparent',
+                              border: '1.5px dashed var(--border-light)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '10px',
+                              minHeight: '220px',
+                              fontFamily: 'inherit',
+                              color: 'var(--text)',
+                              cursor: plaidBusy ? 'wait' : 'pointer',
+                              opacity: plaidBusy || !agentInstanceId ? 0.6 : 1,
+                              transition: 'border-color 0.15s ease, background 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (plaidBusy || !agentInstanceId) return;
+                              e.currentTarget.style.borderColor = 'var(--text)';
+                              e.currentTarget.style.background = 'var(--bg)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--border-light)';
+                              e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <div style={{
+                              width: '34px', height: '34px', borderRadius: '50%',
+                              border: '1.5px dashed var(--border-light)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"/>
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
                             </div>
-                          </div>
-                        );
-                      })}
-                      {/* Add tile — opens Plaid Link via connectBank(). Disabled while a connect is in flight. */}
-                      <button
-                          type="button"
-                          onClick={connectBank}
-                          disabled={plaidBusy || !agentInstanceId}
-                          style={{
-                            borderRadius: '14px',
-                            padding: '20px 16px',
-                            background: 'transparent',
-                            border: '1.5px dashed var(--border-light)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            minHeight: '220px',
-                            fontFamily: 'inherit',
-                            color: 'var(--text)',
-                            cursor: plaidBusy ? 'wait' : 'pointer',
-                            opacity: plaidBusy || !agentInstanceId ? 0.6 : 1,
-                            transition: 'border-color 0.15s ease, background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (plaidBusy || !agentInstanceId) return;
-                            e.currentTarget.style.borderColor = 'var(--text)';
-                            e.currentTarget.style.background = 'var(--bg)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--border-light)';
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <div style={{
-                            width: '34px', height: '34px', borderRadius: '50%',
-                            border: '1.5px dashed var(--border-light)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="12" y1="5" x2="12" y2="19"/>
-                              <line x1="5" y1="12" x2="19" y2="12"/>
-                            </svg>
-                          </div>
-                          <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>
-                            {plaidBusy
-                              ? 'Opening Plaid…'
-                              : connections.length === 0
-                                ? 'Connect a bank'
-                                : 'Add another bank'}
-                          </span>
-                        </button>
-                    </div>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>
+                              {plaidBusy && !connectingInstitutionId ? 'Opening Plaid…' : 'Other bank'}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                     {connectError && (
                       <p style={{
                         marginTop: '12px',
