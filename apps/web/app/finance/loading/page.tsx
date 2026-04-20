@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
+import ChatInput from '@/components/sections/ChatInput';
 import { useApiClient } from '@/hooks/useApiClient';
+import { useActivatedAgents } from '@/hooks/useActivatedAgents';
+import { FinanceIcon } from '@/components/sections/AgentIcons';
+import shell from '../../agent/[name]/page.module.css';
 import styles from './page.module.css';
 
 const CHECKLIST_LINES = [
@@ -29,9 +34,6 @@ interface QueuedEvent {
   event: ServerEvent;
 }
 
-/**
- * Parse an SSE stream from a fetch Response body. Yields each parsed event.
- */
 async function* parseSseStream(res: Response): AsyncGenerator<ServerEvent> {
   if (!res.body) return;
   const reader = res.body.getReader();
@@ -47,13 +49,10 @@ async function* parseSseStream(res: Response): AsyncGenerator<ServerEvent> {
     while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
       const block = buffer.slice(0, sepIdx);
       buffer = buffer.slice(sepIdx + 2);
-      const dataLine = block
-        .split('\n')
-        .find((l) => l.startsWith('data:'));
+      const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
       if (!dataLine) continue;
       try {
-        const parsed = JSON.parse(dataLine.slice(5).trim()) as ServerEvent;
-        yield parsed;
+        yield JSON.parse(dataLine.slice(5).trim()) as ServerEvent;
       } catch {
         // ignore malformed frame
       }
@@ -61,9 +60,17 @@ async function* parseSseStream(res: Response): AsyncGenerator<ServerEvent> {
   }
 }
 
+function formatSince(iso: number): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
 export default function FinanceLoadingPage() {
   const api = useApiClient();
   const router = useRouter();
+  const { getActivation } = useActivatedAgents();
+  const activation = getActivation('finance');
+
   const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [insufficient, setInsufficient] = useState<{ days: number; min: number } | null>(null);
@@ -80,10 +87,6 @@ export default function FinanceLoadingPage() {
     const queue: QueuedEvent[] = [];
     let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 
-    /**
-     * Hold each event until the 2s-per-phase / 8s-min schedule permits it.
-     * If the backend is slower, we just wait for the next real event.
-     */
     function scheduleRelease() {
       if (releaseTimer) return;
       const now = Date.now();
@@ -102,12 +105,11 @@ export default function FinanceLoadingPage() {
     function enqueue(event: ServerEvent) {
       let minShowAt: number;
       if (event.type === 'progress') {
-        // phase 1 shows at >= 0ms, phase 2 at >= 2000ms, etc. (spec §2.3)
         minShowAt = startedAt + (event.phase - 1) * PHASE_PACE_MS;
       } else if (event.type === 'complete') {
         minShowAt = startedAt + MIN_TOTAL_MS;
       } else {
-        minShowAt = startedAt; // errors / insufficient_data surface immediately
+        minShowAt = startedAt;
       }
       queue.push({ minShowAt, event });
       scheduleRelease();
@@ -159,7 +161,7 @@ export default function FinanceLoadingPage() {
   const lines = CHECKLIST_LINES.map((label, i): { label: string; state: Status } => {
     if (insufficient && i === 2) return { label: 'Gathering more signal', state: 'active' };
     if (insufficient && i >= 2) return { label, state: 'pending' };
-    const lineIndex = i + 1; // 1..4
+    const lineIndex = i + 1;
     let state: Status = 'pending';
     if (phase >= lineIndex) state = 'done';
     else if (phase + 1 === lineIndex && phase > 0) state = 'active';
@@ -167,10 +169,33 @@ export default function FinanceLoadingPage() {
     return { label, state };
   });
 
+  const since = activation ? formatSince(activation.activatedAt) : '';
+
   return (
-    <div className={styles.page}>
+    <div className={shell.page}>
       <Header />
-      <div className={styles.card}>
+      <main className={shell.main}>
+        <Link href="/app" className={shell.back}>← Back</Link>
+
+        <div className={shell.agentHeader}>
+          <div>
+            <div className={shell.nameRow}>
+              <span className={shell.icon}><FinanceIcon /></span>
+              <h1 className={shell.agentName}>Finance</h1>
+            </div>
+            <p className={shell.since}>
+              {since ? `Running since ${since} — analyzing now` : 'Analyzing now'}
+            </p>
+          </div>
+          <div className={shell.badges}>
+            <span className={shell.activeBadge}><span className={shell.dot} />Active</span>
+          </div>
+        </div>
+
+        <p className={shell.greeting}>
+          Your agent is taking a first look at your accounts.
+        </p>
+
         <div className={styles.eyebrow}>Your agent is analyzing your accounts</div>
 
         <div className={styles.checklist}>
@@ -217,7 +242,8 @@ export default function FinanceLoadingPage() {
             </button>
           </>
         ) : null}
-      </div>
+      </main>
+      <ChatInput agent="Finance" />
     </div>
   );
 }

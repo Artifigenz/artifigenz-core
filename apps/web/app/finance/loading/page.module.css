@@ -1,40 +1,26 @@
-.page {
-  position: relative;
-  z-index: 2;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-}
-
-.card {
-  width: 100%;
-  max-width: 560px;
-  padding: 40px 48px;
-}
+/* Loading-specific additions on top of the agent shell styles. */
 
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--fg-muted, #737373);
-  margin-bottom: 28px;
+  color: var(--text-dim);
+  margin: 8px 0 24px;
 }
 
 .checklist {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  max-width: 560px;
 }
 
 .line {
   display: flex;
   align-items: center;
   gap: 14px;
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .bullet {
@@ -50,42 +36,43 @@
 }
 
 .bulletDone {
-  background: var(--fg, #0a0a0a);
-  color: var(--bg, #ffffff);
-  border: 2px solid var(--fg, #0a0a0a);
+  background: var(--text);
+  color: var(--bg);
+  border: 2px solid var(--text);
 }
 
 .bulletActive {
   background: transparent;
-  border: 2px solid var(--fg, #0a0a0a);
-  animation: pulse 1.4s ease-in-out infinite;
+  border: 2px solid var(--text);
+  animation: loadingPulse 1.4s ease-in-out infinite;
 }
 
 .bulletPending {
   background: transparent;
-  border: 2px solid var(--fg-muted-soft, #d4d4d4);
+  border: 2px solid var(--border-light);
   color: transparent;
 }
 
 .textDone {
-  color: var(--fg-muted, #737373);
+  color: var(--text-dim);
 }
 
 .textActive {
-  color: var(--fg, #0a0a0a);
+  color: var(--text);
   font-weight: 500;
 }
 
 .textPending {
-  color: var(--fg-muted-soft, #a3a3a3);
+  color: var(--text-dim);
+  opacity: 0.55;
 }
 
 .note {
-  margin-top: 40px;
-  font-size: 13px;
-  color: var(--fg-muted, #737373);
-  text-align: left;
+  margin-top: 32px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
   line-height: 1.6;
+  max-width: 560px;
 }
 
 .errorNote {
@@ -93,27 +80,23 @@
 }
 
 .retryBtn {
-  margin-top: 20px;
-  padding: 10px 20px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  border: 1px solid var(--fg, #0a0a0a);
+  margin-top: 16px;
+  padding: 8px 18px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: 1px solid var(--text);
   background: transparent;
-  color: var(--fg, #0a0a0a);
+  color: var(--text);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-full, 9999px);
 }
 .retryBtn:hover {
-  background: var(--fg, #0a0a0a);
-  color: var(--bg, #ffffff);
+  background: var(--text);
+  color: var(--bg);
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
+@keyframes loadingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
