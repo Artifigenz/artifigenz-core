@@ -543,14 +543,29 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     setConnectError(null);
     setPlaidBusy(true);
     setConnectingInstitutionId(institutionId ?? null);
-    try {
-      const redirectUri = `${window.location.origin}/plaid/oauth`;
-      const { linkToken: token } = await api.initConnection(agentInstanceId, 'plaid', {
+    const redirectUri = `${window.location.origin}/plaid/oauth`;
+    const tryInit = async (instId?: string) => {
+      return api.initConnection(agentInstanceId, 'plaid', {
         redirectUri,
-        institutionId,
+        institutionId: instId,
       });
-      // Cache so the /plaid/oauth page can resume Link after an OAuth bank
-      // redirects the browser back.
+    };
+    try {
+      let res;
+      try {
+        res = await tryInit(institutionId);
+      } catch (err) {
+        // Plaid accounts without Embedded-Institution-Select approval reject
+        // institution_id with INVALID_INSTITUTION. Fall back to the default
+        // picker so the user isn't stuck — they can search for the bank.
+        const msg = (err as { message?: string })?.message ?? '';
+        if (institutionId && /invalid[_ ]institution/i.test(msg)) {
+          res = await tryInit(undefined);
+        } else {
+          throw err;
+        }
+      }
+      const token = res.linkToken;
       savePlaidPending({
         linkToken: token,
         agentInstanceId,
@@ -560,7 +575,8 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     } catch (err) {
       setPlaidBusy(false);
       setConnectingInstitutionId(null);
-      setConnectError(err instanceof Error ? err.message : 'Failed to open Plaid');
+      const msg = (err as { message?: string })?.message ?? 'Failed to open Plaid';
+      setConnectError(msg);
     }
   };
 
