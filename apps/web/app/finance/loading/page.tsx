@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
 import Header from '@/components/layout/Header';
 import ChatInput from '@/components/sections/ChatInput';
 import { useApiClient } from '@/hooks/useApiClient';
@@ -68,8 +69,14 @@ function formatSince(iso: number): string {
 export default function FinanceLoadingPage() {
   const api = useApiClient();
   const router = useRouter();
+  const { user } = useUser();
   const { getActivation } = useActivatedAgents();
   const activation = getActivation('finance');
+  const firstName =
+    user?.firstName ||
+    user?.username ||
+    user?.emailAddresses[0]?.emailAddress?.split('@')[0] ||
+    'there';
 
   const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -171,10 +178,30 @@ export default function FinanceLoadingPage() {
 
   const since = activation ? formatSince(activation.activatedAt) : '';
 
+  // Typewriter greeting — same 26ms cadence as onboarding.
+  const greetingTarget = `Give me a minute, ${firstName} — I'm reading your accounts.`;
+  const [typedChars, setTypedChars] = useState(0);
+  useEffect(() => {
+    setTypedChars(0);
+    if (!greetingTarget) return;
+    const interval = setInterval(() => {
+      setTypedChars((prev) => {
+        if (prev >= greetingTarget.length) {
+          clearInterval(interval);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 26);
+    return () => clearInterval(interval);
+  }, [greetingTarget]);
+  const typedGreeting = greetingTarget.slice(0, typedChars);
+  const isTyping = typedChars < greetingTarget.length;
+
   return (
     <div className={shell.page}>
       <Header />
-      <main className={shell.main}>
+      <main className={`${shell.main} ${styles.mainWide}`}>
         <Link href="/app" className={shell.back}>← Back</Link>
 
         <div className={shell.agentHeader}>
@@ -192,9 +219,10 @@ export default function FinanceLoadingPage() {
           </div>
         </div>
 
-        <p className={shell.greeting}>
-          Your agent is taking a first look at your accounts.
-        </p>
+        <h2 className={styles.greeting}>
+          {typedGreeting}
+          {isTyping && <span className={styles.cursor} />}
+        </h2>
 
         <div className={styles.eyebrow}>Your agent is analyzing your accounts</div>
 

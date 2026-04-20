@@ -74,13 +74,33 @@ export default function FinanceBriefPage() {
     };
   }, [api, router]);
 
+  // Typewriter reveal for the verdict — matches onboarding's 26ms cadence.
+  const verdictTarget = brief?.verdict ?? '';
+  const [typedChars, setTypedChars] = useState(0);
+  useEffect(() => {
+    setTypedChars(0);
+    if (!verdictTarget) return;
+    const interval = setInterval(() => {
+      setTypedChars((prev) => {
+        if (prev >= verdictTarget.length) {
+          clearInterval(interval);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 26);
+    return () => clearInterval(interval);
+  }, [verdictTarget]);
+  const typedVerdict = verdictTarget.slice(0, typedChars);
+  const isTyping = typedChars < verdictTarget.length;
+
   const since = activation ? formatSince(activation.activatedAt) : '';
   const lastAnalyzed = brief ? formatAgo(brief.generated_at) : '';
 
   return (
     <div className={shell.page}>
       <Header />
-      <main className={shell.main}>
+      <main className={`${shell.main} ${styles.mainWide}`}>
         <Link href="/app" className={shell.back}>← Back</Link>
 
         <div className={shell.agentHeader}>
@@ -108,14 +128,17 @@ export default function FinanceBriefPage() {
         </div>
 
         {error ? (
-          <p className={shell.greeting}>{error}</p>
+          <p className={styles.verdict}>{error}</p>
         ) : brief ? (
           <>
-            <p className={shell.greeting}>{brief.verdict}</p>
+            <h2 className={styles.verdict}>
+              {typedVerdict}
+              {isTyping && <span className={styles.cursor} />}
+            </h2>
 
             <div className={styles.numbers}>
               {brief.numbers.map((n, i) => (
-                <div key={`${n.value}-${i}`} className={styles.numberRow}>
+                <div key={`${n.value}-${i}`} className={styles.numberCol}>
                   <span className={styles.numberValue}>{n.value}</span>
                   <span className={styles.numberPhrase}>{n.phrase}</span>
                 </div>
