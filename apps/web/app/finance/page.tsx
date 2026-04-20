@@ -100,7 +100,7 @@ export default function FinanceBriefPage() {
   return (
     <div className={shell.page}>
       <Header />
-      <main className={`${shell.main} ${styles.mainWide}`}>
+      <main className={shell.main}>
         <Link href="/app" className={shell.back}>← Back</Link>
 
         <div className={shell.agentHeader}>
