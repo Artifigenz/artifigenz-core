@@ -31,6 +31,15 @@
   --accent: #000000;
   --accent-text: #ffffff;
   --font: inherit;
+
+  /* Shared greeting typography — used by the home hero, onboarding
+     greeting, and every agent home (/finance, /finance/loading, …).
+     Change here, and the whole app shifts together. */
+  --greeting-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  --greeting-size-mobile: 1.4rem;
+  --greeting-weight: 400;
+  --greeting-line-height: 1.15;
+  --greeting-tracking: -0.03em;
 }
 
 :root.dark {
