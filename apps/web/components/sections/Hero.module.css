@@ -13,10 +13,10 @@
 }
 
 .title {
-  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-  font-weight: 400;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
+  font-size: var(--greeting-size);
+  font-weight: var(--greeting-weight);
+  letter-spacing: var(--greeting-tracking);
+  line-height: var(--greeting-line-height);
   color: var(--text);
   max-width: 100%;
 }
@@ -27,7 +27,7 @@
   }
 
   .title {
-    font-size: 1.4rem;
+    font-size: var(--greeting-size-mobile);
     line-height: 1.25;
   }
 }

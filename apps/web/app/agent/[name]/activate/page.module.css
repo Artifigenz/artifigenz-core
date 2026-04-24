@@ -151,17 +151,17 @@
 }
 
 .greeting {
-  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-  font-weight: 400;
+  font-size: var(--greeting-size);
+  font-weight: var(--greeting-weight);
   color: var(--text);
-  line-height: 1.15;
-  letter-spacing: -0.03em;
+  line-height: var(--greeting-line-height);
+  letter-spacing: var(--greeting-tracking);
   margin: 14px 0 0;
 }
 
 @media (max-width: 640px) {
   .greeting {
-    font-size: 1.4rem;
+    font-size: var(--greeting-size-mobile);
     line-height: 1.25;
   }
 }
