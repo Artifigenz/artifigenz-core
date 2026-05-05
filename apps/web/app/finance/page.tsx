@@ -137,12 +137,20 @@ export default function FinanceBriefPage() {
             </h2>
 
             <div className={styles.numbers}>
-              {brief.numbers.map((n, i) => (
-                <div key={`${n.value}-${i}`} className={styles.numberCol}>
-                  <span className={styles.numberValue}>{n.value}</span>
-                  <span className={styles.numberPhrase}>{n.phrase}</span>
-                </div>
-              ))}
+              {brief.numbers.map((n, i) => {
+                const match = n.value.match(/^([^/]+)(\/\w+)?$/);
+                const amount = match?.[1]?.trim() ?? n.value;
+                const unit = match?.[2] ?? '';
+                return (
+                  <div key={`${n.value}-${i}`} className={styles.numberCol}>
+                    <span className={styles.numberValue}>
+                      {amount}
+                      {unit && <span className={styles.numberUnit}>{unit}</span>}
+                    </span>
+                    <span className={styles.numberPhrase}>{n.phrase}</span>
+                  </div>
+                );
+              })}
             </div>
 
             <p className={styles.paragraph}>{brief.paragraph}</p>

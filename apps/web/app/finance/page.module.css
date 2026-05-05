@@ -52,25 +52,33 @@
 }
 
 .numberValue {
-  font-size: 1.35rem;
-  font-weight: 500;
+  font-size: 1.5rem;
+  font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
+.numberUnit {
+  font-weight: 400;
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
+
 .numberPhrase {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--text-dim);
   line-height: 1.4;
 }
 
-/* Paragraph — fills the container width. */
+/* Paragraph — blockquote style with left border. */
 .paragraph {
   font-size: 1.05rem;
   line-height: 1.7;
   color: var(--text);
   margin: 0 0 36px;
+  padding-left: 20px;
+  border-left: 3px solid var(--border-light);
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.55s forwards;
@@ -135,5 +143,6 @@
 
   .paragraph {
     font-size: 0.95rem;
+    padding-left: 16px;
   }
 }
