@@ -154,12 +154,6 @@ export default function FinanceBriefPage() {
             </div>
 
             <p className={styles.paragraph}>{brief.paragraph}</p>
-
-            <p className={styles.dataScope}>{brief.data_scope}</p>
-
-            <p className={styles.closeLine}>
-              Your brief updates weekly. I&apos;ll flag anything that matters. — your finance agent
-            </p>
           </>
         ) : (
           <div className={styles.empty} />
