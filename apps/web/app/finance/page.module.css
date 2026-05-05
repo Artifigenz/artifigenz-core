@@ -11,7 +11,7 @@
   line-height: var(--greeting-line-height);
   letter-spacing: var(--greeting-tracking);
   margin: 0 0 40px;
-  min-height: 1.15em;
+  min-height: calc(var(--greeting-line-height) * 2em);
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards;
@@ -101,6 +101,7 @@
     font-size: var(--greeting-size-mobile);
     line-height: 1.25;
     margin-bottom: 32px;
+    min-height: calc(1.25 * 2em);
   }
 
   .numbers {
