@@ -26,6 +26,33 @@ const NON_SUBSCRIPTION_CATEGORIES = new Set([
   "MEDICAL",
 ]);
 
+/**
+ * Patterns that indicate bank transfers (not subscriptions).
+ * These bypass Plaid's category as "OTHER" but are clearly transfers.
+ */
+const TRANSFER_PATTERNS = [
+  /^pts\b/i,           // Personal Transfer Service (TD Bank)
+  /\bpts\s+(to|frm):/i, // PTS TO: or PTS FRM:
+  /\be-?t(fr|ransfer)\b/i, // E-TFR, E-TRANSFER
+  /\btfr[-\s]?(to|from)\b/i, // TFR-TO, TFR FROM
+  /\batm\s+w\/d\b/i,   // ATM Withdrawal
+  /\bwithdrawal\s+free\b/i, // Withdrawal Free
+  /\binterac\s+e-?transfer\b/i, // Interac e-Transfer
+  /\bdeposit\s+\(pac\)/i, // Pre-authorized contribution
+  /\bcustomer\s+transfer\b/i, // Customer Transfer
+  /\binvestment\s+purchase\b/i, // Investment Purchase
+  /\bmortgage\s+payment\b/i, // Mortgage Payment
+  /\bbill\s+payment\b/i, // Bill Payment (utility bills, not subscriptions)
+];
+
+/**
+ * Check if a transaction looks like a bank transfer based on description/merchant.
+ */
+function looksLikeTransfer(merchantName: string | null, description: string): boolean {
+  const text = `${merchantName ?? ""} ${description}`.toLowerCase();
+  return TRANSFER_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export type Frequency = "weekly" | "monthly" | "quarterly" | "annual";
 
 export interface DetectedSubscription {
@@ -66,6 +93,7 @@ export function detectRecurring(transactions: TxInput[]): DetectedSubscription[]
   for (const tx of transactions) {
     if (tx.amount <= 0) continue; // Skip refunds/deposits
     if (tx.category && NON_SUBSCRIPTION_CATEGORIES.has(tx.category)) continue;
+    if (looksLikeTransfer(tx.merchantName, tx.description)) continue; // Skip transfers
 
     const merchantKey = normalizeMerchant(tx.merchantName ?? tx.description);
     if (!merchantKey) continue;
