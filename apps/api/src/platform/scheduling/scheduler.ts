@@ -17,9 +17,7 @@ export class Scheduler {
   }
 
   /**
-   * Brief refresh cadence — spec §4.
-   *  Daily 02:00 UTC — numbers-only refresh
-   *  Weekly Mon 02:00 UTC — full refresh (new LLM call)
+   * Brief refresh cadence — daily full regeneration at 02:00 UTC.
    *
    * Spec mentions user-local time; for v1 we run in UTC and will add
    * per-user timezone fan-out later. The worker itself fans out across all
@@ -31,12 +29,7 @@ export class Scheduler {
       { pattern: "0 2 * * *" }, // 02:00 UTC every day
       { name: "brief:refresh-daily", data: {} },
     );
-    await briefRefreshQueue.upsertJobScheduler(
-      "brief-refresh-weekly",
-      { pattern: "0 2 * * 1" }, // 02:00 UTC every Monday
-      { name: "brief:refresh-weekly", data: {} },
-    );
-    console.log("[Scheduler] Brief refresh crons registered (daily + weekly)");
+    console.log("[Scheduler] Brief refresh cron registered (daily full)");
   }
 
   private async registerCronJobs(): Promise<void> {

@@ -2,14 +2,11 @@ import { Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
 import { db, agentInstances, users } from "@artifigenz/db";
 import { getRedisConnection } from "../queues";
-import { runDailyNumbersRefresh } from "../../../agents/finance/brief/daily-refresh";
 import { runBriefGeneration } from "../../../agents/finance/brief/orchestrator";
 import { randomUUID } from "node:crypto";
 
 /**
- * Two job types, keyed on name:
- *   brief:refresh-daily   — fan out to all eligible users, numbers-only update
- *   brief:refresh-weekly  — fan out to all eligible users, full regenerate
+ * Daily full brief regeneration for all eligible users.
  *
  * "Eligible" = onboarding done, has an active finance agent instance.
  */
@@ -38,14 +35,10 @@ export function createBriefRefreshWorker() {
 
       for (const { userId, agentInstanceId } of rows) {
         try {
-          if (jobName === "brief:refresh-daily") {
-            await runDailyNumbersRefresh(userId, agentInstanceId);
-          } else if (jobName === "brief:refresh-weekly") {
-            // Full refresh — insert a new brief row. generation_id is unused
-            // here (no SSE subscriber), but the orchestrator still emits into
-            // its Map; the entry expires via the TTL sweeper.
-            await runBriefGeneration(userId, agentInstanceId, randomUUID());
-          }
+          // Full regeneration — insert a new brief row with fresh LLM call.
+          // generation_id is unused here (no SSE subscriber), but the
+          // orchestrator still emits into its Map; the entry expires via TTL.
+          await runBriefGeneration(userId, agentInstanceId, randomUUID());
           succeeded += 1;
         } catch (err) {
           failed += 1;
