@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db, agentInstances, agentInstanceSkills, users } from "@artifigenz/db";
 import { AgentRegistry } from "../registry/agent-registry";
 import { insightService } from "../insights/insight-service";
@@ -39,6 +39,27 @@ export class SkillExecutor {
       throw new Error(
         `Skill "${params.skillId}" not found for agent type "${instance.agentTypeId}"`,
       );
+    }
+
+    // Ensure skill record exists (for agents created before skill was added)
+    const [existingSkill] = await db
+      .select()
+      .from(agentInstanceSkills)
+      .where(
+        and(
+          eq(agentInstanceSkills.agentInstanceId, params.agentInstanceId),
+          eq(agentInstanceSkills.skillId, params.skillId),
+        ),
+      )
+      .limit(1);
+
+    if (!existingSkill) {
+      console.log(`[SkillExecutor] Creating missing skill record for ${params.skillId}`);
+      await db.insert(agentInstanceSkills).values({
+        agentInstanceId: params.agentInstanceId,
+        skillId: params.skillId,
+        isEnabled: true,
+      });
     }
 
     // Build execution context

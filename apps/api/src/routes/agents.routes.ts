@@ -222,19 +222,20 @@ export function createAgentRoutes(registry: AgentRegistry) {
 
       if (!instance) return c.json({ error: "Agent not found" }, 404);
 
-      // Reset the skill state to empty object
-      const [updated] = await db
-        .update(agentInstanceSkills)
-        .set({ state: {}, updatedAt: new Date() })
-        .where(
-          and(
-            eq(agentInstanceSkills.agentInstanceId, agentInstanceId),
-            eq(agentInstanceSkills.skillId, skillId),
-          ),
-        )
-        .returning();
+      // Upsert skill record with empty state
+      await db
+        .insert(agentInstanceSkills)
+        .values({
+          agentInstanceId,
+          skillId,
+          isEnabled: true,
+          state: {},
+        })
+        .onConflictDoUpdate({
+          target: [agentInstanceSkills.agentInstanceId, agentInstanceSkills.skillId],
+          set: { state: {}, updatedAt: new Date() },
+        });
 
-      if (!updated) return c.json({ error: "Skill not found" }, 404);
       return c.body(null, 204);
     },
   );
