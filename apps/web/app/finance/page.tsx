@@ -39,11 +39,11 @@ interface Insight {
 
 interface Connection {
   id: string;
-  displayName: string;
+  displayName: string | null;
   status: string;
-  institutionName: string;
+  institutionName: string | null;
   lastSyncedAt: string | null;
-  accounts: { id: string; name: string; mask: string }[];
+  accounts: { id: string; name: string; mask: string | null }[];
 }
 
 interface DeliveryPrefs {
@@ -275,10 +275,12 @@ export default function FinanceBriefPage() {
     if (!delivery) return;
     setDeliverySaving(true);
     try {
-      const updated = await api.updateDeliveryPreferences({
+      await api.updateDeliveryPreferences({
         [channel]: { enabled },
       });
-      setDelivery(updated);
+      // Re-fetch to get updated state
+      const fresh = await api.getDeliveryPreferences();
+      setDelivery(fresh);
     } catch {
       // ignore
     } finally {
