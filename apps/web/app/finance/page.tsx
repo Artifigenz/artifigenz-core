@@ -441,6 +441,7 @@ export default function FinanceBriefPage() {
                       className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
                     >
                       <div className={styles.insightIcon}>
+                        {insight.insightTypeId.includes('welcome') && '👋'}
                         {insight.insightTypeId.includes('price-change') && '⚠️'}
                         {insight.insightTypeId.includes('upcoming') && '📅'}
                         {insight.insightTypeId.endsWith('.new') && '✨'}

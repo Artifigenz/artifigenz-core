@@ -23,6 +23,12 @@ export const subscriptionsSkill: SkillDefinition = {
 
   insightTypes: [
     {
+      id: "finance.subscriptions.welcome",
+      name: "Subscription Overview",
+      critical: false,
+      deliveryChannels: ["in_app"],
+    },
+    {
       id: "finance.subscriptions.upcoming",
       name: "Upcoming Charge",
       critical: false,
@@ -101,27 +107,98 @@ export const subscriptionsSkill: SkillDefinition = {
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
-    // ─── JOB 1: Upcoming — charges happening TODAY ────────────────
-    for (const sub of detected) {
-      if (sub.nextChargeDate === today) {
-        insights.push({
-          insightTypeId: "finance.subscriptions.upcoming",
-          title: `${sub.merchantName} will charge $${sub.amount.toFixed(2)} today`,
-          description: `${sub.accountName ?? "Account"} · auto-renew`,
-          data: {
-            merchant: sub.merchantName,
-            amount: sub.amount,
-            chargeDate: today,
-            account: sub.accountName,
-          },
-          critical: false,
-        });
+    // Calculate dates for first-run expanded windows
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+
+    // ═══════════════════════════════════════════════════════════════
+    // FIRST RUN ONLY: Welcome insights (A, B, C)
+    // ═══════════════════════════════════════════════════════════════
+    if (isFirstRun && detected.length > 0) {
+      const monthlyTotal = calculateMonthlyTotal(detected);
+
+      // (A) Welcome insight — subscription overview
+      insights.push({
+        insightTypeId: "finance.subscriptions.welcome",
+        title: `Monitoring ${detected.length} subscriptions`,
+        description: `We found $${monthlyTotal.toFixed(2)}/mo in recurring charges across your accounts.`,
+        data: {
+          count: detected.length,
+          monthlyTotal,
+          annualTotal: monthlyTotal * 12,
+          subscriptions: detected.map((s) => ({
+            merchant: s.merchantName,
+            amount: s.amount,
+            frequency: s.frequency,
+          })),
+        },
+        critical: false,
+      });
+
+      // (B) Recently charged — last 7 days (first run only)
+      for (const sub of detected) {
+        if (sub.lastChargeDate >= sevenDaysAgoStr) {
+          insights.push({
+            insightTypeId: "finance.subscriptions.charged",
+            title: `${sub.merchantName} charged $${sub.amount.toFixed(2)}`,
+            description: `${sub.accountName ?? "Account"} · ${formatRelativeDate(sub.lastChargeDate)}`,
+            data: {
+              merchant: sub.merchantName,
+              amount: sub.amount,
+              chargeDate: sub.lastChargeDate,
+              account: sub.accountName,
+            },
+            critical: false,
+          });
+        }
+      }
+
+      // (C) Upcoming this week — next 7 days (first run only)
+      for (const sub of detected) {
+        const daysUntil = daysBetween(today, sub.nextChargeDate);
+        if (daysUntil >= 0 && daysUntil <= 7) {
+          const dayLabel = daysUntil === 0 ? "today" : daysUntil === 1 ? "tomorrow" : `in ${daysUntil} days`;
+          insights.push({
+            insightTypeId: "finance.subscriptions.upcoming",
+            title: `${sub.merchantName} will charge $${sub.amount.toFixed(2)} ${dayLabel}`,
+            description: `${sub.accountName ?? "Account"} · auto-renew`,
+            data: {
+              merchant: sub.merchantName,
+              amount: sub.amount,
+              chargeDate: sub.nextChargeDate,
+              daysUntil,
+              account: sub.accountName,
+            },
+            critical: false,
+          });
+        }
       }
     }
 
-    // ─── JOB 2: New — truly new subscriptions ─────────────────────
-    // Only after first run, and only if the pattern is recent (≤3 charges)
+    // ═══════════════════════════════════════════════════════════════
+    // NORMAL DAILY FLOW (after first run)
+    // ═══════════════════════════════════════════════════════════════
     if (!isFirstRun) {
+      // ─── JOB 1: Upcoming — charges happening TODAY only ──────────
+      for (const sub of detected) {
+        if (sub.nextChargeDate === today) {
+          insights.push({
+            insightTypeId: "finance.subscriptions.upcoming",
+            title: `${sub.merchantName} will charge $${sub.amount.toFixed(2)} today`,
+            description: `${sub.accountName ?? "Account"} · auto-renew`,
+            data: {
+              merchant: sub.merchantName,
+              amount: sub.amount,
+              chargeDate: today,
+              account: sub.accountName,
+            },
+            critical: false,
+          });
+        }
+      }
+
+      // ─── JOB 2: New — truly new subscriptions ────────────────────
       for (const sub of detected) {
         const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
         const previous = knownSubs[key];
@@ -140,55 +217,51 @@ export const subscriptionsSkill: SkillDefinition = {
           });
         }
       }
-    }
 
-    // ─── JOB 3: Price Change — amount differs from expected ───────
-    for (const sub of detected) {
-      const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
-      const previous = knownSubs[key];
-      if (previous && Math.abs(previous.amount - sub.amount) > 0.50) {
-        const delta = sub.amount - previous.amount;
-        const direction = delta > 0 ? "increased" : "decreased";
-        insights.push({
-          insightTypeId: "finance.subscriptions.price-change",
-          title: `${sub.merchantName} ${direction} $${previous.amount.toFixed(2)} → $${sub.amount.toFixed(2)}`,
-          description: delta > 0
-            ? `Up $${Math.abs(delta).toFixed(2)} from your usual rate`
-            : `Down $${Math.abs(delta).toFixed(2)} from your usual rate`,
-          data: {
-            merchant: sub.merchantName,
-            oldAmount: previous.amount,
-            newAmount: sub.amount,
-            delta,
-          },
-          critical: true,
-        });
-      }
-    }
-
-    // ─── JOB 4: Charged — recent charge at expected amount ────────
-    // Check if any subscription charged yesterday/today at expected amount
-    for (const sub of detected) {
-      const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
-      const previous = knownSubs[key];
-      // Only show "charged" confirmation if we knew about this sub before
-      // and the last charge was yesterday or today
-      if (previous && (sub.lastChargeDate === today || sub.lastChargeDate === yesterdayStr)) {
-        // Check if amount is roughly the same (within 5%)
-        const amountMatch = Math.abs(previous.amount - sub.amount) / previous.amount < 0.05;
-        if (amountMatch) {
+      // ─── JOB 3: Price Change — amount differs from expected ──────
+      for (const sub of detected) {
+        const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
+        const previous = knownSubs[key];
+        if (previous && Math.abs(previous.amount - sub.amount) > 0.50) {
+          const delta = sub.amount - previous.amount;
+          const direction = delta > 0 ? "increased" : "decreased";
           insights.push({
-            insightTypeId: "finance.subscriptions.charged",
-            title: `${sub.merchantName} charged $${sub.amount.toFixed(2)} — as expected`,
-            description: `${sub.accountName ?? "Account"} · No change from last month`,
+            insightTypeId: "finance.subscriptions.price-change",
+            title: `${sub.merchantName} ${direction} $${previous.amount.toFixed(2)} → $${sub.amount.toFixed(2)}`,
+            description: delta > 0
+              ? `Up $${Math.abs(delta).toFixed(2)} from your usual rate`
+              : `Down $${Math.abs(delta).toFixed(2)} from your usual rate`,
             data: {
               merchant: sub.merchantName,
-              amount: sub.amount,
-              chargeDate: sub.lastChargeDate,
-              account: sub.accountName,
+              oldAmount: previous.amount,
+              newAmount: sub.amount,
+              delta,
             },
-            critical: false,
+            critical: true,
           });
+        }
+      }
+
+      // ─── JOB 4: Charged — yesterday/today at expected amount ─────
+      for (const sub of detected) {
+        const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
+        const previous = knownSubs[key];
+        if (previous && (sub.lastChargeDate === today || sub.lastChargeDate === yesterdayStr)) {
+          const amountMatch = Math.abs(previous.amount - sub.amount) / previous.amount < 0.05;
+          if (amountMatch) {
+            insights.push({
+              insightTypeId: "finance.subscriptions.charged",
+              title: `${sub.merchantName} charged $${sub.amount.toFixed(2)} — as expected`,
+              description: `${sub.accountName ?? "Account"} · No change from last month`,
+              data: {
+                merchant: sub.merchantName,
+                amount: sub.amount,
+                chargeDate: sub.lastChargeDate,
+                account: sub.accountName,
+              },
+              critical: false,
+            });
+          }
         }
       }
     }
@@ -233,4 +306,23 @@ function monthlyCost(sub: DetectedSubscription): number {
 
 function calculateMonthlyTotal(subs: DetectedSubscription[]): number {
   return subs.reduce((sum, s) => sum + monthlyCost(s), 0);
+}
+
+function formatRelativeDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const dateOnly = new Date(date);
+  dateOnly.setHours(0, 0, 0, 0);
+
+  if (dateOnly.getTime() === today.getTime()) {
+    return "today";
+  } else if (dateOnly.getTime() === yesterday.getTime()) {
+    return "yesterday";
+  } else {
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
 }

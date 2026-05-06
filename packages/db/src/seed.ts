@@ -112,6 +112,14 @@ async function seed() {
     .insert(insightTypes)
     .values([
       {
+        id: "finance.subscriptions.welcome",
+        skillId: "finance.subscriptions",
+        name: "Subscription Overview",
+        description: "First-run welcome insight with subscription summary",
+        isCritical: false,
+        deliveryChannels: ["in_app"],
+      },
+      {
         id: "finance.subscriptions.upcoming",
         skillId: "finance.subscriptions",
         name: "Upcoming Charge",
