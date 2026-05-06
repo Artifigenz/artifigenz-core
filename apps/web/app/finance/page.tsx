@@ -41,6 +41,15 @@ function formatAgo(iso: string): string {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+/** Highlight dollar amounts and percentages in the paragraph. */
+function formatParagraph(text: string): React.ReactNode[] {
+  const pattern = /(\$[\d,]+(?:\.\d{2})?(?:\/\w+)?|\d+%)/g;
+  const parts = text.split(pattern);
+  return parts.map((part, i) =>
+    pattern.test(part) ? <strong key={i}>{part}</strong> : part
+  );
+}
+
 export default function FinanceBriefPage() {
   const api = useApiClient();
   const router = useRouter();
@@ -153,7 +162,9 @@ export default function FinanceBriefPage() {
               })}
             </div>
 
-            <p className={styles.paragraph}>{brief.paragraph}</p>
+            <p className={styles.paragraph}>
+              &ldquo;{formatParagraph(brief.paragraph)}&rdquo;
+            </p>
           </>
         ) : (
           <div className={styles.empty} />

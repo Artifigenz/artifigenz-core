@@ -73,15 +73,19 @@
 
 /* Paragraph — blockquote style with left border. */
 .paragraph {
-  font-size: 1.05rem;
-  line-height: 1.7;
+  font-size: 1.1rem;
+  line-height: 1.65;
   color: var(--text);
   margin: 0;
-  padding-left: 20px;
-  border-left: 3px solid var(--border-light);
+  padding-left: 24px;
+  border-left: 3px solid var(--text-dim);
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.55s forwards;
+}
+
+.paragraph strong {
+  font-weight: 600;
 }
 
 .empty {
@@ -121,7 +125,7 @@
   }
 
   .paragraph {
-    font-size: 0.95rem;
-    padding-left: 16px;
+    font-size: 1rem;
+    padding-left: 18px;
   }
 }
