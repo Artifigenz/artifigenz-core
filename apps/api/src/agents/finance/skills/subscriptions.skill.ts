@@ -176,24 +176,33 @@ export const subscriptionsSkill: SkillDefinition = {
     }
 
     // ─── JOB C: Change — new subs, price changes ─────────────────
+    // On first run (no known subs), skip "new" insights — we're just cataloging.
+    // Only show "new subscription" when it's truly new (appeared after initial catalog).
+    const isFirstRun = Object.keys(knownSubs).length === 0;
+
     for (const sub of detected) {
       const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
       const previous = knownSubs[key];
 
-      if (!previous) {
-        insights.push({
-          insightTypeId: "finance.subscriptions.new-detected",
-          title: `New subscription detected: ${sub.merchantName}`,
-          description: `We noticed a new recurring charge of $${sub.amount.toFixed(2)} ${sub.frequency} from ${sub.merchantName}.`,
-          data: {
-            merchant: sub.merchantName,
-            amount: sub.amount,
-            frequency: sub.frequency,
-            account: sub.accountName,
-          },
-          critical: false,
-        });
-      } else if (Math.abs(previous.amount - sub.amount) > 0.01) {
+      if (!previous && !isFirstRun) {
+        // Only show "new" if this isn't the first run AND it's a recent pattern.
+        // Check if subscription started recently (within ~60 days based on transaction count)
+        const isRecent = sub.transactionCount <= 3; // 3 monthly charges = ~90 days max
+        if (isRecent) {
+          insights.push({
+            insightTypeId: "finance.subscriptions.new-detected",
+            title: `New subscription detected: ${sub.merchantName}`,
+            description: `We noticed a new recurring charge of $${sub.amount.toFixed(2)} ${sub.frequency} from ${sub.merchantName}.`,
+            data: {
+              merchant: sub.merchantName,
+              amount: sub.amount,
+              frequency: sub.frequency,
+              account: sub.accountName,
+            },
+            critical: false,
+          });
+        }
+      } else if (previous && Math.abs(previous.amount - sub.amount) > 0.01) {
         const delta = sub.amount - previous.amount;
         const direction = delta > 0 ? "increased" : "decreased";
         insights.push({
