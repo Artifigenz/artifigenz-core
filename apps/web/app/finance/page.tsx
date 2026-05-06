@@ -11,7 +11,6 @@ import { FinanceIcon } from '@/components/sections/AgentIcons';
 import shell from '../agent/[name]/page.module.css';
 import styles from './page.module.css';
 
-const isDev = process.env.NODE_ENV === 'development';
 
 interface BriefNumber {
   value: string;
@@ -64,7 +63,7 @@ export default function FinanceBriefPage() {
   const [regenerating, setRegenerating] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
-  const shouldRegen = isDev && searchParams.get('regen') === '1';
+  const shouldRegen = searchParams.get('regen') === '1';
 
   useEffect(() => {
     let cancelled = false;
@@ -170,23 +169,21 @@ export default function FinanceBriefPage() {
             </p>
           </div>
           <div className={shell.badges}>
-            {isDev && (
-              <button
-                className={shell.headerBtn}
-                type="button"
-                disabled={regenerating}
-                onClick={() => {
-                  window.location.href = '/finance?regen=1';
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 4v6h-6" />
-                  <path d="M1 20v-6h6" />
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                </svg>
-                {regenerating ? 'Regenerating...' : 'Regenerate'}
-              </button>
-            )}
+            <button
+              className={shell.headerBtn}
+              type="button"
+              disabled={regenerating}
+              onClick={() => {
+                window.location.href = '/finance?regen=1';
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 4v6h-6" />
+                <path d="M1 20v-6h6" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+              {regenerating ? 'Regenerating...' : 'Regenerate'}
+            </button>
             <button className={shell.headerBtn} type="button">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
