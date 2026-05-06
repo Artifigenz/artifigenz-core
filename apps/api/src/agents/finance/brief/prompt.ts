@@ -1,4 +1,8 @@
 import type { Digest } from "./helpers/types";
+import {
+  extractVerdictDimensions,
+  type VerdictDimensions,
+} from "./helpers/verdict-dimensions";
 
 export const BRIEF_SYSTEM_PROMPT = `You are the user's personal finance agent, speaking directly to them in the first person. Your job is to produce the Brief — a single compressed read of their financial situation, shown as the home screen of the Finance agent.
 
@@ -6,7 +10,100 @@ Your tone: sharp, warm, plain-spoken advisor. Not a chatbot. Not a dashboard. Yo
 
 You always return JSON in the exact shape specified. No prose outside the JSON.`;
 
+/**
+ * Format a number as money (e.g., $1,234 or -$567).
+ */
+function formatMoney(amount: number): string {
+  const abs = Math.abs(Math.round(amount));
+  const formatted = abs.toLocaleString("en-US");
+  return amount < 0 ? `-$${formatted}` : `$${formatted}`;
+}
+
+/**
+ * Build the verdict prompt using structured dimensions.
+ */
+function buildVerdictSection(d: VerdictDimensions): string {
+  const lines: string[] = [];
+
+  lines.push("## VERDICT DIMENSIONS");
+  lines.push("");
+  lines.push("Generate a one-sentence verdict based on these dimensions:");
+  lines.push("");
+
+  // Cash Position
+  lines.push("**CASH POSITION**");
+  lines.push(`Monthly income: ${formatMoney(d.incomeMonthly)}`);
+  lines.push(
+    `Monthly leftover: ${formatMoney(d.leftoverMonthly)} (${d.surplusOrDeficit})`,
+  );
+  lines.push(`Margin: ${d.marginPercent.toFixed(1)}% of income`);
+  lines.push("");
+
+  // Fixed Load
+  lines.push("**FIXED LOAD**");
+  lines.push(`Recurring expenses: ${formatMoney(d.recurringMonthly)}/mo`);
+  lines.push(`Recurring as % of income: ${d.recurringPercent.toFixed(1)}%`);
+  lines.push("");
+
+  // Stress Signals
+  lines.push("**STRESS SIGNALS**");
+  if (d.negativeBalanceDays > 0) {
+    lines.push(`• Negative balance: ${d.negativeBalanceDays} days`);
+  } else {
+    lines.push("• No negative balance days");
+  }
+  if (d.nsfCount > 0) {
+    lines.push(`• Overdraft/NSF fees: ${d.nsfCount} occurrences`);
+  } else {
+    lines.push("• No overdraft fees");
+  }
+  lines.push("");
+
+  // Trend
+  lines.push("**TREND**");
+  lines.push(`Direction: ${d.trend}`);
+  if (d.trendDetail) {
+    lines.push(`Detail: ${d.trendDetail}`);
+  }
+  lines.push("");
+
+  // Root Cause
+  lines.push("**ROOT CAUSE**");
+  if (d.biggestRecurring) {
+    lines.push(
+      `Biggest recurring: ${d.biggestRecurring.name} at ${formatMoney(d.biggestRecurring.amount)}/mo (${d.biggestRecurring.percentOfIncome.toFixed(1)}% of income)`,
+    );
+  }
+  if (d.biggestDiscretionary) {
+    lines.push(
+      `Biggest discretionary: ${d.biggestDiscretionary.name} at ${formatMoney(d.biggestDiscretionary.amount)} this period`,
+    );
+  }
+  lines.push("");
+
+  // Buffer
+  lines.push("**BUFFER**");
+  lines.push(`Current balance: ${formatMoney(d.currentBalance)}`);
+  lines.push(
+    `Runway: ~${d.runwayDays > 100 ? "100+" : d.runwayDays} days at current spend rate`,
+  );
+  lines.push("");
+
+  // Verdict Rules
+  lines.push("**VERDICT RULES**");
+  lines.push("- One sentence, first person (\"You're...\", \"Your...\")");
+  lines.push("- Match the data — not more positive or negative than reality");
+  lines.push("- Be specific when it helps (mention amounts, percentages, or causes)");
+  lines.push("- Punchy, not clinical or generic");
+  lines.push("- No emojis");
+  lines.push("");
+
+  return lines.join("\n");
+}
+
 export function buildBriefPrompt(digest: Digest): string {
+  const dimensions = extractVerdictDimensions(digest);
+
   return `Produce the Brief for this user. Return a JSON object with exactly these fields:
 
 {
@@ -16,21 +113,7 @@ export function buildBriefPrompt(digest: Digest): string {
   "data_scope": string    // "Based on N accounts, D days."
 }
 
-VOICE GUIDANCE — verdict
-Choose or paraphrase within this bank. Match the user's actual situation; do not pick a verdict more positive or negative than the data supports.
-
-- You're doing well — but leaking momentum.
-- You earn well, but your cash flow is under more pressure than it should be.
-- You're in better shape than most people I see.
-- Your foundation is solid. The next move is direction, not repair.
-- Your income is strong, but your buffer is thinner than it looks.
-- You're running lean — one unexpected bill could tighten things.
-- You're holding steady. The work now is protecting what you have.
-- Your money arrives out of sync with when you need it.
-- You're spending within your means, but you have no margin.
-- Your recurring load is eating more of your income than it should.
-- Something's shifted in the last couple of months — and not for the better.
-- You're quietly building slack. Keep doing what you're doing.
+${buildVerdictSection(dimensions)}
 
 RULES — numbers
 - Include exactly 3 entries if digest.days_of_data >= 60 AND digest.accounts_count >= 2.
