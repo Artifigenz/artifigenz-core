@@ -58,7 +58,9 @@ export class SkillExecutor {
     });
 
     // Run the skill
+    console.log(`[SkillExecutor] Running skill ${params.skillId} for agent ${params.agentInstanceId}`);
     const outputs = await skill.analyze(ctx);
+    console.log(`[SkillExecutor] Skill returned ${outputs.length} outputs`);
 
     // Persist insights
     const insightIds = await insightService.persist({

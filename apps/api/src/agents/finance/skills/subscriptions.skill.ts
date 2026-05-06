@@ -58,6 +58,8 @@ export const subscriptionsSkill: SkillDefinition = {
     const insights: InsightOutput[] = [];
     const agentInstanceId = ctx.agentInstance.id;
 
+    console.log(`[Subscriptions] Running for agent instance ${agentInstanceId}`);
+
     // ─── Load transactions ────────────────────────────────────────
     const txRows = await db
       .select()
@@ -65,7 +67,12 @@ export const subscriptionsSkill: SkillDefinition = {
       .where(eq(financeTransactions.agentInstanceId, agentInstanceId))
       .orderBy(desc(financeTransactions.transactionDate));
 
-    if (txRows.length === 0) return [];
+    console.log(`[Subscriptions] Found ${txRows.length} transactions`);
+
+    if (txRows.length === 0) {
+      console.log(`[Subscriptions] No transactions, returning empty`);
+      return [];
+    }
 
     // ─── Run detection ────────────────────────────────────────────
     const detected = detectRecurring(
@@ -80,10 +87,14 @@ export const subscriptionsSkill: SkillDefinition = {
       })),
     );
 
+    console.log(`[Subscriptions] Detected ${detected.length} subscriptions:`, detected.map(d => d.merchantName));
+
     // ─── Load previous state ──────────────────────────────────────
     const state = (await ctx.getSkillState<SkillState>()) ?? {};
     const knownSubs = state.knownSubscriptions ?? {};
     const isFirstRun = Object.keys(knownSubs).length === 0;
+
+    console.log(`[Subscriptions] isFirstRun=${isFirstRun}, knownSubs count=${Object.keys(knownSubs).length}`);
 
     // ─── Upsert detected subscriptions into DB ────────────────────
     for (const sub of detected) {
@@ -285,6 +296,7 @@ export const subscriptionsSkill: SkillDefinition = {
       subscription_cost_annual: monthlyTotal * 12,
     });
 
+    console.log(`[Subscriptions] Returning ${insights.length} insights:`, insights.map(i => i.insightTypeId));
     return insights;
   },
 };
