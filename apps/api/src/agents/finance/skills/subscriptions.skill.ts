@@ -26,7 +26,7 @@ export const subscriptionsSkill: SkillDefinition = {
       id: "finance.subscriptions.welcome",
       name: "Subscription Overview",
       critical: false,
-      deliveryChannels: ["in_app"],
+      deliveryChannels: ["in_app", "email"],
     },
     {
       id: "finance.subscriptions.upcoming",

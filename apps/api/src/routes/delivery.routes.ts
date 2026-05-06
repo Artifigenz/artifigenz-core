@@ -9,18 +9,31 @@ app.use("/*", clerkAuth);
 // GET /api/me/delivery
 app.get("/", async (c) => {
   const user = c.get("user");
-  const [prefs] = await db
+  let [prefs] = await db
     .select()
     .from(deliveryPreferences)
     .where(eq(deliveryPreferences.userId, user.id))
     .limit(1);
 
+  // Auto-create delivery preferences with email from Clerk if not exists
   if (!prefs) {
-    return c.json({
-      email: { enabled: false, address: null },
-      whatsapp: { enabled: false, number: null },
-      telegram: { enabled: false, chatId: null },
-    });
+    [prefs] = await db
+      .insert(deliveryPreferences)
+      .values({
+        userId: user.id,
+        emailAddress: user.email, // From Clerk
+        emailEnabled: false,
+      })
+      .returning();
+  }
+
+  // If email address is missing but user has one in Clerk, update it
+  if (!prefs.emailAddress && user.email) {
+    [prefs] = await db
+      .update(deliveryPreferences)
+      .set({ emailAddress: user.email, updatedAt: new Date() })
+      .where(eq(deliveryPreferences.userId, user.id))
+      .returning();
   }
 
   return c.json({
