@@ -11,6 +11,14 @@ import {
   type BriefEvent,
 } from "../agents/finance/brief/events";
 import { runBriefGeneration } from "../agents/finance/brief/orchestrator";
+import { SkillExecutor } from "../platform/execution/skill-executor";
+import { AgentRegistry } from "../platform/registry/agent-registry";
+import { register as registerFinance } from "../agents/finance";
+
+// Skill executor for running insights after brief generation
+const registry = new AgentRegistry();
+registerFinance(registry);
+const skillExecutor = new SkillExecutor(registry);
 
 const app = new Hono();
 app.use("/*", clerkAuth);
@@ -50,9 +58,21 @@ app.post("/generate", async (c) => {
   createGeneration(generationId);
 
   // Fire-and-forget. The Promise keeps running after we return the response.
-  runBriefGeneration(user.id, instance.id, generationId).catch((err) => {
-    console.error(`[Brief] Orchestrator crashed for ${generationId}:`, err);
-  });
+  runBriefGeneration(user.id, instance.id, generationId)
+    .then(async () => {
+      // After brief completes, run the subscriptions skill to refresh insights
+      try {
+        await skillExecutor.execute({
+          agentInstanceId: instance.id,
+          skillId: "finance.subscriptions",
+        });
+      } catch (err) {
+        console.error(`[Brief] Skill execution failed for ${generationId}:`, err);
+      }
+    })
+    .catch((err) => {
+      console.error(`[Brief] Orchestrator crashed for ${generationId}:`, err);
+    });
 
   return c.json({ generation_id: generationId });
 });
