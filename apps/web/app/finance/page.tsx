@@ -217,7 +217,7 @@ export default function FinanceBriefPage() {
       if (settingsTab === 'accounts') {
         setConnectionsLoading(true);
         try {
-          const data = await api.listConnections(activation.agentInstanceId);
+          const data = await api.listConnections(activation.id);
           if (!cancelled) setConnections(data);
         } catch {
           // ignore
@@ -243,7 +243,7 @@ export default function FinanceBriefPage() {
   async function handleDisconnect(connectionId: string) {
     if (!activation) return;
     try {
-      await api.disconnectConnection(activation.agentInstanceId, connectionId);
+      await api.disconnectConnection(activation.id, connectionId);
       setConnections((prev) => prev.filter((c) => c.id !== connectionId));
     } catch {
       // ignore
@@ -254,13 +254,13 @@ export default function FinanceBriefPage() {
     if (!activation) return;
     try {
       const { linkToken } = await api.initConnection(
-        activation.agentInstanceId,
+        activation.id,
         'plaid',
         { redirectUri: window.location.href }
       );
       // Store for Plaid Link callback
       sessionStorage.setItem('plaid_link_token', linkToken);
-      sessionStorage.setItem('plaid_agent_instance_id', activation.agentInstanceId);
+      sessionStorage.setItem('plaid_agent_instance_id', activation.id);
       // Open Plaid Link via redirect (simplified - would normally use Plaid Link SDK)
       window.location.href = `/finance/connect?token=${linkToken}`;
     } catch {
