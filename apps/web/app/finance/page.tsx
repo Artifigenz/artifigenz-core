@@ -37,6 +37,23 @@ interface Insight {
   createdAt: string;
 }
 
+interface Connection {
+  id: string;
+  displayName: string;
+  status: string;
+  institutionName: string;
+  lastSyncedAt: string | null;
+  accounts: { id: string; name: string; mask: string }[];
+}
+
+interface DeliveryPrefs {
+  email: { enabled: boolean; address: string | null };
+  telegram: { enabled: boolean; chatId: string | null };
+  whatsapp: { enabled: boolean; number: string | null };
+}
+
+type SettingsTab = 'accounts' | 'delivery';
+
 function formatSince(iso: number): string {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
@@ -74,6 +91,15 @@ export default function FinanceBriefPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(true);
+
+  // Settings modal state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('accounts');
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [delivery, setDelivery] = useState<DeliveryPrefs | null>(null);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliverySaving, setDeliverySaving] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -182,6 +208,84 @@ export default function FinanceBriefPage() {
     };
   }, [api]);
 
+  // Fetch settings data when modal opens
+  useEffect(() => {
+    if (!settingsOpen || !activation) return;
+    let cancelled = false;
+
+    (async () => {
+      if (settingsTab === 'accounts') {
+        setConnectionsLoading(true);
+        try {
+          const data = await api.listConnections(activation.agentInstanceId);
+          if (!cancelled) setConnections(data);
+        } catch {
+          // ignore
+        } finally {
+          if (!cancelled) setConnectionsLoading(false);
+        }
+      } else if (settingsTab === 'delivery') {
+        setDeliveryLoading(true);
+        try {
+          const data = await api.getDeliveryPreferences();
+          if (!cancelled) setDelivery(data);
+        } catch {
+          // ignore
+        } finally {
+          if (!cancelled) setDeliveryLoading(false);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [settingsOpen, settingsTab, activation, api]);
+
+  async function handleDisconnect(connectionId: string) {
+    if (!activation) return;
+    try {
+      await api.disconnectConnection(activation.agentInstanceId, connectionId);
+      setConnections((prev) => prev.filter((c) => c.id !== connectionId));
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleAddAccount() {
+    if (!activation) return;
+    try {
+      const { linkToken } = await api.initConnection(
+        activation.agentInstanceId,
+        'plaid',
+        { redirectUri: window.location.href }
+      );
+      // Store for Plaid Link callback
+      sessionStorage.setItem('plaid_link_token', linkToken);
+      sessionStorage.setItem('plaid_agent_instance_id', activation.agentInstanceId);
+      // Open Plaid Link via redirect (simplified - would normally use Plaid Link SDK)
+      window.location.href = `/finance/connect?token=${linkToken}`;
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleDeliveryToggle(
+    channel: 'email' | 'telegram' | 'whatsapp',
+    enabled: boolean
+  ) {
+    if (!delivery) return;
+    setDeliverySaving(true);
+    try {
+      const updated = await api.updateDeliveryPreferences({
+        [channel]: { enabled },
+      });
+      setDelivery(updated);
+    } catch {
+      // ignore
+    } finally {
+      setDeliverySaving(false);
+    }
+  }
+
   const since = activation ? formatSince(activation.activatedAt) : '';
   const lastAnalyzed = brief ? formatAgo(brief.generated_at) : '';
 
@@ -218,7 +322,11 @@ export default function FinanceBriefPage() {
               </svg>
               {regenerating ? 'Regenerating...' : 'Regenerate'}
             </button>
-            <button className={shell.headerBtn} type="button">
+            <button
+              className={shell.headerBtn}
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -300,6 +408,149 @@ export default function FinanceBriefPage() {
         )}
       </main>
       <ChatInput agent="Finance" />
+
+      {/* Settings Modal */}
+      {settingsOpen && (
+        <div className={styles.modalOverlay} onClick={() => setSettingsOpen(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>Finance Settings</h2>
+              <button
+                className={styles.modalClose}
+                onClick={() => setSettingsOpen(false)}
+                aria-label="Close"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <nav className={styles.modalNav}>
+                <button
+                  className={`${styles.navItem} ${settingsTab === 'accounts' ? styles.navItemActive : ''}`}
+                  onClick={() => setSettingsTab('accounts')}
+                >
+                  Accounts
+                </button>
+                <button
+                  className={`${styles.navItem} ${settingsTab === 'delivery' ? styles.navItemActive : ''}`}
+                  onClick={() => setSettingsTab('delivery')}
+                >
+                  Delivery
+                </button>
+              </nav>
+
+              <div className={styles.modalContent}>
+                {settingsTab === 'accounts' && (
+                  <div className={styles.accountsTab}>
+                    <p className={styles.tabDescription}>
+                      Connected bank accounts that your finance agent monitors.
+                    </p>
+
+                    {connectionsLoading ? (
+                      <p className={styles.loading}>Loading accounts...</p>
+                    ) : connections.length === 0 ? (
+                      <p className={styles.emptyState}>No accounts connected yet.</p>
+                    ) : (
+                      <div className={styles.connectionsList}>
+                        {connections.map((conn) => (
+                          <div key={conn.id} className={styles.connectionCard}>
+                            <div className={styles.connectionInfo}>
+                              <span className={styles.connectionName}>{conn.institutionName}</span>
+                              <span className={styles.connectionAccounts}>
+                                {conn.accounts.map((a) => `${a.name} ••${a.mask}`).join(', ')}
+                              </span>
+                            </div>
+                            <button
+                              className={styles.disconnectBtn}
+                              onClick={() => handleDisconnect(conn.id)}
+                            >
+                              Disconnect
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <button className={styles.addAccountBtn} onClick={handleAddAccount}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      Add bank account
+                    </button>
+                  </div>
+                )}
+
+                {settingsTab === 'delivery' && (
+                  <div className={styles.deliveryTab}>
+                    <p className={styles.tabDescription}>
+                      Choose how you want to receive insights and alerts.
+                    </p>
+
+                    {deliveryLoading ? (
+                      <p className={styles.loading}>Loading preferences...</p>
+                    ) : delivery ? (
+                      <div className={styles.deliveryOptions}>
+                        <label className={styles.deliveryRow}>
+                          <div className={styles.deliveryInfo}>
+                            <span className={styles.deliveryLabel}>Email</span>
+                            <span className={styles.deliveryHint}>
+                              {delivery.email.address || 'Not configured'}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className={styles.toggle}
+                            checked={delivery.email.enabled}
+                            disabled={deliverySaving}
+                            onChange={(e) => handleDeliveryToggle('email', e.target.checked)}
+                          />
+                        </label>
+
+                        <label className={styles.deliveryRow}>
+                          <div className={styles.deliveryInfo}>
+                            <span className={styles.deliveryLabel}>Telegram</span>
+                            <span className={styles.deliveryHint}>
+                              {delivery.telegram.chatId ? 'Connected' : 'Not configured'}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className={styles.toggle}
+                            checked={delivery.telegram.enabled}
+                            disabled={deliverySaving || !delivery.telegram.chatId}
+                            onChange={(e) => handleDeliveryToggle('telegram', e.target.checked)}
+                          />
+                        </label>
+
+                        <label className={styles.deliveryRow}>
+                          <div className={styles.deliveryInfo}>
+                            <span className={styles.deliveryLabel}>Text (SMS)</span>
+                            <span className={styles.deliveryHint}>
+                              {delivery.whatsapp.number || 'Not configured'}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className={styles.toggle}
+                            checked={delivery.whatsapp.enabled}
+                            disabled={deliverySaving || !delivery.whatsapp.number}
+                            onChange={(e) => handleDeliveryToggle('whatsapp', e.target.checked)}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <p className={styles.emptyState}>Unable to load preferences.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
