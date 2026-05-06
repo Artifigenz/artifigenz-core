@@ -104,9 +104,9 @@ export default function FinanceBriefPage() {
           const { generation_id } = await api.generateBrief();
           await waitForGeneration(generation_id);
           if (cancelled) return;
-          setRegenerating(false);
-          // Strip ?regen from URL
-          router.replace('/finance');
+          // Reload page without ?regen to fetch fresh brief
+          window.location.href = '/finance';
+          return;
         }
         const data = await api.getCurrentBrief();
         if (!cancelled) setBrief(data);
