@@ -117,7 +117,7 @@ async function seed() {
         name: "Subscription Overview",
         description: "First-run welcome insight with subscription summary",
         isCritical: false,
-        deliveryChannels: ["in_app"],
+        deliveryChannels: ["in_app", "email"],
       },
       {
         id: "finance.subscriptions.upcoming",
