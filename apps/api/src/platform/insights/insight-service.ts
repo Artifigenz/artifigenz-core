@@ -3,6 +3,7 @@ import { db, insights } from "@artifigenz/db";
 import { createHash } from "node:crypto";
 import { eventBus } from "../events/event-bus";
 import { INSIGHT_CREATED } from "../events/event-types";
+import { deliveryService } from "../delivery/delivery-service";
 import type { InsightOutput } from "../registry/types";
 import type { FeedOptions, InsightFeedPage } from "./types";
 
@@ -46,6 +47,11 @@ export class InsightService {
           agentInstanceId: params.agentInstanceId,
           insightTypeId: output.insightTypeId,
           critical: output.critical,
+        });
+
+        // Route to delivery channels directly (fallback when workers aren't running)
+        deliveryService.route(inserted.id).catch((err) => {
+          console.error(`[InsightService] Delivery routing failed for ${inserted.id}:`, err);
         });
       }
     }

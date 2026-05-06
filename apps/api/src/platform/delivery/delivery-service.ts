@@ -46,6 +46,7 @@ export class DeliveryService {
 
     // Get allowed channels from insight type config
     const allowedChannels = typeConfig.deliveryChannels ?? [];
+    console.log(`[DeliveryService] Insight type ${insight.insightTypeId} allows channels:`, allowedChannels);
 
     // Get user's enabled channels
     const [prefs] = await db
@@ -60,11 +61,13 @@ export class DeliveryService {
     if (prefs.emailEnabled && prefs.emailAddress) userEnabledChannels.push("email");
     if (prefs.telegramEnabled && prefs.telegramChatId) userEnabledChannels.push("telegram");
     if (prefs.whatsappEnabled && prefs.whatsappNumber) userEnabledChannels.push("whatsapp");
+    console.log(`[DeliveryService] User enabled channels:`, userEnabledChannels);
 
     // Intersect: channels that the insight type allows AND the user has enabled
     const targetChannels = allowedChannels.filter(
       (c) => c !== "in_app" && userEnabledChannels.includes(c),
     );
+    console.log(`[DeliveryService] Target channels:`, targetChannels);
 
     if (targetChannels.length === 0) return;
 
@@ -81,16 +84,39 @@ export class DeliveryService {
       isCritical: insight.isCritical ?? false,
     };
 
+    // If Redis is available, queue for async delivery; otherwise send directly
+    const useQueue = !!process.env.REDIS_URL;
+
     for (const channelId of targetChannels) {
-      await deliveryQueue.add(`deliver-${insight.id}-${channelId}`, {
-        insightId: insight.id,
-        userId: insight.userId,
-        channel: channelId,
-        insight: insightForDelivery,
-      });
-      console.log(
-        `[DeliveryService] Queued ${channelId} delivery for insight ${insight.id.slice(0, 8)}`,
-      );
+      if (useQueue) {
+        await deliveryQueue.add(`deliver-${insight.id}-${channelId}`, {
+          insightId: insight.id,
+          userId: insight.userId,
+          channel: channelId,
+          insight: insightForDelivery,
+        });
+        console.log(
+          `[DeliveryService] Queued ${channelId} delivery for insight ${insight.id.slice(0, 8)}`,
+        );
+      } else {
+        // Send directly (synchronous fallback)
+        try {
+          const result = await this.deliverNow({
+            channelId,
+            userId: insight.userId,
+            insight: insightForDelivery,
+          });
+          console.log(
+            `[DeliveryService] Sent ${channelId} for insight ${insight.id.slice(0, 8)}:`,
+            result.success ? "success" : result.error,
+          );
+        } catch (err) {
+          console.error(
+            `[DeliveryService] Failed ${channelId} for insight ${insight.id.slice(0, 8)}:`,
+            err,
+          );
+        }
+      }
     }
   }
 
