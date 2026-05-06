@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, agentInstances, users } from "@artifigenz/db";
 import { getRedisConnection } from "../queues";
 import { runBriefGeneration } from "../../../agents/finance/brief/orchestrator";
+import { runSubscriptionRadar } from "../../../agents/finance/skills/subscription-radar";
 import { randomUUID } from "node:crypto";
 
 /**
@@ -39,6 +40,10 @@ export function createBriefRefreshWorker() {
           // generation_id is unused here (no SSE subscriber), but the
           // orchestrator still emits into its Map; the entry expires via TTL.
           await runBriefGeneration(userId, agentInstanceId, randomUUID());
+
+          // Run skill jobs (insights generation)
+          await runSubscriptionRadar(userId, agentInstanceId);
+
           succeeded += 1;
         } catch (err) {
           failed += 1;

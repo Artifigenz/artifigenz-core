@@ -26,6 +26,17 @@ interface Brief {
   generated_at: string;
 }
 
+interface Insight {
+  id: string;
+  title: string;
+  description: string | null;
+  insightTypeId: string;
+  data: Record<string, unknown>;
+  isCritical: boolean;
+  isRead: boolean;
+  createdAt: string;
+}
+
 function formatSince(iso: number): string {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
@@ -61,6 +72,8 @@ export default function FinanceBriefPage() {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(true);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -148,6 +161,27 @@ export default function FinanceBriefPage() {
   const typedVerdict = verdictTarget.slice(0, typedChars);
   const isTyping = typedChars < verdictTarget.length;
 
+  // Fetch insights
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const feed = await api.getInsights({ limit: 20 });
+        if (!cancelled) {
+          setInsights(feed.insights);
+          setInsightsLoading(false);
+        }
+      } catch {
+        if (!cancelled) setInsightsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
   const since = activation ? formatSince(activation.activatedAt) : '';
   const lastAnalyzed = brief ? formatAgo(brief.generated_at) : '';
 
@@ -227,6 +261,37 @@ export default function FinanceBriefPage() {
             <p className={styles.paragraph}>
               &ldquo;{formatParagraph(brief.paragraph)}&rdquo;
             </p>
+
+            {/* Insights Feed */}
+            {!insightsLoading && insights.length > 0 && (
+              <section className={styles.insightsFeed}>
+                <h3 className={styles.insightsHeader}>Today's Insights</h3>
+                <div className={styles.insightsList}>
+                  {insights.map((insight) => (
+                    <div
+                      key={insight.id}
+                      className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
+                    >
+                      <div className={styles.insightIcon}>
+                        {insight.insightTypeId.includes('price-change') && '⚠️'}
+                        {insight.insightTypeId.includes('upcoming') && '📅'}
+                        {insight.insightTypeId.includes('new') && '✨'}
+                        {insight.insightTypeId.includes('charged') && '✓'}
+                      </div>
+                      <div className={styles.insightContent}>
+                        <span className={styles.insightTitle}>{insight.title}</span>
+                        {insight.description && (
+                          <span className={styles.insightDescription}>{insight.description}</span>
+                        )}
+                      </div>
+                      {insight.isCritical && (
+                        <span className={styles.criticalBadge}>Action needed</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         ) : (
           <div className={styles.empty} />

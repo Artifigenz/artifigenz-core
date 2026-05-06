@@ -56,6 +56,15 @@ async function seed() {
         triggerEvents: ["data_source.synced"],
         isActive: true,
       },
+      {
+        id: "subscription-radar",
+        agentTypeId: "finance",
+        name: "Subscription Radar",
+        description: "Daily subscription monitoring: upcoming charges, new subscriptions, price changes, and charge confirmations.",
+        triggerSchedule: "0 2 * * *",
+        triggerEvents: ["brief.generated"],
+        isActive: true,
+      },
     ])
     .onConflictDoNothing();
 
@@ -149,6 +158,39 @@ async function seed() {
         description: "Weekly/monthly subscription spending summary",
         isCritical: false,
         deliveryChannels: ["in_app", "email"],
+      },
+      // Subscription Radar skill insight types
+      {
+        id: "subscription-radar.upcoming",
+        skillId: "subscription-radar",
+        name: "Upcoming Charge",
+        description: "A subscription is charging today",
+        isCritical: false,
+        deliveryChannels: ["in_app"],
+      },
+      {
+        id: "subscription-radar.new",
+        skillId: "subscription-radar",
+        name: "New Subscription",
+        description: "A new recurring charge pattern has been detected",
+        isCritical: false,
+        deliveryChannels: ["in_app", "email"],
+      },
+      {
+        id: "subscription-radar.price-change",
+        skillId: "subscription-radar",
+        name: "Price Change",
+        description: "A subscription charged a different amount than expected",
+        isCritical: true,
+        deliveryChannels: ["in_app", "email"],
+      },
+      {
+        id: "subscription-radar.charged",
+        skillId: "subscription-radar",
+        name: "Charged as Expected",
+        description: "A subscription charged at its usual amount",
+        isCritical: false,
+        deliveryChannels: ["in_app"],
       },
     ])
     .onConflictDoNothing();
