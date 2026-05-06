@@ -5,6 +5,7 @@ import {
   agentInstances,
   agentInstanceSkills,
   dataSourceConnections,
+  insights,
 } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { eventBus } from "../platform/events/event-bus";
@@ -198,6 +199,72 @@ export function createAgentRoutes(registry: AgentRegistry) {
       return c.json({ skill: updated });
     },
   );
+
+  // POST /api/me/agents/:agentInstanceId/skills/:skillId/reset — Reset skill state (dev tool)
+  app.post(
+    "/me/agents/:agentInstanceId/skills/:skillId/reset",
+    async (c) => {
+      const user = c.get("user");
+      const agentInstanceId = c.req.param("agentInstanceId");
+      const skillId = c.req.param("skillId");
+
+      // Verify user owns this agent instance
+      const [instance] = await db
+        .select()
+        .from(agentInstances)
+        .where(
+          and(
+            eq(agentInstances.id, agentInstanceId),
+            eq(agentInstances.userId, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!instance) return c.json({ error: "Agent not found" }, 404);
+
+      // Reset the skill state to empty object
+      const [updated] = await db
+        .update(agentInstanceSkills)
+        .set({ state: {}, updatedAt: new Date() })
+        .where(
+          and(
+            eq(agentInstanceSkills.agentInstanceId, agentInstanceId),
+            eq(agentInstanceSkills.skillId, skillId),
+          ),
+        )
+        .returning();
+
+      if (!updated) return c.json({ error: "Skill not found" }, 404);
+      return c.body(null, 204);
+    },
+  );
+
+  // DELETE /api/me/agents/:agentInstanceId/insights — Clear all insights (dev tool)
+  app.delete("/me/agents/:agentInstanceId/insights", async (c) => {
+    const user = c.get("user");
+    const agentInstanceId = c.req.param("agentInstanceId");
+
+    // Verify user owns this agent instance
+    const [instance] = await db
+      .select()
+      .from(agentInstances)
+      .where(
+        and(
+          eq(agentInstances.id, agentInstanceId),
+          eq(agentInstances.userId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (!instance) return c.json({ error: "Agent not found" }, 404);
+
+    // Delete all insights for this agent instance
+    await db
+      .delete(insights)
+      .where(eq(insights.agentInstanceId, agentInstanceId));
+
+    return c.body(null, 204);
+  });
 
   return app;
 }

@@ -54,7 +54,7 @@ interface DeliveryPrefs {
   whatsapp: { enabled: boolean; number: string | null };
 }
 
-type SettingsTab = 'accounts' | 'delivery';
+type SettingsTab = 'accounts' | 'delivery' | 'devtools';
 
 function formatSince(iso: number): string {
   if (!iso) return '';
@@ -106,6 +106,8 @@ export default function FinanceBriefPage() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [plaidBusy, setPlaidBusy] = useState(false);
+  const [resettingSkill, setResettingSkill] = useState(false);
+  const [clearingInsights, setClearingInsights] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -346,6 +348,36 @@ export default function FinanceBriefPage() {
     }
   }
 
+  async function handleRegenerate() {
+    setSettingsOpen(false);
+    window.location.href = '/finance?regen=1';
+  }
+
+  async function handleResetSkillState() {
+    if (!activation) return;
+    setResettingSkill(true);
+    try {
+      await api.resetSkillState(activation.id, 'finance.subscriptions');
+    } catch {
+      // ignore
+    } finally {
+      setResettingSkill(false);
+    }
+  }
+
+  async function handleClearInsights() {
+    if (!activation) return;
+    setClearingInsights(true);
+    try {
+      await api.clearInsights(activation.id);
+      setInsights([]);
+    } catch {
+      // ignore
+    } finally {
+      setClearingInsights(false);
+    }
+  }
+
   const since = activation ? formatSince(activation.activatedAt) : '';
   const lastAnalyzed = brief ? formatAgo(brief.generated_at) : '';
 
@@ -367,21 +399,6 @@ export default function FinanceBriefPage() {
             </p>
           </div>
           <div className={shell.badges}>
-            <button
-              className={shell.headerBtn}
-              type="button"
-              disabled={regenerating}
-              onClick={() => {
-                window.location.href = '/finance?regen=1';
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 4v6h-6" />
-                <path d="M1 20v-6h6" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-              {regenerating ? 'Regenerating...' : 'Regenerate'}
-            </button>
             <button
               className={shell.headerBtn}
               type="button"
@@ -499,6 +516,12 @@ export default function FinanceBriefPage() {
                 >
                   Delivery
                 </button>
+                <button
+                  className={`${styles.navItem} ${settingsTab === 'devtools' ? styles.navItemActive : ''}`}
+                  onClick={() => setSettingsTab('devtools')}
+                >
+                  Dev Tools
+                </button>
               </nav>
 
               <div className={styles.modalContent}>
@@ -613,6 +636,64 @@ export default function FinanceBriefPage() {
                     ) : (
                       <p className={styles.emptyState}>Unable to load preferences.</p>
                     )}
+                  </div>
+                )}
+
+                {settingsTab === 'devtools' && (
+                  <div className={styles.devtoolsTab}>
+                    <p className={styles.tabDescription}>
+                      Development tools for testing and debugging.
+                    </p>
+
+                    <div className={styles.devtoolsActions}>
+                      <div className={styles.devtoolsAction}>
+                        <div className={styles.devtoolsInfo}>
+                          <span className={styles.devtoolsLabel}>Regenerate Brief</span>
+                          <span className={styles.devtoolsHint}>
+                            Re-run the brief generation pipeline and refresh insights.
+                          </span>
+                        </div>
+                        <button
+                          className={styles.devtoolsBtn}
+                          onClick={handleRegenerate}
+                          disabled={regenerating}
+                        >
+                          {regenerating ? 'Regenerating...' : 'Regenerate'}
+                        </button>
+                      </div>
+
+                      <div className={styles.devtoolsAction}>
+                        <div className={styles.devtoolsInfo}>
+                          <span className={styles.devtoolsLabel}>Reset Subscription Skill</span>
+                          <span className={styles.devtoolsHint}>
+                            Clear skill state to trigger first-run welcome insights on next generation.
+                          </span>
+                        </div>
+                        <button
+                          className={styles.devtoolsBtn}
+                          onClick={handleResetSkillState}
+                          disabled={resettingSkill}
+                        >
+                          {resettingSkill ? 'Resetting...' : 'Reset State'}
+                        </button>
+                      </div>
+
+                      <div className={styles.devtoolsAction}>
+                        <div className={styles.devtoolsInfo}>
+                          <span className={styles.devtoolsLabel}>Clear All Insights</span>
+                          <span className={styles.devtoolsHint}>
+                            Remove all generated insights from the feed.
+                          </span>
+                        </div>
+                        <button
+                          className={`${styles.devtoolsBtn} ${styles.dangerBtn}`}
+                          onClick={handleClearInsights}
+                          disabled={clearingInsights}
+                        >
+                          {clearingInsights ? 'Clearing...' : 'Clear Insights'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

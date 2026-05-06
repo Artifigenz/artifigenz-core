@@ -437,4 +437,14 @@ export class ApiClient {
 
     return res;
   }
+
+  // ─── Dev Tools ──────────────────────────────────────────────────
+
+  async resetSkillState(agentInstanceId: string, skillId: string) {
+    return this.post<void>(`/api/me/agents/${agentInstanceId}/skills/${skillId}/reset`);
+  }
+
+  async clearInsights(agentInstanceId: string) {
+    return this.delete<void>(`/api/me/agents/${agentInstanceId}/insights`);
+  }
 }
