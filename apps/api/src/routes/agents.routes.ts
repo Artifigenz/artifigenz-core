@@ -201,9 +201,9 @@ export function createAgentRoutes(registry: AgentRegistry) {
     },
   );
 
-  // POST /api/me/agents/:agentInstanceId/skills/:skillId/reset — Reset skill state (dev tool)
+  // POST /api/agents/me/instances/:agentInstanceId/skills/:skillId/reset — Reset skill state (dev tool)
   app.post(
-    "/me/agents/:agentInstanceId/skills/:skillId/reset",
+    "/me/instances/:agentInstanceId/skills/:skillId/reset",
     async (c) => {
       const user = c.get("user");
       const agentInstanceId = c.req.param("agentInstanceId");
@@ -241,8 +241,8 @@ export function createAgentRoutes(registry: AgentRegistry) {
     },
   );
 
-  // DELETE /api/me/agents/:agentInstanceId/insights — Clear all insights (dev tool)
-  app.delete("/me/agents/:agentInstanceId/insights", async (c) => {
+  // DELETE /api/agents/me/instances/:agentInstanceId/insights — Clear all insights (dev tool)
+  app.delete("/me/instances/:agentInstanceId/insights", async (c) => {
     const user = c.get("user");
     const agentInstanceId = c.req.param("agentInstanceId");
 
@@ -268,8 +268,8 @@ export function createAgentRoutes(registry: AgentRegistry) {
     return c.body(null, 204);
   });
 
-  // GET /api/me/agents/:agentInstanceId/debug — Debug info (dev tool)
-  app.get("/me/agents/:agentInstanceId/debug", async (c) => {
+  // GET /api/agents/me/instances/:agentInstanceId/debug — Debug info (dev tool)
+  app.get("/me/instances/:agentInstanceId/debug", async (c) => {
     const user = c.get("user");
     const agentInstanceId = c.req.param("agentInstanceId");
 

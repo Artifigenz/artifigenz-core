@@ -441,11 +441,11 @@ export class ApiClient {
   // ─── Dev Tools ──────────────────────────────────────────────────
 
   async resetSkillState(agentInstanceId: string, skillId: string) {
-    return this.post<void>(`/api/me/agents/${agentInstanceId}/skills/${skillId}/reset`);
+    return this.post<void>(`/api/agents/me/instances/${agentInstanceId}/skills/${skillId}/reset`);
   }
 
   async clearInsights(agentInstanceId: string) {
-    return this.delete<void>(`/api/me/agents/${agentInstanceId}/insights`);
+    return this.delete<void>(`/api/agents/me/instances/${agentInstanceId}/insights`);
   }
 
   async getDebugInfo(agentInstanceId: string) {
@@ -469,6 +469,6 @@ export class ApiClient {
         category: string | null;
         accountName: string | null;
       }>;
-    }>(`/api/me/agents/${agentInstanceId}/debug`);
+    }>(`/api/agents/me/instances/${agentInstanceId}/debug`);
   }
 }
