@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import ChatInput from '@/components/sections/ChatInput';
 import { useApiClient } from '@/hooks/useApiClient';
@@ -10,6 +10,8 @@ import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { FinanceIcon } from '@/components/sections/AgentIcons';
 import shell from '../agent/[name]/page.module.css';
 import styles from './page.module.css';
+
+const isDev = process.env.NODE_ENV === 'development';
 
 interface BriefNumber {
   value: string;
@@ -53,20 +55,64 @@ function formatParagraph(text: string): React.ReactNode[] {
 export default function FinanceBriefPage() {
   const api = useApiClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getActivation } = useActivatedAgents();
   const activation = getActivation('finance');
 
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // Dev-only: ?regen triggers fresh brief generation
+  const shouldRegen = isDev && searchParams.get('regen') === '1';
 
   useEffect(() => {
     let cancelled = false;
+
+    async function waitForGeneration(generationId: string): Promise<void> {
+      const res = await api.briefEventsResponse(generationId);
+      if (!res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done || cancelled) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sepIdx;
+        while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, sepIdx);
+          buffer = buffer.slice(sepIdx + 2);
+          const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(5).trim());
+            if (event.type === 'complete' || event.type === 'error') return;
+          } catch {
+            // ignore malformed
+          }
+        }
+      }
+    }
+
     (async () => {
       try {
+        if (shouldRegen) {
+          setRegenerating(true);
+          const { generation_id } = await api.generateBrief();
+          await waitForGeneration(generation_id);
+          if (cancelled) return;
+          setRegenerating(false);
+          // Strip ?regen from URL
+          router.replace('/finance');
+        }
         const data = await api.getCurrentBrief();
         if (!cancelled) setBrief(data);
       } catch (err) {
         if (cancelled) return;
+        setRegenerating(false);
         const status = (err as { status?: number })?.status;
         if (status === 404) {
           router.replace('/finance/loading');
@@ -81,7 +127,7 @@ export default function FinanceBriefPage() {
     return () => {
       cancelled = true;
     };
-  }, [api, router]);
+  }, [api, router, shouldRegen]);
 
   // Typewriter reveal for the verdict — matches onboarding's 26ms cadence.
   const verdictTarget = brief?.verdict ?? '';
@@ -136,7 +182,9 @@ export default function FinanceBriefPage() {
           </div>
         </div>
 
-        {error ? (
+        {regenerating ? (
+          <p className={styles.verdict}>Regenerating your brief…</p>
+        ) : error ? (
           <p className={styles.verdict}>{error}</p>
         ) : brief ? (
           <>
