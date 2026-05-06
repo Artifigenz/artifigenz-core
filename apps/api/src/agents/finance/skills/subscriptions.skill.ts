@@ -23,16 +23,16 @@ export const subscriptionsSkill: SkillDefinition = {
 
   insightTypes: [
     {
-      id: "finance.subscriptions.visibility",
-      name: "Subscription Overview",
+      id: "finance.subscriptions.upcoming",
+      name: "Upcoming Charge",
       critical: false,
       deliveryChannels: ["in_app"],
     },
     {
-      id: "finance.subscriptions.charge-reminder",
-      name: "Charge Reminder",
-      critical: true,
-      deliveryChannels: ["in_app", "email", "whatsapp", "telegram"],
+      id: "finance.subscriptions.new",
+      name: "New Subscription",
+      critical: false,
+      deliveryChannels: ["in_app", "email"],
     },
     {
       id: "finance.subscriptions.price-change",
@@ -41,22 +41,10 @@ export const subscriptionsSkill: SkillDefinition = {
       deliveryChannels: ["in_app", "email"],
     },
     {
-      id: "finance.subscriptions.new-detected",
-      name: "New Subscription Detected",
+      id: "finance.subscriptions.charged",
+      name: "Charged as Expected",
       critical: false,
-      deliveryChannels: ["in_app", "email"],
-    },
-    {
-      id: "finance.subscriptions.duplicate",
-      name: "Duplicate Subscription",
-      critical: false,
-      deliveryChannels: ["in_app", "email"],
-    },
-    {
-      id: "finance.subscriptions.summary",
-      name: "Subscription Summary",
-      critical: false,
-      deliveryChannels: ["in_app", "email"],
+      deliveryChannels: ["in_app"],
     },
   ],
 
@@ -89,6 +77,7 @@ export const subscriptionsSkill: SkillDefinition = {
     // ─── Load previous state ──────────────────────────────────────
     const state = (await ctx.getSkillState<SkillState>()) ?? {};
     const knownSubs = state.knownSubscriptions ?? {};
+    const isFirstRun = Object.keys(knownSubs).length === 0;
 
     // ─── Upsert detected subscriptions into DB ────────────────────
     for (const sub of detected) {
@@ -107,92 +96,40 @@ export const subscriptionsSkill: SkillDefinition = {
         .onConflictDoNothing();
     }
 
-    // ─── JOB A: Visibility — total monthly cost ───────────────────
-    const monthlyTotal = calculateMonthlyTotal(detected);
-    const annualTotal = monthlyTotal * 12;
-
-    insights.push({
-      insightTypeId: "finance.subscriptions.visibility",
-      title: `${detected.length} subscriptions — $${monthlyTotal.toFixed(2)}/mo`,
-      description: `You have ${detected.length} recurring subscriptions costing $${monthlyTotal.toFixed(2)} per month ($${annualTotal.toFixed(2)}/yr).`,
-      data: {
-        count: detected.length,
-        monthlyTotal,
-        annualTotal,
-        subscriptions: detected.map((s) => ({
-          merchant: s.merchantName,
-          amount: s.amount,
-          frequency: s.frequency,
-          account: s.accountName,
-        })),
-      },
-      critical: false,
-    });
-
-    // ─── JOB B: Timing — upcoming charges ─────────────────────────
     const today = new Date().toISOString().slice(0, 10);
-    for (const sub of detected) {
-      const daysUntil = daysBetween(today, sub.nextChargeDate);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
-      // Day-before reminder
-      if (daysUntil === 1) {
+    // ─── JOB 1: Upcoming — charges happening TODAY ────────────────
+    for (const sub of detected) {
+      if (sub.nextChargeDate === today) {
         insights.push({
-          insightTypeId: "finance.subscriptions.charge-reminder",
-          title: `${sub.merchantName} charges $${sub.amount.toFixed(2)} tomorrow`,
-          description: `Heads up — ${sub.merchantName} will charge your ${sub.accountName ?? "account"} $${sub.amount.toFixed(2)} tomorrow.`,
+          insightTypeId: "finance.subscriptions.upcoming",
+          title: `${sub.merchantName} will charge $${sub.amount.toFixed(2)} today`,
+          description: `${sub.accountName ?? "Account"} · auto-renew`,
           data: {
             merchant: sub.merchantName,
             amount: sub.amount,
-            chargeDate: sub.nextChargeDate,
+            chargeDate: today,
             account: sub.accountName,
           },
-          critical: true,
+          critical: false,
         });
       }
     }
 
-    // Upcoming week digest
-    const upcoming = detected.filter((s) => {
-      const days = daysBetween(today, s.nextChargeDate);
-      return days >= 0 && days <= 7;
-    });
-    if (upcoming.length > 0) {
-      const weekTotal = upcoming.reduce((sum, s) => sum + s.amount, 0);
-      insights.push({
-        insightTypeId: "finance.subscriptions.charge-reminder",
-        title: `${upcoming.length} charges coming this week — $${weekTotal.toFixed(2)}`,
-        description: `${upcoming.length} subscriptions will charge in the next 7 days, totaling $${weekTotal.toFixed(2)}.`,
-        data: {
-          count: upcoming.length,
-          total: weekTotal,
-          charges: upcoming.map((s) => ({
-            merchant: s.merchantName,
-            amount: s.amount,
-            date: s.nextChargeDate,
-          })),
-        },
-        critical: false,
-      });
-    }
-
-    // ─── JOB C: Change — new subs, price changes ─────────────────
-    // On first run (no known subs), skip "new" insights — we're just cataloging.
-    // Only show "new subscription" when it's truly new (appeared after initial catalog).
-    const isFirstRun = Object.keys(knownSubs).length === 0;
-
-    for (const sub of detected) {
-      const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
-      const previous = knownSubs[key];
-
-      if (!previous && !isFirstRun) {
-        // Only show "new" if this isn't the first run AND it's a recent pattern.
-        // Check if subscription started recently (within ~60 days based on transaction count)
-        const isRecent = sub.transactionCount <= 3; // 3 monthly charges = ~90 days max
-        if (isRecent) {
+    // ─── JOB 2: New — truly new subscriptions ─────────────────────
+    // Only after first run, and only if the pattern is recent (≤3 charges)
+    if (!isFirstRun) {
+      for (const sub of detected) {
+        const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
+        const previous = knownSubs[key];
+        if (!previous && sub.transactionCount <= 3) {
           insights.push({
-            insightTypeId: "finance.subscriptions.new-detected",
-            title: `New subscription detected: ${sub.merchantName}`,
-            description: `We noticed a new recurring charge of $${sub.amount.toFixed(2)} ${sub.frequency} from ${sub.merchantName}.`,
+            insightTypeId: "finance.subscriptions.new",
+            title: `New subscription: ${sub.merchantName}`,
+            description: `$${sub.amount.toFixed(2)}/${sub.frequency === "monthly" ? "mo" : sub.frequency === "weekly" ? "wk" : sub.frequency === "annual" ? "yr" : sub.frequency}`,
             data: {
               merchant: sub.merchantName,
               amount: sub.amount,
@@ -202,13 +139,22 @@ export const subscriptionsSkill: SkillDefinition = {
             critical: false,
           });
         }
-      } else if (previous && Math.abs(previous.amount - sub.amount) > 0.01) {
+      }
+    }
+
+    // ─── JOB 3: Price Change — amount differs from expected ───────
+    for (const sub of detected) {
+      const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
+      const previous = knownSubs[key];
+      if (previous && Math.abs(previous.amount - sub.amount) > 0.50) {
         const delta = sub.amount - previous.amount;
         const direction = delta > 0 ? "increased" : "decreased";
         insights.push({
           insightTypeId: "finance.subscriptions.price-change",
-          title: `${sub.merchantName} price ${direction} by $${Math.abs(delta).toFixed(2)}`,
-          description: `${sub.merchantName} is now charging $${sub.amount.toFixed(2)} (was $${previous.amount.toFixed(2)}).`,
+          title: `${sub.merchantName} ${direction} $${previous.amount.toFixed(2)} → $${sub.amount.toFixed(2)}`,
+          description: delta > 0
+            ? `Up $${Math.abs(delta).toFixed(2)} from your usual rate`
+            : `Down $${Math.abs(delta).toFixed(2)} from your usual rate`,
           data: {
             merchant: sub.merchantName,
             oldAmount: previous.amount,
@@ -220,56 +166,31 @@ export const subscriptionsSkill: SkillDefinition = {
       }
     }
 
-    // ─── JOB D: Cleanup — duplicates ──────────────────────────────
-    const byMerchant = new Map<string, DetectedSubscription[]>();
+    // ─── JOB 4: Charged — recent charge at expected amount ────────
+    // Check if any subscription charged yesterday/today at expected amount
     for (const sub of detected) {
-      const existing = byMerchant.get(sub.merchantName) ?? [];
-      existing.push(sub);
-      byMerchant.set(sub.merchantName, existing);
-    }
-
-    for (const [merchant, subs] of byMerchant.entries()) {
-      if (subs.length > 1) {
-        const total = subs.reduce((sum, s) => sum + s.amount, 0);
-        insights.push({
-          insightTypeId: "finance.subscriptions.duplicate",
-          title: `${merchant} charged ${subs.length} times across accounts`,
-          description: `You're paying for ${merchant} on ${subs.length} different accounts, totaling $${total.toFixed(2)}. Consider consolidating.`,
-          data: {
-            merchant,
-            count: subs.length,
-            total,
-            accounts: subs.map((s) => ({
-              account: s.accountName,
-              amount: s.amount,
-            })),
-          },
-          critical: false,
-        });
+      const key = `${sub.merchantName}::${sub.accountName ?? ""}`;
+      const previous = knownSubs[key];
+      // Only show "charged" confirmation if we knew about this sub before
+      // and the last charge was yesterday or today
+      if (previous && (sub.lastChargeDate === today || sub.lastChargeDate === yesterdayStr)) {
+        // Check if amount is roughly the same (within 5%)
+        const amountMatch = Math.abs(previous.amount - sub.amount) / previous.amount < 0.05;
+        if (amountMatch) {
+          insights.push({
+            insightTypeId: "finance.subscriptions.charged",
+            title: `${sub.merchantName} charged $${sub.amount.toFixed(2)} — as expected`,
+            description: `${sub.accountName ?? "Account"} · No change from last month`,
+            data: {
+              merchant: sub.merchantName,
+              amount: sub.amount,
+              chargeDate: sub.lastChargeDate,
+              account: sub.accountName,
+            },
+            critical: false,
+          });
+        }
       }
-    }
-
-    // ─── JOB E: Insight — biggest subs ───────────────────────────
-    if (detected.length >= 3) {
-      const biggest = [...detected]
-        .sort((a, b) => monthlyCost(b) - monthlyCost(a))
-        .slice(0, 3);
-
-      insights.push({
-        insightTypeId: "finance.subscriptions.summary",
-        title: `Your top 3 subscriptions: ${biggest.map((s) => s.merchantName).join(", ")}`,
-        description: `Your biggest recurring costs are ${biggest.map((s) => `${s.merchantName} ($${monthlyCost(s).toFixed(2)}/mo)`).join(", ")}.`,
-        data: {
-          topSubscriptions: biggest.map((s) => ({
-            merchant: s.merchantName,
-            monthlyAmount: monthlyCost(s),
-            frequency: s.frequency,
-          })),
-          monthlyTotal,
-          annualTotal,
-        },
-        critical: false,
-      });
     }
 
     // ─── Update skill state ───────────────────────────────────────
@@ -284,10 +205,11 @@ export const subscriptionsSkill: SkillDefinition = {
     });
 
     // ─── Update context facts (Layer A) ──────────────────────────
+    const monthlyTotal = calculateMonthlyTotal(detected);
     await ctx.updateFacts({
       subscription_count: detected.length,
       subscription_cost_monthly: monthlyTotal,
-      subscription_cost_annual: annualTotal,
+      subscription_cost_annual: monthlyTotal * 12,
     });
 
     return insights;

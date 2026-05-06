@@ -442,11 +442,9 @@ export default function FinanceBriefPage() {
                     >
                       <div className={styles.insightIcon}>
                         {insight.insightTypeId.includes('price-change') && '⚠️'}
-                        {(insight.insightTypeId.includes('upcoming') || insight.insightTypeId.includes('charge-reminder')) && '📅'}
-                        {(insight.insightTypeId.includes('new') || insight.insightTypeId.includes('new-detected')) && '✨'}
+                        {insight.insightTypeId.includes('upcoming') && '📅'}
+                        {insight.insightTypeId.endsWith('.new') && '✨'}
                         {insight.insightTypeId.includes('charged') && '✓'}
-                        {(insight.insightTypeId.includes('visibility') || insight.insightTypeId.includes('summary')) && '📊'}
-                        {insight.insightTypeId.includes('duplicate') && '⚡'}
                       </div>
                       <div className={styles.insightContent}>
                         <span className={styles.insightTitle}>{insight.title}</span>
