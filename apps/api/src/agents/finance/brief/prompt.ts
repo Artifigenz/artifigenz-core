@@ -3,6 +3,10 @@ import {
   extractVerdictDimensions,
   type VerdictDimensions,
 } from "./helpers/verdict-dimensions";
+import {
+  extractNarrativeDimensions,
+  type NarrativeDimensions,
+} from "./helpers/narrative-dimensions";
 
 export const BRIEF_SYSTEM_PROMPT = `You are the user's personal finance agent, speaking directly to them in the first person. Your job is to produce the Brief — a single compressed read of their financial situation, shown as the home screen of the Finance agent.
 
@@ -101,8 +105,122 @@ function buildVerdictSection(d: VerdictDimensions): string {
   return lines.join("\n");
 }
 
+/**
+ * Build the narrative prompt using structured dimensions.
+ */
+function buildNarrativeSection(d: NarrativeDimensions): string {
+  const lines: string[] = [];
+
+  lines.push("## NARRATIVE DIMENSIONS");
+  lines.push("");
+  lines.push("Pick the most significant dimension. Write 2-3 sentences exploring it.");
+  lines.push("Do not summarize numbers. Provide ONE non-obvious interpretive insight.");
+  lines.push("");
+
+  // Timing
+  lines.push("**TIMING** (cash flow patterns within the month)");
+  if (d.timing.paydayToMonthEndDropPercent !== null) {
+    lines.push(
+      `Payday-to-month-end balance drop: ${d.timing.paydayToMonthEndDropPercent.toFixed(0)}%`,
+    );
+  }
+  if (d.timing.lowestBalanceDay !== null && d.timing.lowestBalanceAmount !== null) {
+    lines.push(
+      `Lowest point: ${d.timing.lowestBalanceDay}th of month (${formatMoney(d.timing.lowestBalanceAmount)})`,
+    );
+  }
+  if (d.timing.pattern) {
+    lines.push(`Pattern: ${d.timing.pattern}`);
+  }
+  if (
+    d.timing.paydayToMonthEndDropPercent === null &&
+    d.timing.lowestBalanceDay === null
+  ) {
+    lines.push("Not enough data for timing analysis");
+  }
+  lines.push("");
+
+  // Concentration
+  lines.push("**CONCENTRATION** (spending concentration in merchants)");
+  if (d.concentration.top3Percent > 0) {
+    lines.push(
+      `Top 3 merchants: ${d.concentration.top3Percent.toFixed(0)}% of discretionary spend`,
+    );
+  }
+  if (d.concentration.biggestMerchant) {
+    lines.push(
+      `Biggest: ${d.concentration.biggestMerchant.name} at ${formatMoney(d.concentration.biggestMerchant.amount)} (${d.concentration.biggestMerchant.count} transactions)`,
+    );
+  }
+  if (d.concentration.merchantCount > 0) {
+    lines.push(`Total merchants: ${d.concentration.merchantCount}`);
+  }
+  lines.push("");
+
+  // Drift
+  lines.push("**DRIFT** (recent subscription/recurring additions)");
+  if (d.drift.newSubscriptionCount > 0) {
+    lines.push(`New subscriptions (last 60 days): ${d.drift.newSubscriptionCount}`);
+    lines.push(`New recurring added: ${formatMoney(d.drift.newRecurringMonthly)}/mo`);
+    if (d.drift.recentAdditions.length > 0) {
+      lines.push(`Recent additions: ${d.drift.recentAdditions.join(", ")}`);
+    }
+  } else {
+    lines.push("No new subscriptions detected in last 60 days");
+  }
+  lines.push("");
+
+  // Risk
+  lines.push("**RISK** (warning signals)");
+  if (d.risk.severity === "none") {
+    lines.push("No significant risk signals");
+  } else {
+    lines.push(`Severity: ${d.risk.severity}`);
+    if (d.risk.negativeBalanceDays > 0) {
+      lines.push(`Negative balance days: ${d.risk.negativeBalanceDays}`);
+    }
+    if (d.risk.nsfCount > 0) {
+      lines.push(`NSF/overdraft fees: ${d.risk.nsfCount} occurrences`);
+    }
+    if (d.risk.interestChargesMonthly !== null) {
+      lines.push(
+        `Interest charges: ~${formatMoney(d.risk.interestChargesMonthly)}/mo`,
+      );
+    }
+  }
+  lines.push("");
+
+  // Composition
+  lines.push("**COMPOSITION** (income and recurring structure)");
+  lines.push(`Income sources: ${d.composition.incomeSourceCount}`);
+  if (d.composition.incomePrimarySource) {
+    lines.push(
+      `Primary source: ${d.composition.incomePrimarySource} (${d.composition.incomeConcentrationPercent.toFixed(0)}% of income)`,
+    );
+  }
+  lines.push(`Recurring expense streams: ${d.composition.recurringStreamCount}`);
+  if (d.composition.biggestRecurring) {
+    lines.push(
+      `Biggest recurring: ${d.composition.biggestRecurring.name} at ${formatMoney(d.composition.biggestRecurring.amount)}/mo (${d.composition.biggestRecurring.percentOfIncome.toFixed(0)}% of income)`,
+    );
+  }
+  lines.push("");
+
+  // Narrative Rules
+  lines.push("**NARRATIVE RULES**");
+  lines.push("- 2-3 sentences, first person (I, you)");
+  lines.push("- Pick ONE dimension — the most significant for this user");
+  lines.push("- Interpret, don't summarize the numbers");
+  lines.push("- Name specific merchants, amounts, or patterns when it adds insight");
+  lines.push("- No emojis");
+  lines.push("");
+
+  return lines.join("\n");
+}
+
 export function buildBriefPrompt(digest: Digest): string {
-  const dimensions = extractVerdictDimensions(digest);
+  const verdictDimensions = extractVerdictDimensions(digest);
+  const narrativeDimensions = extractNarrativeDimensions(digest);
 
   return `Produce the Brief for this user. Return a JSON object with exactly these fields:
 
@@ -113,7 +231,7 @@ export function buildBriefPrompt(digest: Digest): string {
   "data_scope": string    // "Based on N accounts, D days."
 }
 
-${buildVerdictSection(dimensions)}
+${buildVerdictSection(verdictDimensions)}
 
 RULES — numbers
 - Include exactly 3 entries if digest.days_of_data >= 60 AND digest.accounts_count >= 2.
@@ -125,16 +243,7 @@ RULES — numbers
 
 Phrase examples: "consistent", "thin for your income", "37% of income", "top 20% for your area", "above average", "healthy", "running lean".
 
-RULES — paragraph
-- 2 or 3 sentences. First person (I, you). Plain English.
-- Must contain exactly ONE non-obvious interpretive insight, derived from the digest below. Not a summary of the numbers. Not a restatement of the verdict.
-- Sources to mine for the insight:
-  * balance_series — timing patterns (e.g. payday-to-month-end buffer drop percentage)
-  * top_merchants — concentration (e.g. "80% of non-recurring spend goes to 3 places")
-  * new_recurring_count — drift (e.g. "you've picked up N subscriptions in the last 60 days")
-  * risk_flags — warnings (negative-balance days, NSF fees)
-  * inflow_streams / outflow_streams — income consistency, recurring composition
-- Pick the strongest single insight. Resist the urge to pack in more than one.
+${buildNarrativeSection(narrativeDimensions)}
 
 RULES — data_scope
 - Exactly: "Based on N accounts, D days." where N and D come from digest.accounts_count and digest.days_of_data.
