@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { usePlaidLink } from 'react-plaid-link';
 import Header from '@/components/layout/Header';
 import ChatInput from '@/components/sections/ChatInput';
 import { useApiClient } from '@/hooks/useApiClient';
 import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { FinanceIcon } from '@/components/sections/AgentIcons';
+import { savePlaidPending, clearPlaidPending } from '@/lib/plaid-pending';
 import shell from '../agent/[name]/page.module.css';
 import styles from './page.module.css';
 
@@ -102,6 +104,8 @@ export default function FinanceBriefPage() {
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [disconnectConfirm, setDisconnectConfirm] = useState<Connection | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [plaidBusy, setPlaidBusy] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -256,23 +260,71 @@ export default function FinanceBriefPage() {
     }
   }
 
-  async function handleAddAccount() {
-    if (!activation) return;
+  // Plaid Link hook
+  const { open: openPlaidLink, ready: plaidReady } = usePlaidLink({
+    token: linkToken,
+    onSuccess: async (publicToken, metadata) => {
+      if (!activation) return;
+      setPlaidBusy(true);
+      try {
+        await api.finalizeConnection(activation.id, 'plaid', {
+          publicToken,
+          metadata: {
+            institutionId: metadata.institution?.institution_id,
+            institutionName: metadata.institution?.name,
+            accounts: metadata.accounts.map((a) => ({
+              id: a.id,
+              name: a.name,
+              mask: a.mask ?? null,
+            })),
+          },
+        });
+        // Refresh connections list
+        const updated = await api.listConnections(activation.id);
+        setConnections(updated);
+        // Sync in background
+        api.syncAgent(activation.id).catch(() => {});
+      } catch {
+        // ignore
+      } finally {
+        clearPlaidPending();
+        setPlaidBusy(false);
+        setLinkToken(null);
+      }
+    },
+    onExit: () => {
+      clearPlaidPending();
+      setLinkToken(null);
+      setPlaidBusy(false);
+    },
+  });
+
+  // Auto-open Plaid Link when token is ready
+  useEffect(() => {
+    if (linkToken && plaidReady) {
+      openPlaidLink();
+    }
+  }, [linkToken, plaidReady, openPlaidLink]);
+
+  const handleAddAccount = useCallback(async () => {
+    if (!activation || plaidBusy) return;
+    setPlaidBusy(true);
     try {
-      const { linkToken } = await api.initConnection(
+      const { linkToken: token } = await api.initConnection(
         activation.id,
         'plaid',
-        { redirectUri: window.location.href }
+        { redirectUri: window.location.origin + '/plaid/oauth' }
       );
-      // Store for Plaid Link callback
-      sessionStorage.setItem('plaid_link_token', linkToken);
-      sessionStorage.setItem('plaid_agent_instance_id', activation.id);
-      // Open Plaid Link via redirect (simplified - would normally use Plaid Link SDK)
-      window.location.href = `/finance/connect?token=${linkToken}`;
+      savePlaidPending({
+        linkToken: token,
+        agentInstanceId: activation.id,
+        returnTo: '/finance',
+      });
+      setLinkToken(token);
     } catch {
-      // ignore
+      setPlaidBusy(false);
     }
-  }
+  }, [activation, api, plaidBusy]);
 
   async function handleDeliveryToggle(
     channel: 'email' | 'telegram' | 'whatsapp',
@@ -482,11 +534,21 @@ export default function FinanceBriefPage() {
                       </div>
                     )}
 
-                    <button className={styles.addAccountBtn} onClick={handleAddAccount}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 5v14M5 12h14" />
-                      </svg>
-                      Add bank account
+                    <button
+                      className={styles.addAccountBtn}
+                      onClick={handleAddAccount}
+                      disabled={plaidBusy}
+                    >
+                      {plaidBusy ? (
+                        'Connecting...'
+                      ) : (
+                        <>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          Add bank account
+                        </>
+                      )}
                     </button>
                   </div>
                 )}
