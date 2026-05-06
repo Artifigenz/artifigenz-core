@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import {
   db,
   agentInstances,
   agentInstanceSkills,
   dataSourceConnections,
   insights,
+  financeTransactions,
 } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { eventBus } from "../platform/events/event-bus";
@@ -265,6 +266,80 @@ export function createAgentRoutes(registry: AgentRegistry) {
       .where(eq(insights.agentInstanceId, agentInstanceId));
 
     return c.body(null, 204);
+  });
+
+  // GET /api/me/agents/:agentInstanceId/debug — Debug info (dev tool)
+  app.get("/me/agents/:agentInstanceId/debug", async (c) => {
+    const user = c.get("user");
+    const agentInstanceId = c.req.param("agentInstanceId");
+
+    // Verify user owns this agent instance
+    const [instance] = await db
+      .select()
+      .from(agentInstances)
+      .where(
+        and(
+          eq(agentInstances.id, agentInstanceId),
+          eq(agentInstances.userId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (!instance) return c.json({ error: "Agent not found" }, 404);
+
+    // Get transaction count
+    const txRows = await db
+      .select()
+      .from(financeTransactions)
+      .where(eq(financeTransactions.agentInstanceId, agentInstanceId));
+
+    // Get skill state
+    const [skillRecord] = await db
+      .select()
+      .from(agentInstanceSkills)
+      .where(
+        and(
+          eq(agentInstanceSkills.agentInstanceId, agentInstanceId),
+          eq(agentInstanceSkills.skillId, "finance.subscriptions"),
+        ),
+      )
+      .limit(1);
+
+    // Get sample transactions
+    const sampleTx = await db
+      .select({
+        id: financeTransactions.id,
+        date: financeTransactions.transactionDate,
+        merchant: financeTransactions.merchantName,
+        description: financeTransactions.description,
+        amount: financeTransactions.amount,
+        category: financeTransactions.category,
+        accountName: financeTransactions.accountName,
+      })
+      .from(financeTransactions)
+      .where(eq(financeTransactions.agentInstanceId, agentInstanceId))
+      .orderBy(desc(financeTransactions.transactionDate))
+      .limit(20);
+
+    // Get insights count
+    const insightRows = await db
+      .select()
+      .from(insights)
+      .where(eq(insights.agentInstanceId, agentInstanceId));
+
+    return c.json({
+      agentInstanceId,
+      userId: user.id,
+      transactionCount: txRows.length,
+      insightCount: insightRows.length,
+      skillRecord: skillRecord ? {
+        exists: true,
+        isEnabled: skillRecord.isEnabled,
+        state: skillRecord.state,
+        lastRunAt: skillRecord.lastRunAt,
+      } : { exists: false },
+      sampleTransactions: sampleTx,
+    });
   });
 
   return app;

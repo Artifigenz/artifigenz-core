@@ -447,4 +447,28 @@ export class ApiClient {
   async clearInsights(agentInstanceId: string) {
     return this.delete<void>(`/api/me/agents/${agentInstanceId}/insights`);
   }
+
+  async getDebugInfo(agentInstanceId: string) {
+    return this.get<{
+      agentInstanceId: string;
+      userId: string;
+      transactionCount: number;
+      insightCount: number;
+      skillRecord: {
+        exists: boolean;
+        isEnabled?: boolean;
+        state?: unknown;
+        lastRunAt?: string;
+      };
+      sampleTransactions: Array<{
+        id: string;
+        date: string;
+        merchant: string | null;
+        description: string;
+        amount: string;
+        category: string | null;
+        accountName: string | null;
+      }>;
+    }>(`/api/me/agents/${agentInstanceId}/debug`);
+  }
 }

@@ -586,6 +586,51 @@
   border-color: rgba(220, 38, 38, 0.5);
 }
 
+/* Debug Output */
+.debugOutput {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.debugStats {
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.debugState {
+  margin-bottom: 12px;
+}
+
+.debugState pre {
+  background: var(--border-light);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  margin-top: 4px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.debugTx {
+  color: var(--text-dim);
+}
+
+.debugTx ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+}
+
+.debugTx li {
+  margin-bottom: 4px;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
 @media (max-width: 640px) {
   .modal {
     height: auto;

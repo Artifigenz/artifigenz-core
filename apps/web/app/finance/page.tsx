@@ -108,6 +108,13 @@ export default function FinanceBriefPage() {
   const [plaidBusy, setPlaidBusy] = useState(false);
   const [resettingSkill, setResettingSkill] = useState(false);
   const [clearingInsights, setClearingInsights] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{
+    transactionCount: number;
+    insightCount: number;
+    skillRecord: { exists: boolean; state?: unknown; lastRunAt?: string };
+    sampleTransactions: Array<{ merchant: string | null; description: string; amount: string; date: string }>;
+  } | null>(null);
+  const [loadingDebug, setLoadingDebug] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -375,6 +382,19 @@ export default function FinanceBriefPage() {
       // ignore
     } finally {
       setClearingInsights(false);
+    }
+  }
+
+  async function handleLoadDebug() {
+    if (!activation) return;
+    setLoadingDebug(true);
+    try {
+      const info = await api.getDebugInfo(activation.id);
+      setDebugInfo(info);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingDebug(false);
     }
   }
 
@@ -693,7 +713,54 @@ export default function FinanceBriefPage() {
                           {clearingInsights ? 'Clearing...' : 'Clear Insights'}
                         </button>
                       </div>
+
+                      <div className={styles.devtoolsAction}>
+                        <div className={styles.devtoolsInfo}>
+                          <span className={styles.devtoolsLabel}>Debug Info</span>
+                          <span className={styles.devtoolsHint}>
+                            Show transaction count, skill state, and sample data.
+                          </span>
+                        </div>
+                        <button
+                          className={styles.devtoolsBtn}
+                          onClick={handleLoadDebug}
+                          disabled={loadingDebug}
+                        >
+                          {loadingDebug ? 'Loading...' : 'Load Debug'}
+                        </button>
+                      </div>
                     </div>
+
+                    {debugInfo && (
+                      <div className={styles.debugOutput}>
+                        <div className={styles.debugStats}>
+                          <strong>Transactions:</strong> {debugInfo.transactionCount} |{' '}
+                          <strong>Insights:</strong> {debugInfo.insightCount} |{' '}
+                          <strong>Skill Record:</strong> {debugInfo.skillRecord.exists ? 'Yes' : 'No'}
+                          {debugInfo.skillRecord.lastRunAt && (
+                            <> | <strong>Last Run:</strong> {new Date(debugInfo.skillRecord.lastRunAt).toLocaleString()}</>
+                          )}
+                        </div>
+                        <div className={styles.debugState}>
+                          <strong>Skill State:</strong>
+                          <pre>{JSON.stringify(debugInfo.skillRecord.state, null, 2)}</pre>
+                        </div>
+                        <div className={styles.debugTx}>
+                          <strong>Sample Transactions:</strong>
+                          {debugInfo.sampleTransactions.length === 0 ? (
+                            <p>No transactions found</p>
+                          ) : (
+                            <ul>
+                              {debugInfo.sampleTransactions.slice(0, 10).map((tx, i) => (
+                                <li key={i}>
+                                  {tx.date} | {tx.merchant || tx.description} | ${tx.amount}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
