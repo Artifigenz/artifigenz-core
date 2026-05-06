@@ -100,6 +100,8 @@ export default function FinanceBriefPage() {
   const [delivery, setDelivery] = useState<DeliveryPrefs | null>(null);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliverySaving, setDeliverySaving] = useState(false);
+  const [disconnectConfirm, setDisconnectConfirm] = useState<Connection | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -240,13 +242,17 @@ export default function FinanceBriefPage() {
     return () => { cancelled = true; };
   }, [settingsOpen, settingsTab, activation, api]);
 
-  async function handleDisconnect(connectionId: string) {
-    if (!activation) return;
+  async function handleDisconnectConfirm() {
+    if (!activation || !disconnectConfirm) return;
+    setDisconnecting(true);
     try {
-      await api.disconnectConnection(activation.id, connectionId);
-      setConnections((prev) => prev.filter((c) => c.id !== connectionId));
+      await api.disconnectConnection(activation.id, disconnectConfirm.id);
+      setConnections((prev) => prev.filter((c) => c.id !== disconnectConfirm.id));
+      setDisconnectConfirm(null);
     } catch {
       // ignore
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -467,7 +473,7 @@ export default function FinanceBriefPage() {
                             </div>
                             <button
                               className={styles.disconnectBtn}
-                              onClick={() => handleDisconnect(conn.id)}
+                              onClick={() => setDisconnectConfirm(conn)}
                             >
                               Disconnect
                             </button>
@@ -549,6 +555,35 @@ export default function FinanceBriefPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disconnect Confirmation Dialog */}
+      {disconnectConfirm && (
+        <div className={styles.confirmOverlay} onClick={() => !disconnecting && setDisconnectConfirm(null)}>
+          <div className={styles.confirmDialog} onClick={(e) => e.stopPropagation()}>
+            <h3 className={styles.confirmTitle}>Disconnect account?</h3>
+            <p className={styles.confirmText}>
+              This will remove <strong>{disconnectConfirm.institutionName}</strong> from your finance agent.
+              You can reconnect it anytime.
+            </p>
+            <div className={styles.confirmActions}>
+              <button
+                className={styles.cancelBtn}
+                onClick={() => setDisconnectConfirm(null)}
+                disabled={disconnecting}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.dangerBtn}
+                onClick={handleDisconnectConfirm}
+                disabled={disconnecting}
+              >
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
             </div>
           </div>
         </div>
