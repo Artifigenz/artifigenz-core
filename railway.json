@@ -3,7 +3,7 @@
   "build": {
     "builder": "NIXPACKS",
     "nixpacksConfigPath": "nixpacks.toml",
-    "buildCommand": "npm install --include=dev --workspaces && npm run build:api"
+    "buildCommand": "npm run build:api"
   },
   "deploy": {
     "startCommand": "npm start --workspace=@artifigenz/api",
