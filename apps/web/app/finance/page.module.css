@@ -10,11 +10,21 @@
   color: var(--text);
   line-height: var(--greeting-line-height);
   letter-spacing: var(--greeting-tracking);
-  margin: 0 0 40px;
+  margin: 0 0 32px;
   min-height: calc(var(--greeting-line-height) * 2em);
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards;
+}
+
+.verdictAmt {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.verdictDim {
+  color: var(--text-mid);
+  font-weight: 300;
 }
 
 .cursor {
@@ -27,212 +37,225 @@
   animation: briefBlink 1.1s step-end infinite;
 }
 
-/* Metrics Row - Income, Outflow, Leftover */
-.metricsRow {
-  display: flex;
-  justify-content: space-between;
-  margin: 0 0 24px;
+/* ────────────────────────────────────────────────────────────
+   NUM GRID - Three-column card layout
+   ──────────────────────────────────────────────────────────── */
+.numGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+  margin-top: 24px;
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.35s forwards;
 }
 
-.metric {
+.numCard {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  padding: 22px 24px 20px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  transition: background 0.2s, border-color 0.2s;
 }
 
-.metric:last-child {
-  text-align: right;
+.numCard:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
-.metric:nth-child(2) {
-  text-align: center;
-}
-
-.metricLabel {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-dim);
+.ncTag {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.metricValue {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-
-.metricValue.negative {
-  color: var(--text);
-}
-
-.metricUnit {
+.ncTagSum {
+  color: var(--text-dim);
   font-weight: 400;
-  font-size: 0.5em;
-  color: var(--text-dim);
+  letter-spacing: 0.18em;
 }
 
-/* Progress Bar */
-.progressBar {
-  position: relative;
-  height: 8px;
-  background: var(--border-light);
-  border-radius: 4px;
-  margin: 0 0 8px;
-  overflow: visible;
+.ncVal {
+  font-size: 1.6rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.1;
 }
 
-.progressIncome {
-  height: 100%;
-  background: #333;
-  border-radius: 4px;
+.ncUnit {
+  font-weight: 400;
+  color: var(--text-mid);
+  font-size: 0.6em;
+  letter-spacing: -0.01em;
+  margin-left: 3px;
 }
 
-.progressMarker {
-  position: absolute;
-  top: -4px;
-  width: 2px;
-  height: 16px;
-  background: var(--text);
-  border-left: 1px dashed var(--text-dim);
+.ncNote {
+  font-size: 12.5px;
+  color: var(--text-mid);
+  margin-top: auto;
+  padding-top: 8px;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
-.progressLabels {
+/* Split outflow card */
+.split {
   display: flex;
+  flex-direction: column;
+}
+
+.splitRow {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  font-size: 0.7rem;
-  color: var(--text-dim);
-  margin: 0 0 32px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.progressIncomeLabel {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.splitRow:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
 }
 
-/* Breakdown Grid */
-.breakdownGrid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 24px 48px;
-  margin: 0 0 48px;
+.splitRow:first-child {
+  padding-top: 6px;
 }
 
-.breakdownItem {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.breakdownLeft {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.breakdownDot {
-  width: 10px;
-  height: 10px;
-  background: #999;
-  border-radius: 2px;
-  margin-top: 4px;
-  flex-shrink: 0;
-}
-
-.breakdownInfo {
+.srK {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.breakdownLabel {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.breakdownSublabel {
-  font-size: 0.7rem;
+.srK small {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--text-dim);
-  letter-spacing: 0.05em;
 }
 
-.breakdownAmount {
+.srV {
   font-size: 1rem;
   font-weight: 500;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
-.breakdownUnit {
-  font-weight: 400;
-  font-size: 0.8em;
-  color: var(--text-dim);
-}
-
-.empty {
-  min-height: 320px;
-}
-
-@keyframes briefFadeUp {
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes briefBlink {
-  50% { opacity: 0; }
-}
-
-/* Insights Feed */
+/* ────────────────────────────────────────────────────────────
+   INSIGHTS FEED
+   ──────────────────────────────────────────────────────────── */
 .insightsFeed {
-  margin-top: 48px;
+  margin-top: 72px;
+  padding-top: 28px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.75s forwards;
 }
 
-.insightsHeader {
+.insightsStack {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 20px;
+  flex-direction: column;
+  gap: 40px;
 }
 
-.insightsHeaderDot {
-  width: 8px;
-  height: 8px;
-  background: #22c55e;
-  border-radius: 50%;
-}
-
-.insightsList {
+.insightsDay {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+.dateLabel {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dateLabelToday {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.dateDot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex: none;
+}
+
+.dateDot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: #22c55e;
+  opacity: 0.35;
+  animation: pulseRing 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.5); opacity: 0.5; }
+  70% { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+.insightsStream {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.emptyDash {
+  display: block;
+  width: 36px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.15);
+  margin-top: 2px;
+}
+
+/* Insight Card */
 .insightCard {
-  padding: 20px 24px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  padding: 20px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
 }
 
 .insightCard:hover {
-  border-color: var(--border);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .insightCard.critical {
@@ -246,48 +269,56 @@
 
 .insightHeader {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
 }
 
-.insightBadge {
-  display: flex;
+.insightSkill {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.7rem;
+  color: var(--text-mid);
   font-weight: 500;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
-.insightBadgeDot {
+.insightSkillDot {
   width: 8px;
   height: 8px;
-  background: #333;
   border-radius: 2px;
+  display: inline-block;
+  background: var(--text);
 }
 
 .insightTime {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
-}
-
-.insightContent {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  color: var(--text-dim);
 }
 
 .insightTitle {
-  font-size: 1.1rem;
-  font-weight: 400;
-  color: var(--text);
-  line-height: 1.4;
   margin: 0;
+  font-size: 1.2rem;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+.insightTitle b {
+  font-weight: 600;
+}
+
+.insightDescription {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-mid);
+  line-height: 1.5;
 }
 
 /* Typography variations for insight titles */
@@ -306,66 +337,60 @@
   color: var(--text);
 }
 
-.insightDescription {
-  font-size: 0.85rem;
-  color: var(--text-dim);
-  line-height: 1.5;
-  margin: 0;
+.empty {
+  min-height: 320px;
+}
+
+@keyframes briefFadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes briefBlink {
+  50% { opacity: 0; }
+}
+
+/* ────────────────────────────────────────────────────────────
+   RESPONSIVE
+   ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .numGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
 
 @media (max-width: 640px) {
   .verdict {
     font-size: var(--greeting-size-mobile);
     line-height: 1.25;
-    margin-bottom: 32px;
+    margin-bottom: 24px;
     min-height: calc(1.25 * 2em);
   }
 
-  .metricsRow {
-    flex-wrap: wrap;
-    gap: 16px;
+  .numCard {
+    padding: 18px 20px 16px;
   }
 
-  .metric {
-    flex: 1;
-    min-width: 80px;
-  }
-
-  .metricValue {
-    font-size: 1.35rem;
-  }
-
-  .breakdownGrid {
-    grid-template-columns: 1fr;
-    gap: 20px;
+  .ncVal {
+    font-size: 1.4rem;
   }
 
   .insightCard {
-    padding: 16px 20px;
+    padding: 16px 18px 14px;
   }
 
   .insightTitle {
-    font-size: 1rem;
+    font-size: 1.05rem;
   }
 
   .insightsFeed {
-    margin-top: 40px;
-  }
-
-  .insightCard {
-    padding: 14px 16px;
-  }
-
-  .insightTitle {
-    font-size: 0.9rem;
-  }
-
-  .criticalBadge {
-    display: none;
+    margin-top: 48px;
   }
 }
 
-/* Settings Modal */
+/* ────────────────────────────────────────────────────────────
+   SETTINGS MODAL
+   ──────────────────────────────────────────────────────────── */
 .modalOverlay {
   position: fixed;
   inset: 0;

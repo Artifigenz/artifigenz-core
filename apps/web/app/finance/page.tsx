@@ -558,97 +558,83 @@ export default function FinanceBriefPage() {
             </h2>
 
             {brief.summary && (
-              <>
-                {/* Top 3 metrics */}
-                <div className={styles.metricsRow}>
-                  <div className={styles.metric}>
-                    <span className={styles.metricLabel}>Income</span>
-                    <span className={styles.metricValue}>
-                      {formatMoney(brief.summary.income)}<span className={styles.metricUnit}>/mo</span>
-                    </span>
+              <div className={styles.numGrid}>
+                {/* Income Card */}
+                <div className={styles.numCard}>
+                  <div className={styles.ncTag}>Income</div>
+                  <div className={styles.ncVal}>
+                    {formatMoney(brief.summary.income)}<span className={styles.ncUnit}>/mo</span>
                   </div>
-                  <div className={styles.metric}>
-                    <span className={styles.metricLabel}>Outflow</span>
-                    <span className={styles.metricValue}>
-                      {formatMoney(brief.summary.outflow)}<span className={styles.metricUnit}>/mo</span>
-                    </span>
-                  </div>
-                  <div className={styles.metric}>
-                    <span className={styles.metricLabel}>Leftover</span>
-                    <span className={`${styles.metricValue} ${brief.summary.leftover < 0 ? styles.negative : ''}`}>
-                      {brief.summary.leftover < 0 ? '−' : ''}{formatMoney(brief.summary.leftover)}<span className={styles.metricUnit}>/mo</span>
-                    </span>
-                  </div>
+                  <div className={styles.ncNote}>Salary & deposits</div>
                 </div>
 
-                {/* Progress bar */}
-                <div className={styles.progressBar}>
-                  <div
-                    className={styles.progressIncome}
-                    style={{ width: `${Math.min(100, (brief.summary.income / brief.summary.outflow) * 100)}%` }}
-                  />
-                  <div className={styles.progressMarker} style={{ left: `${Math.min(100, (brief.summary.income / brief.summary.outflow) * 100)}%` }} />
-                </div>
-                <div className={styles.progressLabels}>
-                  <span>$0</span>
-                  <span className={styles.progressIncomeLabel}>Income → {formatMoney(brief.summary.income)}</span>
-                  <span>{formatMoney(brief.summary.outflow)}</span>
-                </div>
-
-                {/* Breakdown grid */}
-                {brief.summary.breakdown.length > 0 && (
-                  <div className={styles.breakdownGrid}>
+                {/* Outflow Card - Split */}
+                <div className={styles.numCard}>
+                  <div className={styles.ncTag}>
+                    Outflow <span className={styles.ncTagSum}>· {formatMoney(brief.summary.outflow)}/mo</span>
+                  </div>
+                  <div className={styles.split}>
                     {brief.summary.breakdown.map((item) => (
-                      <div key={item.id} className={styles.breakdownItem}>
-                        <div className={styles.breakdownLeft}>
-                          <span className={styles.breakdownDot} />
-                          <div className={styles.breakdownInfo}>
-                            <span className={styles.breakdownLabel}>{item.label}</span>
-                            <span className={styles.breakdownSublabel}>{item.sublabel.toUpperCase()}</span>
-                          </div>
+                      <div key={item.id} className={styles.splitRow}>
+                        <div className={styles.srK}>
+                          {item.label}
+                          <small>{item.sublabel}</small>
                         </div>
-                        <span className={styles.breakdownAmount}>
-                          {formatMoney(item.amount)}<span className={styles.breakdownUnit}>/mo</span>
-                        </span>
+                        <div className={styles.srV}>
+                          {formatMoney(item.amount)}<span className={styles.ncUnit}>/mo</span>
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </>
+                </div>
+
+                {/* Leftover Card */}
+                <div className={styles.numCard}>
+                  <div className={styles.ncTag}>Leftover</div>
+                  <div className={styles.ncVal}>
+                    {brief.summary.leftover < 0 ? '−' : ''}{formatMoney(brief.summary.leftover)}<span className={styles.ncUnit}>/mo</span>
+                  </div>
+                  <div className={styles.ncNote}>
+                    {brief.summary.leftover < 0 ? 'Covered on credit' : 'Available'}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Insights Feed */}
             {!insightsLoading && insights.length > 0 && (
               <section className={styles.insightsFeed}>
-                <h3 className={styles.insightsHeader}>
-                  <span className={styles.insightsHeaderDot} />
-                  Today · {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
-                </h3>
-                <div className={styles.insightsList}>
-                  {insights.map((insight) => (
-                    <div
-                      key={insight.id}
-                      className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
-                    >
-                      <div className={styles.insightHeader}>
-                        <span className={styles.insightBadge}>
-                          <span className={styles.insightBadgeDot} />
-                          Subscriptions
-                        </span>
-                        <span className={styles.insightTime}>
-                          {new Date(insight.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                        </span>
-                      </div>
-                      <div className={styles.insightContent}>
-                        <p className={styles.insightTitle}>
-                          {renderInsightTitle(insight.insightTypeId, insight.title, insight.data as InsightData)}
-                        </p>
-                        {insight.description && (
-                          <p className={styles.insightDescription}>{insight.description}</p>
-                        )}
-                      </div>
+                <div className={styles.insightsStack}>
+                  <div className={styles.insightsDay}>
+                    <h4 className={`${styles.dateLabel} ${styles.dateLabelToday}`}>
+                      <span className={styles.dateDot} />
+                      Today · {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
+                    </h4>
+                    <div className={styles.insightsStream}>
+                      {insights.map((insight) => (
+                        <article
+                          key={insight.id}
+                          className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
+                        >
+                          <header className={styles.insightHeader}>
+                            <span className={styles.insightSkill}>
+                              <i className={styles.insightSkillDot} />
+                              Subscriptions
+                            </span>
+                            <time className={styles.insightTime}>
+                              {new Date(insight.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            </time>
+                          </header>
+                          <h3 className={styles.insightTitle}>
+                            {renderInsightTitle(insight.insightTypeId, insight.title, insight.data as InsightData)}
+                          </h3>
+                          {insight.description && (
+                            <p className={styles.insightDescription}>{insight.description}</p>
+                          )}
+                        </article>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </section>
             )}
