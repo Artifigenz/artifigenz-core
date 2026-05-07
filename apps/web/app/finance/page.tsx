@@ -72,6 +72,91 @@ function formatAgo(iso: string): string {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+function formatAmount(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
+interface InsightData {
+  merchant?: string;
+  amount?: number;
+  oldAmount?: number;
+  newAmount?: number;
+  count?: number;
+  monthlyTotal?: number;
+  daysUntil?: number;
+  [key: string]: unknown;
+}
+
+function renderInsightTitle(
+  typeId: string,
+  title: string,
+  data: InsightData | null
+): React.ReactNode {
+  // If no structured data, return plain title
+  if (!data) return title;
+
+  // Welcome insight: "Monitoring X subscriptions"
+  if (typeId.includes('welcome') && data.count !== undefined) {
+    return (
+      <>
+        <span className={styles.textLight}>Monitoring </span>
+        <span className={styles.textBold}>{data.count} subscriptions</span>
+      </>
+    );
+  }
+
+  // Price change: "Netflix increased $15.99 → $17.99"
+  if (typeId.includes('price-change') && data.merchant && data.oldAmount !== undefined && data.newAmount !== undefined) {
+    const direction = data.newAmount > data.oldAmount ? 'increased' : 'decreased';
+    return (
+      <>
+        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textLight}> {direction} </span>
+        <span className={styles.textMedium}>{formatAmount(data.oldAmount)}</span>
+        <span className={styles.textLight}> → </span>
+        <span className={styles.textBold}>{formatAmount(data.newAmount)}</span>
+      </>
+    );
+  }
+
+  // Charged: "Netflix charged $15.99"
+  if (typeId.includes('charged') && data.merchant && data.amount !== undefined) {
+    return (
+      <>
+        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textLight}> charged </span>
+        <span className={styles.textMedium}>{formatAmount(data.amount)}</span>
+      </>
+    );
+  }
+
+  // Upcoming: "Netflix will charge $15.99 tomorrow"
+  if (typeId.includes('upcoming') && data.merchant && data.amount !== undefined) {
+    const dayLabel = data.daysUntil === 0 ? 'today' : data.daysUntil === 1 ? 'tomorrow' : `in ${data.daysUntil} days`;
+    return (
+      <>
+        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textLight}> will charge </span>
+        <span className={styles.textMedium}>{formatAmount(data.amount)}</span>
+        <span className={styles.textLight}> {dayLabel}</span>
+      </>
+    );
+  }
+
+  // New subscription: "New subscription: Netflix"
+  if (typeId.endsWith('.new') && data.merchant) {
+    return (
+      <>
+        <span className={styles.textLight}>New subscription: </span>
+        <span className={styles.textBold}>{data.merchant}</span>
+      </>
+    );
+  }
+
+  // Fallback to plain title
+  return title;
+}
+
 /** Highlight dollar amounts and percentages in the paragraph. */
 function formatParagraph(text: string): React.ReactNode[] {
   const pattern = /(\$[\d,]+(?:\.\d{2})?(?:\/\w+)?|\d+%)/g;
@@ -511,7 +596,9 @@ export default function FinanceBriefPage() {
                         )}
                       </div>
                       <div className={styles.insightContent}>
-                        <span className={styles.insightTitle}>{insight.title}</span>
+                        <span className={styles.insightTitle}>
+                          {renderInsightTitle(insight.insightTypeId, insight.title, insight.data as InsightData)}
+                        </span>
                         {insight.description && (
                           <span className={styles.insightDescription}>{insight.description}</span>
                         )}
