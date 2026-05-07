@@ -557,49 +557,94 @@ export default function FinanceBriefPage() {
               {isTyping && <span className={styles.cursor} />}
             </h2>
 
-            {brief.summary && (
-              <div className={styles.numGrid}>
-                {/* Income Card */}
-                <div className={styles.numCard}>
-                  <div className={styles.ncTag}>Income</div>
-                  <div className={styles.ncVal}>
-                    {formatMoney(brief.summary.income)}<span className={styles.ncUnit}>/mo</span>
-                  </div>
-                  <div className={styles.ncNote}>Salary & deposits</div>
-                </div>
+            {brief.summary && (() => {
+              const { income, outflow, leftover, breakdown } = brief.summary;
+              // Calculate segment widths as percentages of outflow
+              const subscriptions = breakdown.find(b => b.id === 'subscriptions')?.amount ?? 0;
+              const loans = breakdown.find(b => b.id === 'loans')?.amount ?? 0;
+              const other = breakdown.find(b => b.id === 'other')?.amount ?? 0;
+              const variable = outflow - subscriptions - loans - other;
 
-                {/* Outflow Card - Split */}
-                <div className={styles.numCard}>
-                  <div className={styles.ncTag}>
-                    Outflow <span className={styles.ncTagSum}>· {formatMoney(brief.summary.outflow)}/mo</span>
-                  </div>
-                  <div className={styles.split}>
-                    {brief.summary.breakdown.map((item) => (
-                      <div key={item.id} className={styles.splitRow}>
-                        <div className={styles.srK}>
-                          {item.label}
-                          <small>{item.sublabel}</small>
-                        </div>
-                        <div className={styles.srV}>
-                          {formatMoney(item.amount)}<span className={styles.ncUnit}>/mo</span>
-                        </div>
+              const pctSub = outflow > 0 ? (subscriptions / outflow) * 100 : 0;
+              const pctLoans = outflow > 0 ? (loans / outflow) * 100 : 0;
+              const pctOther = outflow > 0 ? (other / outflow) * 100 : 0;
+              const pctVariable = outflow > 0 ? (variable / outflow) * 100 : 0;
+              const incomeLinePos = outflow > 0 ? (income / outflow) * 100 : 0;
+
+              return (
+                <>
+                  {/* Bar Graph */}
+                  <div className={styles.aFlow}>
+                    <div className={styles.afbBar}>
+                      <div className={styles.afbTrack}>
+                        {pctSub > 0 && (
+                          <div className={`${styles.afbSeg} ${styles.s1}`} style={{ width: `${pctSub}%` }} title={`Subscriptions ${formatMoney(subscriptions)}/mo`} />
+                        )}
+                        {pctLoans > 0 && (
+                          <div className={`${styles.afbSeg} ${styles.s2}`} style={{ width: `${pctLoans}%` }} title={`Loans & EMI ${formatMoney(loans)}/mo`} />
+                        )}
+                        {pctOther > 0 && (
+                          <div className={`${styles.afbSeg} ${styles.s3}`} style={{ width: `${pctOther}%` }} title={`Other recurring ${formatMoney(other)}/mo`} />
+                        )}
+                        {pctVariable > 0 && (
+                          <div className={`${styles.afbSeg} ${styles.s4}`} style={{ width: `${pctVariable}%` }} title={`Variable spend ${formatMoney(variable)}/mo`} />
+                        )}
                       </div>
-                    ))}
+                      <div className={styles.afbIncome} style={{ left: `${Math.min(100, incomeLinePos)}%` }} />
+                    </div>
+                    <div className={styles.afbAxis}>
+                      <span className={styles.afbAxisL}>Outflow · {formatMoney(outflow)}/mo</span>
+                      <span className={styles.afbAxisMid} style={{ left: `${Math.min(100, incomeLinePos)}%` }}>income line → {formatMoney(income)}</span>
+                      <span className={styles.afbAxisR}>{leftover < 0 ? `deficit · −${formatMoney(leftover)}` : `surplus · ${formatMoney(leftover)}`}</span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Leftover Card */}
-                <div className={styles.numCard}>
-                  <div className={styles.ncTag}>Leftover</div>
-                  <div className={styles.ncVal}>
-                    {brief.summary.leftover < 0 ? '−' : ''}{formatMoney(brief.summary.leftover)}<span className={styles.ncUnit}>/mo</span>
+                  {/* Cards Grid */}
+                  <div className={styles.numGrid}>
+                    {/* Income Card */}
+                    <div className={styles.numCard}>
+                      <div className={styles.ncTag}>Income</div>
+                      <div className={styles.ncVal}>
+                        {formatMoney(income)}<span className={styles.ncUnit}>/mo</span>
+                      </div>
+                      <div className={styles.ncNote}>Salary & deposits</div>
+                    </div>
+
+                    {/* Outflow Card - Split */}
+                    <div className={styles.numCard}>
+                      <div className={styles.ncTag}>
+                        Outflow <span className={styles.ncTagSum}>· {formatMoney(outflow)}/mo</span>
+                      </div>
+                      <div className={styles.split}>
+                        {breakdown.map((item, idx) => (
+                          <div key={item.id} className={styles.splitRow}>
+                            <div className={styles.srK}>
+                              <span className={`${styles.sw} ${styles[`s${idx + 1}`]}`} />
+                              {item.label}
+                              <small>{item.sublabel}</small>
+                            </div>
+                            <div className={styles.srV}>
+                              {formatMoney(item.amount)}<span className={styles.ncUnit}>/mo</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Leftover Card */}
+                    <div className={styles.numCard}>
+                      <div className={styles.ncTag}>Leftover</div>
+                      <div className={styles.ncVal}>
+                        {leftover < 0 ? '−' : ''}{formatMoney(leftover)}<span className={styles.ncUnit}>/mo</span>
+                      </div>
+                      <div className={styles.ncNote}>
+                        {leftover < 0 ? 'Covered on credit' : 'Available'}
+                      </div>
+                    </div>
                   </div>
-                  <div className={styles.ncNote}>
-                    {brief.summary.leftover < 0 ? 'Covered on credit' : 'Available'}
-                  </div>
-                </div>
-              </div>
-            )}
+                </>
+              );
+            })()}
 
             {/* Insights Feed */}
             {!insightsLoading && insights.length > 0 && (
