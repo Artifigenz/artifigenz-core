@@ -127,6 +127,108 @@ app.get("/generate/:id/events", async (c) => {
   });
 });
 
+interface DigestSnapshot {
+  income_monthly?: number;
+  recurring_monthly?: number;
+  expenses_monthly?: number;
+  outflow_streams?: Array<{
+    merchant: string;
+    amount_monthly: number;
+    frequency: string;
+  }>;
+}
+
+interface BriefTile {
+  id: string;
+  label: string;
+  value: string;
+  sublabel?: string;
+}
+
+function computeTiles(digest: DigestSnapshot | null): BriefTile[] {
+  if (!digest) return [];
+
+  const tiles: BriefTile[] = [];
+  const streams = digest.outflow_streams ?? [];
+
+  // Categorize streams by merchant name patterns
+  const subscriptionKeywords = [
+    'netflix', 'spotify', 'hulu', 'disney', 'amazon prime', 'apple', 'google',
+    'youtube', 'hbo', 'paramount', 'peacock', 'adobe', 'microsoft', 'dropbox',
+    'slack', 'zoom', 'notion', 'figma', 'canva', 'openai', 'claude', 'gym',
+    'fitness', 'planet fitness', 'audible', 'kindle', 'playstation', 'xbox',
+    'nintendo', 'twitch', 'patreon', 'substack', 'medium', 'linkedin',
+  ];
+
+  const rentKeywords = ['rent', 'apartment', 'landlord', 'property', 'housing', 'lease'];
+  const loanKeywords = ['loan', 'mortgage', 'emi', 'car payment', 'auto', 'student', 'lending', 'credit'];
+
+  let subscriptionTotal = 0;
+  let subscriptionCount = 0;
+  let rentTotal = 0;
+  let loanTotal = 0;
+  let loanCount = 0;
+
+  for (const stream of streams) {
+    const name = (stream.merchant ?? '').toLowerCase();
+    const amount = Math.abs(stream.amount_monthly);
+
+    if (subscriptionKeywords.some(kw => name.includes(kw))) {
+      subscriptionTotal += amount;
+      subscriptionCount++;
+    } else if (rentKeywords.some(kw => name.includes(kw))) {
+      rentTotal += amount;
+    } else if (loanKeywords.some(kw => name.includes(kw))) {
+      loanTotal += amount;
+      loanCount++;
+    } else if (amount < 100) {
+      // Small recurring charges are likely subscriptions
+      subscriptionTotal += amount;
+      subscriptionCount++;
+    }
+  }
+
+  // Subscriptions tile
+  tiles.push({
+    id: 'subscriptions',
+    label: 'Subscriptions',
+    value: `$${subscriptionTotal.toFixed(0)}`,
+    sublabel: subscriptionCount > 0 ? `${subscriptionCount} active` : undefined,
+  });
+
+  // Rent tile (only if detected)
+  if (rentTotal > 0) {
+    tiles.push({
+      id: 'rent',
+      label: 'Rent',
+      value: `$${rentTotal.toFixed(0)}`,
+      sublabel: '/mo',
+    });
+  }
+
+  // Loans/EMI tile (only if detected)
+  if (loanTotal > 0) {
+    tiles.push({
+      id: 'loans',
+      label: 'Loans & EMI',
+      value: `$${loanTotal.toFixed(0)}`,
+      sublabel: loanCount > 0 ? `${loanCount} payments` : '/mo',
+    });
+  }
+
+  // Income tile
+  if (digest.income_monthly && digest.income_monthly > 0) {
+    tiles.push({
+      id: 'income',
+      label: 'Income',
+      value: `$${Math.round(digest.income_monthly).toLocaleString()}`,
+      sublabel: '/mo',
+    });
+  }
+
+  return tiles;
+}
+
 /**
  * GET /api/brief/current
  *   Returns the latest Brief for the signed-in user, or 404 if none exists.
@@ -144,11 +246,15 @@ app.get("/current", async (c) => {
 
   if (!row) return c.json({ error: "No brief yet" }, 404);
 
+  const digest = row.digestSnapshot as DigestSnapshot | null;
+  const tiles = computeTiles(digest);
+
   return c.json({
     id: row.id,
     verdict: row.verdict,
     numbers: row.numbers,
     paragraph: row.paragraph,
+    tiles,
     data_scope: row.dataScope,
     generated_at: row.generatedAt,
   });

@@ -19,11 +19,19 @@ interface BriefNumber {
   phrase: string;
 }
 
+interface BriefTile {
+  id: string;
+  label: string;
+  value: string;
+  sublabel?: string;
+}
+
 interface Brief {
   id: string;
   verdict: string;
   numbers: BriefNumber[];
   paragraph: string;
+  tiles: BriefTile[];
   data_scope: string;
   generated_at: string;
 }
@@ -155,15 +163,6 @@ function renderInsightTitle(
 
   // Fallback to plain title
   return title;
-}
-
-/** Highlight dollar amounts and percentages in the paragraph. */
-function formatParagraph(text: string): React.ReactNode[] {
-  const pattern = /(\$[\d,]+(?:\.\d{2})?(?:\/\w+)?|\d+%)/g;
-  const parts = text.split(pattern);
-  return parts.map((part, i) =>
-    pattern.test(part) ? <strong key={i}>{part}</strong> : part
-  );
 }
 
 export default function FinanceBriefPage() {
@@ -531,26 +530,19 @@ export default function FinanceBriefPage() {
               {isTyping && <span className={styles.cursor} />}
             </h2>
 
-            <div className={styles.numbers}>
-              {brief.numbers.map((n, i) => {
-                const match = n.value.match(/^([^/]+)(\/\w+)?$/);
-                const amount = match?.[1]?.trim() ?? n.value;
-                const unit = match?.[2] ?? '';
-                return (
-                  <div key={`${n.value}-${i}`} className={styles.numberCol}>
-                    <span className={styles.numberValue}>
-                      {amount}
-                      {unit && <span className={styles.numberUnit}>{unit}</span>}
+            {brief.tiles && brief.tiles.length > 0 && (
+              <div className={styles.tilesGrid}>
+                {brief.tiles.map((tile) => (
+                  <div key={tile.id} className={styles.tile}>
+                    <span className={styles.tileLabel}>{tile.label}</span>
+                    <span className={styles.tileValue}>
+                      {tile.value}
+                      {tile.sublabel && <span className={styles.tileSublabel}>{tile.sublabel}</span>}
                     </span>
-                    <span className={styles.numberPhrase}>{n.phrase}</span>
                   </div>
-                );
-              })}
-            </div>
-
-            <p className={styles.paragraph}>
-              &ldquo;{formatParagraph(brief.paragraph)}&rdquo;
-            </p>
+                ))}
+              </div>
+            )}
 
             {/* Insights Feed */}
             {!insightsLoading && insights.length > 0 && (
