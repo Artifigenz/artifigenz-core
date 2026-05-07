@@ -361,11 +361,7 @@ export class ApiClient {
       verdict: string;
       numbers: Array<{ value: string; phrase: string }>;
       paragraph: string;
-      tileGroups: Array<{
-        id: string;
-        title: string;
-        items: Array<{ id: string; label: string; value: string; sublabel?: string }>;
-      }>;
+      stats: Array<{ id: string; label: string; value: string; sublabel?: string }>;
       data_scope: string;
       generated_at: string;
     }>('/api/brief/current');

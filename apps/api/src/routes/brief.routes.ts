@@ -138,23 +138,17 @@ interface DigestSnapshot {
   }>;
 }
 
-interface BriefTileItem {
+interface BriefStat {
   id: string;
   label: string;
   value: string;
   sublabel?: string;
 }
 
-interface BriefTileGroup {
-  id: string;
-  title: string;
-  items: BriefTileItem[];
-}
-
-function computeTileGroups(digest: DigestSnapshot | null): BriefTileGroup[] {
+function computeStats(digest: DigestSnapshot | null): BriefStat[] {
   if (!digest) return [];
 
-  const groups: BriefTileGroup[] = [];
+  const stats: BriefStat[] = [];
   const streams = digest.outflow_streams ?? [];
 
   // Categorize streams by merchant name patterns
@@ -166,14 +160,11 @@ function computeTileGroups(digest: DigestSnapshot | null): BriefTileGroup[] {
     'nintendo', 'twitch', 'patreon', 'substack', 'medium', 'linkedin',
   ];
 
-  const rentKeywords = ['rent', 'apartment', 'landlord', 'property', 'housing', 'lease'];
   const loanKeywords = ['loan', 'mortgage', 'emi', 'car payment', 'auto', 'student', 'lending', 'credit'];
 
   let subscriptionTotal = 0;
   let subscriptionCount = 0;
-  let rentTotal = 0;
   let loanTotal = 0;
-  let loanCount = 0;
 
   for (const stream of streams) {
     const name = (stream.merchant ?? '').toLowerCase();
@@ -182,72 +173,45 @@ function computeTileGroups(digest: DigestSnapshot | null): BriefTileGroup[] {
     if (subscriptionKeywords.some(kw => name.includes(kw))) {
       subscriptionTotal += amount;
       subscriptionCount++;
-    } else if (rentKeywords.some(kw => name.includes(kw))) {
-      rentTotal += amount;
     } else if (loanKeywords.some(kw => name.includes(kw))) {
       loanTotal += amount;
-      loanCount++;
     } else if (amount < 100) {
-      // Small recurring charges are likely subscriptions
       subscriptionTotal += amount;
       subscriptionCount++;
     }
   }
 
-  // Income group (first)
+  // Income (first)
   if (digest.income_monthly && digest.income_monthly > 0) {
-    groups.push({
+    stats.push({
       id: 'income',
-      title: 'Income',
-      items: [{
-        id: 'income',
-        label: 'Monthly',
-        value: `$${Math.round(digest.income_monthly).toLocaleString()}`,
-      }],
+      label: 'Income',
+      value: `$${Math.round(digest.income_monthly).toLocaleString()}`,
+      sublabel: '/mo',
     });
   }
-
-  // Outgoing group
-  const outgoingItems: BriefTileItem[] = [];
 
   // Subscriptions
   if (subscriptionCount > 0) {
-    outgoingItems.push({
+    stats.push({
       id: 'subscriptions',
       label: 'Subscriptions',
-      value: `$${subscriptionTotal.toFixed(0)}`,
+      value: `$${Math.round(subscriptionTotal)}`,
       sublabel: `${subscriptionCount} active`,
-    });
-  }
-
-  // Rent
-  if (rentTotal > 0) {
-    outgoingItems.push({
-      id: 'rent',
-      label: 'Rent',
-      value: `$${rentTotal.toFixed(0)}`,
     });
   }
 
   // Loans/EMI
   if (loanTotal > 0) {
-    outgoingItems.push({
+    stats.push({
       id: 'loans',
       label: 'Loans & EMI',
-      value: `$${loanTotal.toFixed(0)}`,
-      sublabel: loanCount > 1 ? `${loanCount} payments` : undefined,
+      value: `$${Math.round(loanTotal)}`,
+      sublabel: '/mo',
     });
   }
 
-  if (outgoingItems.length > 0) {
-    groups.push({
-      id: 'outgoing',
-      title: 'Monthly Outgoing',
-      items: outgoingItems,
-    });
-  }
-
-  return groups;
+  return stats;
 }
 
 /**
@@ -268,14 +232,14 @@ app.get("/current", async (c) => {
   if (!row) return c.json({ error: "No brief yet" }, 404);
 
   const digest = row.digestSnapshot as DigestSnapshot | null;
-  const tileGroups = computeTileGroups(digest);
+  const stats = computeStats(digest);
 
   return c.json({
     id: row.id,
     verdict: row.verdict,
     numbers: row.numbers,
     paragraph: row.paragraph,
-    tileGroups,
+    stats,
     data_scope: row.dataScope,
     generated_at: row.generatedAt,
   });

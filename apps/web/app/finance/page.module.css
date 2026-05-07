@@ -27,74 +27,48 @@
   animation: briefBlink 1.1s step-end infinite;
 }
 
-/* Tile Groups */
-.tileGroups {
+/* Stats Row */
+.statsRow {
   display: flex;
-  gap: 16px;
+  gap: 0;
   margin: 0 0 48px;
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.35s forwards;
 }
 
-.tileGroup {
-  flex: 1;
+.statCol {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 24px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-light);
-  border-radius: 14px;
+  gap: 6px;
+  padding: 0 32px;
+  border-left: 2px solid var(--border-light);
 }
 
-.tileGroupTitle {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.statCol:first-child {
+  padding-left: 0;
+  border-left: none;
 }
 
-.tileGroupItems {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.tileItem {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16px;
-}
-
-.tileItemLabel {
-  font-size: 0.9rem;
-  font-weight: 400;
-  color: var(--text-dim);
-}
-
-.tileItemValue {
-  font-size: 1.1rem;
+.statValue {
+  font-size: 1.5rem;
   font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.01em;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.tileItemSublabel {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-dim);
-}
-
-/* Income group gets special treatment - larger value */
-.tileGroup:first-child .tileItemValue {
-  font-size: 1.5rem;
   letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.statUnit {
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
 .empty {
@@ -237,21 +211,23 @@
     min-height: calc(1.25 * 2em);
   }
 
-  .tileGroups {
+  .statsRow {
     flex-direction: column;
-    gap: 12px;
+    gap: 20px;
     margin-bottom: 36px;
   }
 
-  .tileGroup {
-    padding: 16px 20px;
+  .statCol {
+    padding: 0 0 0 16px;
+    border-left: 2px solid var(--border-light);
   }
 
-  .tileGroupItems {
-    gap: 12px;
+  .statCol:first-child {
+    padding-left: 16px;
+    border-left: 2px solid var(--border-light);
   }
 
-  .tileGroup:first-child .tileItemValue {
+  .statValue {
     font-size: 1.25rem;
   }
 

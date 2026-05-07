@@ -19,17 +19,11 @@ interface BriefNumber {
   phrase: string;
 }
 
-interface BriefTileItem {
+interface BriefStat {
   id: string;
   label: string;
   value: string;
   sublabel?: string;
-}
-
-interface BriefTileGroup {
-  id: string;
-  title: string;
-  items: BriefTileItem[];
 }
 
 interface Brief {
@@ -37,7 +31,7 @@ interface Brief {
   verdict: string;
   numbers: BriefNumber[];
   paragraph: string;
-  tileGroups: BriefTileGroup[];
+  stats: BriefStat[];
   data_scope: string;
   generated_at: string;
 }
@@ -536,22 +530,15 @@ export default function FinanceBriefPage() {
               {isTyping && <span className={styles.cursor} />}
             </h2>
 
-            {brief.tileGroups && brief.tileGroups.length > 0 && (
-              <div className={styles.tileGroups}>
-                {brief.tileGroups.map((group) => (
-                  <div key={group.id} className={styles.tileGroup}>
-                    <span className={styles.tileGroupTitle}>{group.title}</span>
-                    <div className={styles.tileGroupItems}>
-                      {group.items.map((item) => (
-                        <div key={item.id} className={styles.tileItem}>
-                          <span className={styles.tileItemLabel}>{item.label}</span>
-                          <span className={styles.tileItemValue}>
-                            {item.value}
-                            {item.sublabel && <span className={styles.tileItemSublabel}>{item.sublabel}</span>}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+            {brief.stats && brief.stats.length > 0 && (
+              <div className={styles.statsRow}>
+                {brief.stats.map((stat) => (
+                  <div key={stat.id} className={styles.statCol}>
+                    <span className={styles.statValue}>
+                      {stat.value}
+                      {stat.sublabel && <span className={styles.statUnit}>{stat.sublabel}</span>}
+                    </span>
+                    <span className={styles.statLabel}>{stat.label}</span>
                   </div>
                 ))}
               </div>
