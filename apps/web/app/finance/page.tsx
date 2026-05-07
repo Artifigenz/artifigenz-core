@@ -19,11 +19,17 @@ interface BriefNumber {
   phrase: string;
 }
 
-interface BriefTile {
+interface BriefTileItem {
   id: string;
   label: string;
   value: string;
   sublabel?: string;
+}
+
+interface BriefTileGroup {
+  id: string;
+  title: string;
+  items: BriefTileItem[];
 }
 
 interface Brief {
@@ -31,7 +37,7 @@ interface Brief {
   verdict: string;
   numbers: BriefNumber[];
   paragraph: string;
-  tiles: BriefTile[];
+  tileGroups: BriefTileGroup[];
   data_scope: string;
   generated_at: string;
 }
@@ -530,15 +536,22 @@ export default function FinanceBriefPage() {
               {isTyping && <span className={styles.cursor} />}
             </h2>
 
-            {brief.tiles && brief.tiles.length > 0 && (
-              <div className={styles.tilesGrid}>
-                {brief.tiles.map((tile) => (
-                  <div key={tile.id} className={styles.tile}>
-                    <span className={styles.tileLabel}>{tile.label}</span>
-                    <span className={styles.tileValue}>
-                      {tile.value}
-                      {tile.sublabel && <span className={styles.tileSublabel}>{tile.sublabel}</span>}
-                    </span>
+            {brief.tileGroups && brief.tileGroups.length > 0 && (
+              <div className={styles.tileGroups}>
+                {brief.tileGroups.map((group) => (
+                  <div key={group.id} className={styles.tileGroup}>
+                    <span className={styles.tileGroupTitle}>{group.title}</span>
+                    <div className={styles.tileGroupItems}>
+                      {group.items.map((item) => (
+                        <div key={item.id} className={styles.tileItem}>
+                          <span className={styles.tileItemLabel}>{item.label}</span>
+                          <span className={styles.tileItemValue}>
+                            {item.value}
+                            {item.sublabel && <span className={styles.tileItemSublabel}>{item.sublabel}</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

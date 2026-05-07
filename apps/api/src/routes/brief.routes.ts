@@ -138,17 +138,23 @@ interface DigestSnapshot {
   }>;
 }
 
-interface BriefTile {
+interface BriefTileItem {
   id: string;
   label: string;
   value: string;
   sublabel?: string;
 }
 
-function computeTiles(digest: DigestSnapshot | null): BriefTile[] {
+interface BriefTileGroup {
+  id: string;
+  title: string;
+  items: BriefTileItem[];
+}
+
+function computeTileGroups(digest: DigestSnapshot | null): BriefTileGroup[] {
   if (!digest) return [];
 
-  const tiles: BriefTile[] = [];
+  const groups: BriefTileGroup[] = [];
   const streams = digest.outflow_streams ?? [];
 
   // Categorize streams by merchant name patterns
@@ -188,45 +194,60 @@ function computeTiles(digest: DigestSnapshot | null): BriefTile[] {
     }
   }
 
-  // Subscriptions tile
-  tiles.push({
-    id: 'subscriptions',
-    label: 'Subscriptions',
-    value: `$${subscriptionTotal.toFixed(0)}`,
-    sublabel: subscriptionCount > 0 ? `${subscriptionCount} active` : undefined,
-  });
+  // Income group (first)
+  if (digest.income_monthly && digest.income_monthly > 0) {
+    groups.push({
+      id: 'income',
+      title: 'Income',
+      items: [{
+        id: 'income',
+        label: 'Monthly',
+        value: `$${Math.round(digest.income_monthly).toLocaleString()}`,
+      }],
+    });
+  }
 
-  // Rent tile (only if detected)
+  // Outgoing group
+  const outgoingItems: BriefTileItem[] = [];
+
+  // Subscriptions
+  if (subscriptionCount > 0) {
+    outgoingItems.push({
+      id: 'subscriptions',
+      label: 'Subscriptions',
+      value: `$${subscriptionTotal.toFixed(0)}`,
+      sublabel: `${subscriptionCount} active`,
+    });
+  }
+
+  // Rent
   if (rentTotal > 0) {
-    tiles.push({
+    outgoingItems.push({
       id: 'rent',
       label: 'Rent',
       value: `$${rentTotal.toFixed(0)}`,
-      sublabel: '/mo',
     });
   }
 
-  // Loans/EMI tile (only if detected)
+  // Loans/EMI
   if (loanTotal > 0) {
-    tiles.push({
+    outgoingItems.push({
       id: 'loans',
       label: 'Loans & EMI',
       value: `$${loanTotal.toFixed(0)}`,
-      sublabel: loanCount > 0 ? `${loanCount} payments` : '/mo',
+      sublabel: loanCount > 1 ? `${loanCount} payments` : undefined,
     });
   }
 
-  // Income tile
-  if (digest.income_monthly && digest.income_monthly > 0) {
-    tiles.push({
-      id: 'income',
-      label: 'Income',
-      value: `$${Math.round(digest.income_monthly).toLocaleString()}`,
-      sublabel: '/mo',
+  if (outgoingItems.length > 0) {
+    groups.push({
+      id: 'outgoing',
+      title: 'Monthly Outgoing',
+      items: outgoingItems,
     });
   }
 
-  return tiles;
+  return groups;
 }
 
 /**
@@ -247,14 +268,14 @@ app.get("/current", async (c) => {
   if (!row) return c.json({ error: "No brief yet" }, 404);
 
   const digest = row.digestSnapshot as DigestSnapshot | null;
-  const tiles = computeTiles(digest);
+  const tileGroups = computeTileGroups(digest);
 
   return c.json({
     id: row.id,
     verdict: row.verdict,
     numbers: row.numbers,
     paragraph: row.paragraph,
-    tiles,
+    tileGroups,
     data_scope: row.dataScope,
     generated_at: row.generatedAt,
   });
