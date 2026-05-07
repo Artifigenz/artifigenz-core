@@ -19,11 +19,19 @@ interface BriefNumber {
   phrase: string;
 }
 
-interface BriefStat {
+interface BreakdownItem {
   id: string;
   label: string;
-  value: string;
-  sublabel?: string;
+  sublabel: string;
+  amount: number;
+  count?: number;
+}
+
+interface FinanceSummary {
+  income: number;
+  outflow: number;
+  leftover: number;
+  breakdown: BreakdownItem[];
 }
 
 interface Brief {
@@ -31,9 +39,25 @@ interface Brief {
   verdict: string;
   numbers: BriefNumber[];
   paragraph: string;
-  stats: BriefStat[];
+  summary: FinanceSummary;
   data_scope: string;
   generated_at: string;
+}
+
+function toTitleCase(str: string): string {
+  return str
+    .toLowerCase()
+    .split(/[\s-_]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function formatMoney(amount: number): string {
+  const absAmount = Math.abs(amount);
+  if (absAmount >= 1000) {
+    return `$${absAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  }
+  return `$${absAmount.toFixed(0)}`;
 }
 
 interface Insight {
@@ -103,6 +127,8 @@ function renderInsightTitle(
   // If no structured data, return plain title
   if (!data) return title;
 
+  const merchant = data.merchant ? toTitleCase(data.merchant) : '';
+
   // Welcome insight: "Monitoring X subscriptions"
   if (typeId.includes('welcome') && data.count !== undefined) {
     return (
@@ -114,11 +140,11 @@ function renderInsightTitle(
   }
 
   // Price change: "Netflix increased $15.99 → $17.99"
-  if (typeId.includes('price-change') && data.merchant && data.oldAmount !== undefined && data.newAmount !== undefined) {
+  if (typeId.includes('price-change') && merchant && data.oldAmount !== undefined && data.newAmount !== undefined) {
     const direction = data.newAmount > data.oldAmount ? 'increased' : 'decreased';
     return (
       <>
-        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textBold}>{merchant}</span>
         <span className={styles.textLight}> {direction} </span>
         <span className={styles.textMedium}>{formatAmount(data.oldAmount)}</span>
         <span className={styles.textLight}> → </span>
@@ -127,36 +153,37 @@ function renderInsightTitle(
     );
   }
 
-  // Charged: "Netflix charged $15.99"
-  if (typeId.includes('charged') && data.merchant && data.amount !== undefined) {
+  // Charged: "Spotify charged $12.99 — as expected."
+  if (typeId.includes('charged') && merchant && data.amount !== undefined) {
     return (
       <>
-        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textBold}>{merchant}</span>
         <span className={styles.textLight}> charged </span>
-        <span className={styles.textMedium}>{formatAmount(data.amount)}</span>
+        <span className={styles.textBold}>{formatAmount(data.amount)}</span>
+        <span className={styles.textLight}> — as expected.</span>
       </>
     );
   }
 
-  // Upcoming: "Netflix will charge $15.99 tomorrow"
-  if (typeId.includes('upcoming') && data.merchant && data.amount !== undefined) {
+  // Upcoming: "Netflix will charge $23.99 tomorrow."
+  if (typeId.includes('upcoming') && merchant && data.amount !== undefined) {
     const dayLabel = data.daysUntil === 0 ? 'today' : data.daysUntil === 1 ? 'tomorrow' : `in ${data.daysUntil} days`;
     return (
       <>
-        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textBold}>{merchant}</span>
         <span className={styles.textLight}> will charge </span>
-        <span className={styles.textMedium}>{formatAmount(data.amount)}</span>
-        <span className={styles.textLight}> {dayLabel}</span>
+        <span className={styles.textBold}>{formatAmount(data.amount)}</span>
+        <span className={styles.textLight}> {dayLabel}.</span>
       </>
     );
   }
 
   // New subscription: "New subscription: Netflix"
-  if (typeId.endsWith('.new') && data.merchant) {
+  if (typeId.endsWith('.new') && merchant) {
     return (
       <>
         <span className={styles.textLight}>New subscription: </span>
-        <span className={styles.textBold}>{data.merchant}</span>
+        <span className={styles.textBold}>{merchant}</span>
       </>
     );
   }
@@ -530,74 +557,96 @@ export default function FinanceBriefPage() {
               {isTyping && <span className={styles.cursor} />}
             </h2>
 
-            {brief.stats && brief.stats.length > 0 && (
-              <div className={styles.statsRow}>
-                {brief.stats.map((stat) => (
-                  <div key={stat.id} className={styles.statCol}>
-                    <span className={styles.statValue}>
-                      {stat.value}
-                      {stat.sublabel && <span className={styles.statUnit}>{stat.sublabel}</span>}
+            {brief.summary && (
+              <>
+                {/* Top 3 metrics */}
+                <div className={styles.metricsRow}>
+                  <div className={styles.metric}>
+                    <span className={styles.metricLabel}>Income</span>
+                    <span className={styles.metricValue}>
+                      {formatMoney(brief.summary.income)}<span className={styles.metricUnit}>/mo</span>
                     </span>
-                    <span className={styles.statLabel}>{stat.label}</span>
                   </div>
-                ))}
-              </div>
+                  <div className={styles.metric}>
+                    <span className={styles.metricLabel}>Outflow</span>
+                    <span className={styles.metricValue}>
+                      {formatMoney(brief.summary.outflow)}<span className={styles.metricUnit}>/mo</span>
+                    </span>
+                  </div>
+                  <div className={styles.metric}>
+                    <span className={styles.metricLabel}>Leftover</span>
+                    <span className={`${styles.metricValue} ${brief.summary.leftover < 0 ? styles.negative : ''}`}>
+                      {brief.summary.leftover < 0 ? '−' : ''}{formatMoney(brief.summary.leftover)}<span className={styles.metricUnit}>/mo</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className={styles.progressBar}>
+                  <div
+                    className={styles.progressIncome}
+                    style={{ width: `${Math.min(100, (brief.summary.income / brief.summary.outflow) * 100)}%` }}
+                  />
+                  <div className={styles.progressMarker} style={{ left: `${Math.min(100, (brief.summary.income / brief.summary.outflow) * 100)}%` }} />
+                </div>
+                <div className={styles.progressLabels}>
+                  <span>$0</span>
+                  <span className={styles.progressIncomeLabel}>Income → {formatMoney(brief.summary.income)}</span>
+                  <span>{formatMoney(brief.summary.outflow)}</span>
+                </div>
+
+                {/* Breakdown grid */}
+                {brief.summary.breakdown.length > 0 && (
+                  <div className={styles.breakdownGrid}>
+                    {brief.summary.breakdown.map((item) => (
+                      <div key={item.id} className={styles.breakdownItem}>
+                        <div className={styles.breakdownLeft}>
+                          <span className={styles.breakdownDot} />
+                          <div className={styles.breakdownInfo}>
+                            <span className={styles.breakdownLabel}>{item.label}</span>
+                            <span className={styles.breakdownSublabel}>{item.sublabel.toUpperCase()}</span>
+                          </div>
+                        </div>
+                        <span className={styles.breakdownAmount}>
+                          {formatMoney(item.amount)}<span className={styles.breakdownUnit}>/mo</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Insights Feed */}
             {!insightsLoading && insights.length > 0 && (
               <section className={styles.insightsFeed}>
-                <h3 className={styles.insightsHeader}>Today's Insights</h3>
+                <h3 className={styles.insightsHeader}>
+                  <span className={styles.insightsHeaderDot} />
+                  Today · {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
+                </h3>
                 <div className={styles.insightsList}>
                   {insights.map((insight) => (
                     <div
                       key={insight.id}
                       className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
                     >
-                      <div className={styles.insightIcon}>
-                        {insight.insightTypeId.includes('welcome') && (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                          </svg>
-                        )}
-                        {insight.insightTypeId.includes('price-change') && (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                            <line x1="12" y1="9" x2="12" y2="13" />
-                            <line x1="12" y1="17" x2="12.01" y2="17" />
-                          </svg>
-                        )}
-                        {insight.insightTypeId.includes('upcoming') && (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                            <line x1="16" y1="2" x2="16" y2="6" />
-                            <line x1="8" y1="2" x2="8" y2="6" />
-                            <line x1="3" y1="10" x2="21" y2="10" />
-                          </svg>
-                        )}
-                        {insight.insightTypeId.endsWith('.new') && (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                          </svg>
-                        )}
-                        {insight.insightTypeId.includes('charged') && (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
+                      <div className={styles.insightHeader}>
+                        <span className={styles.insightBadge}>
+                          <span className={styles.insightBadgeDot} />
+                          Subscriptions
+                        </span>
+                        <span className={styles.insightTime}>
+                          {new Date(insight.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </span>
                       </div>
                       <div className={styles.insightContent}>
-                        <span className={styles.insightTitle}>
+                        <p className={styles.insightTitle}>
                           {renderInsightTitle(insight.insightTypeId, insight.title, insight.data as InsightData)}
-                        </span>
+                        </p>
                         {insight.description && (
-                          <span className={styles.insightDescription}>{insight.description}</span>
+                          <p className={styles.insightDescription}>{insight.description}</p>
                         )}
                       </div>
-                      {insight.isCritical && (
-                        <span className={styles.criticalBadge}>Action needed</span>
-                      )}
                     </div>
                   ))}
                 </div>

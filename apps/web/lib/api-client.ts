@@ -361,7 +361,18 @@ export class ApiClient {
       verdict: string;
       numbers: Array<{ value: string; phrase: string }>;
       paragraph: string;
-      stats: Array<{ id: string; label: string; value: string; sublabel?: string }>;
+      summary: {
+        income: number;
+        outflow: number;
+        leftover: number;
+        breakdown: Array<{
+          id: string;
+          label: string;
+          sublabel: string;
+          amount: number;
+          count?: number;
+        }>;
+      };
       data_scope: string;
       generated_at: string;
     }>('/api/brief/current');

@@ -131,6 +131,7 @@ interface DigestSnapshot {
   income_monthly?: number;
   recurring_monthly?: number;
   expenses_monthly?: number;
+  leftover_monthly?: number;
   outflow_streams?: Array<{
     merchant: string;
     amount_monthly: number;
@@ -138,20 +139,32 @@ interface DigestSnapshot {
   }>;
 }
 
-interface BriefStat {
-  id: string;
-  label: string;
-  value: string;
-  sublabel?: string;
+interface FinanceSummary {
+  income: number;
+  outflow: number;
+  leftover: number;
+  breakdown: Array<{
+    id: string;
+    label: string;
+    sublabel: string;
+    amount: number;
+    count?: number;
+  }>;
 }
 
-function computeStats(digest: DigestSnapshot | null): BriefStat[] {
-  if (!digest) return [];
+function computeSummary(digest: DigestSnapshot | null): FinanceSummary {
+  const defaultSummary: FinanceSummary = {
+    income: 0,
+    outflow: 0,
+    leftover: 0,
+    breakdown: [],
+  };
 
-  const stats: BriefStat[] = [];
+  if (!digest) return defaultSummary;
+
   const streams = digest.outflow_streams ?? [];
 
-  // Categorize streams by merchant name patterns
+  // Categorize streams
   const subscriptionKeywords = [
     'netflix', 'spotify', 'hulu', 'disney', 'amazon prime', 'apple', 'google',
     'youtube', 'hbo', 'paramount', 'peacock', 'adobe', 'microsoft', 'dropbox',
@@ -159,59 +172,67 @@ function computeStats(digest: DigestSnapshot | null): BriefStat[] {
     'fitness', 'planet fitness', 'audible', 'kindle', 'playstation', 'xbox',
     'nintendo', 'twitch', 'patreon', 'substack', 'medium', 'linkedin',
   ];
-
   const loanKeywords = ['loan', 'mortgage', 'emi', 'car payment', 'auto', 'student', 'lending', 'credit'];
+  const rentKeywords = ['rent', 'apartment', 'landlord', 'property', 'housing', 'lease'];
+  const utilityKeywords = ['hydro', 'electric', 'gas', 'water', 'internet', 'phone', 'mobile', 'utility'];
 
-  let subscriptionTotal = 0;
-  let subscriptionCount = 0;
-  let loanTotal = 0;
+  let subscriptionTotal = 0, subscriptionCount = 0;
+  let loanTotal = 0, loanCount = 0;
+  let otherRecurringTotal = 0;
 
   for (const stream of streams) {
     const name = (stream.merchant ?? '').toLowerCase();
     const amount = Math.abs(stream.amount_monthly);
 
-    if (subscriptionKeywords.some(kw => name.includes(kw))) {
+    if (subscriptionKeywords.some(kw => name.includes(kw)) || amount < 50) {
       subscriptionTotal += amount;
       subscriptionCount++;
     } else if (loanKeywords.some(kw => name.includes(kw))) {
       loanTotal += amount;
-    } else if (amount < 100) {
-      subscriptionTotal += amount;
-      subscriptionCount++;
+      loanCount++;
+    } else if (rentKeywords.some(kw => name.includes(kw)) || utilityKeywords.some(kw => name.includes(kw))) {
+      otherRecurringTotal += amount;
+    } else {
+      otherRecurringTotal += amount;
     }
   }
 
-  // Income (first)
-  if (digest.income_monthly && digest.income_monthly > 0) {
-    stats.push({
-      id: 'income',
-      label: 'Income',
-      value: `$${Math.round(digest.income_monthly).toLocaleString()}`,
-      sublabel: '/mo',
-    });
-  }
+  const income = digest.income_monthly ?? 0;
+  const outflow = digest.expenses_monthly ?? (subscriptionTotal + loanTotal + otherRecurringTotal);
+  const leftover = digest.leftover_monthly ?? (income - outflow);
 
-  // Subscriptions
+  const breakdown: FinanceSummary['breakdown'] = [];
+
   if (subscriptionCount > 0) {
-    stats.push({
+    breakdown.push({
       id: 'subscriptions',
       label: 'Subscriptions',
-      value: `$${Math.round(subscriptionTotal)}`,
       sublabel: `${subscriptionCount} active`,
+      amount: subscriptionTotal,
+      count: subscriptionCount,
     });
   }
 
-  // Loans/EMI
-  if (loanTotal > 0) {
-    stats.push({
+  if (loanCount > 0) {
+    breakdown.push({
       id: 'loans',
       label: 'Loans & EMI',
-      value: `$${Math.round(loanTotal)}`,
-      sublabel: '/mo',
+      sublabel: `${loanCount} ${loanCount === 1 ? 'line' : 'lines'}`,
+      amount: loanTotal,
+      count: loanCount,
     });
   }
 
-  return stats;
+  if (otherRecurringTotal > 0) {
+    breakdown.push({
+      id: 'other',
+      label: 'Other recurring',
+      sublabel: 'rent, utilities, autopay',
+      amount: otherRecurringTotal,
+    });
+  }
+
+  return { income, outflow, leftover, breakdown };
 }
 
 /**
@@ -232,14 +253,14 @@ app.get("/current", async (c) => {
   if (!row) return c.json({ error: "No brief yet" }, 404);
 
   const digest = row.digestSnapshot as DigestSnapshot | null;
-  const stats = computeStats(digest);
+  const summary = computeSummary(digest);
 
   return c.json({
     id: row.id,
     verdict: row.verdict,
     numbers: row.numbers,
     paragraph: row.paragraph,
-    stats,
+    summary,
     data_scope: row.dataScope,
     generated_at: row.generatedAt,
   });

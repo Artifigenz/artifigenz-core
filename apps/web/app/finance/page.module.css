@@ -27,48 +27,154 @@
   animation: briefBlink 1.1s step-end infinite;
 }
 
-/* Stats Row */
-.statsRow {
+/* Metrics Row - Income, Outflow, Leftover */
+.metricsRow {
   display: flex;
-  gap: 0;
-  margin: 0 0 48px;
+  justify-content: space-between;
+  margin: 0 0 24px;
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.35s forwards;
 }
 
-.statCol {
+.metric {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 32px;
-  border-left: 2px solid var(--border-light);
+  gap: 4px;
 }
 
-.statCol:first-child {
-  padding-left: 0;
-  border-left: none;
+.metric:last-child {
+  text-align: right;
 }
 
-.statValue {
-  font-size: 1.5rem;
+.metric:nth-child(2) {
+  text-align: center;
+}
+
+.metricLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metricValue {
+  font-size: 1.75rem;
   font-weight: 600;
   color: var(--text);
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
-.statUnit {
+.metricValue.negative {
+  color: var(--text);
+}
+
+.metricUnit {
+  font-weight: 400;
+  font-size: 0.5em;
+  color: var(--text-dim);
+}
+
+/* Progress Bar */
+.progressBar {
+  position: relative;
+  height: 8px;
+  background: var(--border-light);
+  border-radius: 4px;
+  margin: 0 0 8px;
+  overflow: visible;
+}
+
+.progressIncome {
+  height: 100%;
+  background: #333;
+  border-radius: 4px;
+}
+
+.progressMarker {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  background: var(--text);
+  border-left: 1px dashed var(--text-dim);
+}
+
+.progressLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin: 0 0 32px;
+}
+
+.progressIncomeLabel {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Breakdown Grid */
+.breakdownGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px 48px;
+  margin: 0 0 48px;
+}
+
+.breakdownItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.breakdownLeft {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.breakdownDot {
+  width: 10px;
+  height: 10px;
+  background: #999;
+  border-radius: 2px;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.breakdownInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.breakdownLabel {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.breakdownSublabel {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.breakdownAmount {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.breakdownUnit {
   font-weight: 400;
   font-size: 0.8em;
   color: var(--text-dim);
-  margin-left: 4px;
-}
-
-.statLabel {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  line-height: 1.4;
 }
 
 .empty {
@@ -85,14 +191,17 @@
 
 /* Insights Feed */
 .insightsFeed {
-  margin-top: 56px;
+  margin-top: 48px;
   opacity: 0;
   transform: translateY(8px);
   animation: briefFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.75s forwards;
 }
 
 .insightsHeader {
-  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -100,71 +209,85 @@
   margin: 0 0 20px;
 }
 
+.insightsHeaderDot {
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50%;
+}
+
 .insightsList {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .insightCard {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px 18px;
+  padding: 20px 24px;
   background: var(--card-bg);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  border-radius: 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .insightCard:hover {
   border-color: var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .insightCard.critical {
   border-color: rgba(234, 179, 8, 0.4);
-  background: rgba(234, 179, 8, 0.06);
-}
-
-.insightCard.critical .insightIcon {
-  background: rgba(234, 179, 8, 0.15);
-  color: #b45309;
+  background: rgba(234, 179, 8, 0.04);
 }
 
 .insightCard.read {
-  opacity: 0.65;
+  opacity: 0.7;
 }
 
-.insightIcon {
+.insightHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.insightBadge {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  background: var(--border-light);
+  gap: 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
   color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
-.insightIcon svg {
-  width: 16px;
-  height: 16px;
+.insightBadgeDot {
+  width: 8px;
+  height: 8px;
+  background: #333;
+  border-radius: 2px;
+}
+
+.insightTime {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .insightContent {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  gap: 6px;
 }
 
 .insightTitle {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   font-weight: 400;
   color: var(--text);
   line-height: 1.4;
+  margin: 0;
 }
 
 /* Typography variations for insight titles */
@@ -176,31 +299,18 @@
 .textMedium {
   font-weight: 500;
   color: var(--text);
-  letter-spacing: -0.01em;
 }
 
 .textLight {
   font-weight: 400;
-  opacity: 0.6;
+  color: var(--text);
 }
 
 .insightDescription {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--text-dim);
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-}
-
-.criticalBadge {
-  flex-shrink: 0;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #b45309;
-  background: rgba(234, 179, 8, 0.15);
-  padding: 4px 8px;
-  border-radius: 4px;
+  line-height: 1.5;
+  margin: 0;
 }
 
 @media (max-width: 640px) {
@@ -211,24 +321,31 @@
     min-height: calc(1.25 * 2em);
   }
 
-  .statsRow {
-    flex-direction: column;
+  .metricsRow {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .metric {
+    flex: 1;
+    min-width: 80px;
+  }
+
+  .metricValue {
+    font-size: 1.35rem;
+  }
+
+  .breakdownGrid {
+    grid-template-columns: 1fr;
     gap: 20px;
-    margin-bottom: 36px;
   }
 
-  .statCol {
-    padding: 0 0 0 16px;
-    border-left: 2px solid var(--border-light);
+  .insightCard {
+    padding: 16px 20px;
   }
 
-  .statCol:first-child {
-    padding-left: 16px;
-    border-left: 2px solid var(--border-light);
-  }
-
-  .statValue {
-    font-size: 1.25rem;
+  .insightTitle {
+    font-size: 1rem;
   }
 
   .insightsFeed {
