@@ -266,4 +266,187 @@ app.get("/current", async (c) => {
   });
 });
 
+/**
+ * GET /api/brief/breakdown
+ *   Returns detailed breakdown of all recurring streams for the signed-in user,
+ *   categorized by type, with individual items and calculation explanations.
+ */
+app.get("/breakdown", async (c) => {
+  const user = c.get("user");
+
+  // Get the user's finance agent instance
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    );
+
+  if (!instance) {
+    return c.json({ error: "No finance agent found" }, 404);
+  }
+
+  // Get the latest brief for totals
+  const [brief] = await db
+    .select()
+    .from(financeBriefs)
+    .where(eq(financeBriefs.userId, user.id))
+    .orderBy(desc(financeBriefs.generatedAt))
+    .limit(1);
+
+  if (!brief) {
+    return c.json({ error: "No brief yet" }, 404);
+  }
+
+  // Get all recurring streams from the database
+  const { financeRecurringStreams, financeAccounts } = await import("@artifigenz/db");
+
+  const streams = await db
+    .select()
+    .from(financeRecurringStreams)
+    .where(eq(financeRecurringStreams.agentInstanceId, instance.id));
+
+  const accounts = await db
+    .select()
+    .from(financeAccounts)
+    .where(eq(financeAccounts.agentInstanceId, instance.id));
+
+  // Categorize streams using the same logic as computeSummary
+  const subscriptionKeywords = [
+    'netflix', 'spotify', 'hulu', 'disney', 'amazon prime', 'apple', 'google',
+    'youtube', 'hbo', 'paramount', 'peacock', 'adobe', 'microsoft', 'dropbox',
+    'slack', 'zoom', 'notion', 'figma', 'canva', 'openai', 'claude', 'gym',
+    'fitness', 'planet fitness', 'audible', 'kindle', 'playstation', 'xbox',
+    'nintendo', 'twitch', 'patreon', 'substack', 'medium', 'linkedin',
+  ];
+  const loanKeywords = ['loan', 'mortgage', 'emi', 'car payment', 'auto', 'student', 'lending', 'credit', 'affirm', 'easy financial', 'easyfinancial', 'klarna', 'afterpay'];
+
+  interface StreamItem {
+    id: string;
+    merchantName: string;
+    description: string | null;
+    amount: number;
+    frequency: string;
+    lastDate: string | null;
+    nextDate: string | null;
+    accountId: string | null;
+    category: 'subscription' | 'loan' | 'other';
+  }
+
+  const inflowItems: StreamItem[] = [];
+  const subscriptionItems: StreamItem[] = [];
+  const loanItems: StreamItem[] = [];
+  const otherItems: StreamItem[] = [];
+
+  for (const stream of streams) {
+    const name = (stream.merchantName ?? stream.description ?? '').toLowerCase();
+    const amount = Math.abs(Number(stream.averageAmount));
+
+    const item: StreamItem = {
+      id: stream.id,
+      merchantName: stream.merchantName ?? stream.description ?? 'Unknown',
+      description: stream.description,
+      amount,
+      frequency: stream.frequency,
+      lastDate: stream.lastDate,
+      nextDate: stream.predictedNextDate,
+      accountId: stream.plaidAccountId,
+      category: 'other',
+    };
+
+    if (stream.direction === 'inflow') {
+      inflowItems.push(item);
+    } else {
+      // Categorize outflow
+      if (loanKeywords.some(kw => name.includes(kw))) {
+        item.category = 'loan';
+        loanItems.push(item);
+      } else if (subscriptionKeywords.some(kw => name.includes(kw)) || amount < 50) {
+        item.category = 'subscription';
+        subscriptionItems.push(item);
+      } else {
+        otherItems.push(item);
+      }
+    }
+  }
+
+  // Normalize to monthly
+  function normalizeToMonthly(amount: number, frequency: string): number {
+    switch (frequency.toUpperCase()) {
+      case 'WEEKLY': return amount * 52 / 12;
+      case 'BIWEEKLY': return amount * 26 / 12;
+      case 'SEMI_MONTHLY': return amount * 2;
+      case 'MONTHLY': return amount;
+      case 'ANNUALLY': return amount / 12;
+      default: return amount;
+    }
+  }
+
+  // Calculate totals
+  const incomeTotal = inflowItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const subscriptionTotal = subscriptionItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const loanTotal = loanItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const otherTotal = otherItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const recurringTotal = subscriptionTotal + loanTotal + otherTotal;
+
+  // Get expenses from digest
+  const digest = brief.digestSnapshot as DigestSnapshot | null;
+  const expensesMonthly = digest?.expenses_monthly ?? recurringTotal;
+
+  return c.json({
+    generatedAt: brief.generatedAt,
+    accounts: accounts.map(a => ({
+      id: a.id,
+      name: a.name,
+      mask: a.mask,
+      type: a.type,
+      subtype: a.subtype,
+      currentBalance: Number(a.currentBalance),
+      availableBalance: Number(a.availableBalance),
+      currency: a.isoCurrencyCode,
+    })),
+    income: {
+      total: Math.round(incomeTotal * 100) / 100,
+      items: inflowItems.map(i => ({
+        ...i,
+        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
+      })),
+    },
+    subscriptions: {
+      total: Math.round(subscriptionTotal * 100) / 100,
+      count: subscriptionItems.length,
+      items: subscriptionItems.map(i => ({
+        ...i,
+        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
+      })),
+    },
+    loans: {
+      total: Math.round(loanTotal * 100) / 100,
+      count: loanItems.length,
+      items: loanItems.map(i => ({
+        ...i,
+        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
+      })),
+    },
+    other: {
+      total: Math.round(otherTotal * 100) / 100,
+      count: otherItems.length,
+      items: otherItems.map(i => ({
+        ...i,
+        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
+      })),
+    },
+    totals: {
+      income: Math.round(incomeTotal * 100) / 100,
+      recurringOutflow: Math.round(recurringTotal * 100) / 100,
+      totalExpenses: Math.round(expensesMonthly * 100) / 100,
+      variableSpend: Math.round((expensesMonthly - recurringTotal) * 100) / 100,
+      leftover: Math.round((incomeTotal - expensesMonthly) * 100) / 100,
+    },
+  });
+});
+
 export default app;

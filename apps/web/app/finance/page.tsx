@@ -642,6 +642,16 @@ export default function FinanceBriefPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* View Details Link */}
+                  <div className={styles.detailsLink}>
+                    <Link href="/finance/breakdown">
+                      View detailed breakdown
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14M13 5l7 7-7 7" />
+                      </svg>
+                    </Link>
+                  </div>
                 </>
               );
             })()}

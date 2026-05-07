@@ -378,6 +378,88 @@ export class ApiClient {
     }>('/api/brief/current');
   }
 
+  async getBriefBreakdown() {
+    return this.get<{
+      generatedAt: string;
+      accounts: Array<{
+        id: string;
+        name: string | null;
+        mask: string | null;
+        type: string | null;
+        subtype: string | null;
+        currentBalance: number;
+        availableBalance: number | null;
+        currency: string | null;
+      }>;
+      income: {
+        total: number;
+        items: Array<{
+          id: string;
+          merchantName: string;
+          description: string | null;
+          amount: number;
+          monthlyAmount: number;
+          frequency: string;
+          lastDate: string | null;
+          nextDate: string | null;
+          accountId: string | null;
+        }>;
+      };
+      subscriptions: {
+        total: number;
+        count: number;
+        items: Array<{
+          id: string;
+          merchantName: string;
+          description: string | null;
+          amount: number;
+          monthlyAmount: number;
+          frequency: string;
+          lastDate: string | null;
+          nextDate: string | null;
+          accountId: string | null;
+        }>;
+      };
+      loans: {
+        total: number;
+        count: number;
+        items: Array<{
+          id: string;
+          merchantName: string;
+          description: string | null;
+          amount: number;
+          monthlyAmount: number;
+          frequency: string;
+          lastDate: string | null;
+          nextDate: string | null;
+          accountId: string | null;
+        }>;
+      };
+      other: {
+        total: number;
+        count: number;
+        items: Array<{
+          id: string;
+          merchantName: string;
+          description: string | null;
+          amount: number;
+          monthlyAmount: number;
+          frequency: string;
+          lastDate: string | null;
+          nextDate: string | null;
+          accountId: string | null;
+        }>;
+      };
+      totals: {
+        income: number;
+        recurringOutflow: number;
+        totalExpenses: number;
+        variableSpend: number;
+        leftover: number;
+      };
+    }>('/api/brief/breakdown');
+  }
+
   async getDeliveryPreferences() {
     return this.get<{
       email: { enabled: boolean; address: string | null };
