@@ -405,8 +405,8 @@
 }
 
 .insightTitle {
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 500;
   color: var(--text);
   margin-bottom: 4px;
 }
