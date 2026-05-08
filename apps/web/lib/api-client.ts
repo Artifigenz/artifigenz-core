@@ -444,6 +444,10 @@ export class ApiClient {
     }>('/api/brief/breakdown');
   }
 
+  async resetAllCategories() {
+    return this.post<{ success: boolean; message: string }>('/api/brief/categories/reset');
+  }
+
   async overrideStreamCategory(streamId: string, category: string) {
     return this.patch<{
       success: boolean;

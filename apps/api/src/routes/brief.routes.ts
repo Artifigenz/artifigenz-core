@@ -570,6 +570,52 @@ app.get("/breakdown", async (c) => {
 });
 
 /**
+ * POST /api/brief/categories/reset
+ *   Clears all categorization data: global merchant cache and stream categories.
+ *   Use this to re-categorize everything fresh on next brief generation.
+ */
+app.post("/categories/reset", async (c) => {
+  const user = c.get("user");
+
+  // Get the user's finance agent instance
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    );
+
+  if (!instance) {
+    return c.json({ error: "No finance agent found" }, 404);
+  }
+
+  const { financeRecurringStreams, merchantCategories } = await import("@artifigenz/db");
+  const { sql } = await import("drizzle-orm");
+
+  // Clear the global merchant cache
+  await db.delete(merchantCategories);
+
+  // Clear category fields on all streams for this agent instance
+  await db
+    .update(financeRecurringStreams)
+    .set({
+      category: null,
+      categorySource: null,
+      categoryConfidence: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(financeRecurringStreams.agentInstanceId, instance.id));
+
+  return c.json({
+    success: true,
+    message: "All categorization data cleared. Regenerate your brief to re-categorize.",
+  });
+});
+
+/**
  * PATCH /api/brief/streams/:streamId/category
  *   body: { category: 'subscription' | 'loan' | 'fee' | 'rent' | 'utility' | 'insurance' | 'transfer' | 'variable' | 'income' }
  *

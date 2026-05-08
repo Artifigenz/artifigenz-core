@@ -239,6 +239,7 @@ export default function FinanceBriefPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [overriding, setOverriding] = useState(false);
   const [overrideResult, setOverrideResult] = useState<string | null>(null);
+  const [resettingCategories, setResettingCategories] = useState(false);
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -581,6 +582,22 @@ export default function FinanceBriefPage() {
       setOverrideResult(`Error: ${(err as { message?: string })?.message ?? 'Failed to override'}`);
     } finally {
       setOverriding(false);
+    }
+  }
+
+  async function handleResetCategories() {
+    if (!confirm('This will clear ALL categorization data (global cache + stream categories). You\'ll need to regenerate your brief to re-categorize. Continue?')) {
+      return;
+    }
+    setResettingCategories(true);
+    try {
+      await api.resetAllCategories();
+      setStreams([]);
+      setOverrideResult('All categories cleared. Click "Regenerate Brief" to re-categorize.');
+    } catch (err) {
+      setOverrideResult(`Error: ${(err as { message?: string })?.message ?? 'Failed to reset'}`);
+    } finally {
+      setResettingCategories(false);
     }
   }
 
@@ -997,6 +1014,22 @@ export default function FinanceBriefPage() {
                           disabled={loadingDebug}
                         >
                           {loadingDebug ? 'Loading...' : 'Load Debug'}
+                        </button>
+                      </div>
+
+                      <div className={styles.devtoolsAction}>
+                        <div className={styles.devtoolsInfo}>
+                          <span className={styles.devtoolsLabel}>Reset All Categories</span>
+                          <span className={styles.devtoolsHint}>
+                            Clear global merchant cache and all stream categories. Re-categorize fresh on next brief.
+                          </span>
+                        </div>
+                        <button
+                          className={`${styles.devtoolsBtn} ${styles.dangerBtn}`}
+                          onClick={handleResetCategories}
+                          disabled={resettingCategories}
+                        >
+                          {resettingCategories ? 'Resetting...' : 'Reset Categories'}
                         </button>
                       </div>
 
