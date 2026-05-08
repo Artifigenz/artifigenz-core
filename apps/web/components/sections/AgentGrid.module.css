@@ -97,8 +97,8 @@
 
 .activeInsight {
   font-size: 0.82rem;
-  font-weight: 400;
-  color: var(--text-mid);
+  font-weight: 500;
+  color: var(--text);
   line-height: 1.5;
   animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
