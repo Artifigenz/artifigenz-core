@@ -569,4 +569,110 @@ app.get("/breakdown", async (c) => {
   });
 });
 
+/**
+ * PATCH /api/brief/streams/:streamId/category
+ *   body: { category: 'subscription' | 'loan' | 'fee' | 'rent' | 'utility' | 'insurance' | 'transfer' | 'variable' | 'income' }
+ *
+ *   Manually override a stream's category. Updates both the stream record
+ *   and the global merchant cache so the correction applies to all users.
+ */
+app.patch("/streams/:streamId/category", async (c) => {
+  const user = c.get("user");
+  const streamId = c.req.param("streamId");
+  const body = await c.req.json<{ category: string }>();
+
+  const validCategories = [
+    'subscription', 'loan', 'fee', 'rent', 'utility',
+    'insurance', 'transfer', 'variable', 'income'
+  ];
+
+  if (!body.category || !validCategories.includes(body.category)) {
+    return c.json({
+      error: `Invalid category. Must be one of: ${validCategories.join(', ')}`
+    }, 400);
+  }
+
+  // Get the user's finance agent instance
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    );
+
+  if (!instance) {
+    return c.json({ error: "No finance agent found" }, 404);
+  }
+
+  // Get the stream and verify it belongs to this user's agent
+  const { financeRecurringStreams, merchantCategories } = await import("@artifigenz/db");
+
+  const [stream] = await db
+    .select()
+    .from(financeRecurringStreams)
+    .where(
+      and(
+        eq(financeRecurringStreams.id, streamId),
+        eq(financeRecurringStreams.agentInstanceId, instance.id),
+      ),
+    );
+
+  if (!stream) {
+    return c.json({ error: "Stream not found" }, 404);
+  }
+
+  // Update the stream's category
+  await db
+    .update(financeRecurringStreams)
+    .set({
+      category: body.category,
+      categorySource: 'user_override',
+      categoryConfidence: '1.00',
+      updatedAt: new Date(),
+    })
+    .where(eq(financeRecurringStreams.id, streamId));
+
+  // Also update the global merchant cache so this correction applies to all users
+  const merchantName = stream.merchantName || stream.description || 'Unknown';
+  const normalizedName = merchantName
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\b(inc|llc|ltd|corp|co|com|www)\b/g, "")
+    .trim();
+
+  if (normalizedName) {
+    await db
+      .insert(merchantCategories)
+      .values({
+        merchantNameNormalized: normalizedName,
+        category: body.category,
+        confidence: '1.00',
+        reasoning: 'User override',
+        source: 'user_override',
+      })
+      .onConflictDoUpdate({
+        target: merchantCategories.merchantNameNormalized,
+        set: {
+          category: body.category,
+          confidence: '1.00',
+          reasoning: 'User override',
+          source: 'user_override',
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  return c.json({
+    success: true,
+    streamId,
+    category: body.category,
+    merchantName,
+    message: `Category updated to "${body.category}" for this stream and global cache`,
+  });
+});
+
 export default app;
