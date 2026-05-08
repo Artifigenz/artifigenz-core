@@ -403,6 +403,8 @@ export class ApiClient {
           lastDate: string | null;
           nextDate: string | null;
           accountId: string | null;
+          accountName: string | null;
+          accountMask: string | null;
           pfcPrimary: string | null;
         }>;
       };
@@ -419,6 +421,26 @@ export class ApiClient {
           lastDate: string | null;
           nextDate: string | null;
           accountId: string | null;
+          accountName: string | null;
+          accountMask: string | null;
+          pfcPrimary: string | null;
+        }>;
+      };
+      transfersOut: {
+        total: number;
+        count: number;
+        items: Array<{
+          id: string;
+          merchantName: string;
+          description: string | null;
+          amount: number;
+          monthlyAmount: number;
+          frequency: string;
+          lastDate: string | null;
+          nextDate: string | null;
+          accountId: string | null;
+          accountName: string | null;
+          accountMask: string | null;
           pfcPrimary: string | null;
         }>;
       };
@@ -435,6 +457,9 @@ export class ApiClient {
           lastDate: string | null;
           nextDate: string | null;
           accountId: string | null;
+          accountName: string | null;
+          accountMask: string | null;
+          pfcPrimary: string | null;
         }>;
       };
       loans: {
@@ -450,6 +475,9 @@ export class ApiClient {
           lastDate: string | null;
           nextDate: string | null;
           accountId: string | null;
+          accountName: string | null;
+          accountMask: string | null;
+          pfcPrimary: string | null;
         }>;
       };
       other: {
@@ -465,6 +493,9 @@ export class ApiClient {
           lastDate: string | null;
           nextDate: string | null;
           accountId: string | null;
+          accountName: string | null;
+          accountMask: string | null;
+          pfcPrimary: string | null;
         }>;
       };
       totals: {

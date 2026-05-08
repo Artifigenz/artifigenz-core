@@ -18,6 +18,8 @@ interface BreakdownItem {
   lastDate: string | null;
   nextDate: string | null;
   accountId: string | null;
+  accountName: string | null;
+  accountMask: string | null;
   pfcPrimary?: string | null;
 }
 
@@ -37,6 +39,7 @@ interface Breakdown {
   accounts: Account[];
   income: { total: number; items: BreakdownItem[] };
   transfersIn: { total: number; count: number; items: BreakdownItem[] };
+  transfersOut: { total: number; count: number; items: BreakdownItem[] };
   subscriptions: { total: number; count: number; items: BreakdownItem[] };
   loans: { total: number; count: number; items: BreakdownItem[] };
   other: { total: number; count: number; items: BreakdownItem[] };
@@ -81,7 +84,16 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-type SectionKey = 'income' | 'subscriptions' | 'loans' | 'other' | 'variable';
+type SectionKey = 'income' | 'subscriptions' | 'loans' | 'other' | 'variable' | 'transfers';
+
+function formatAccount(item: BreakdownItem): string {
+  if (item.accountName && item.accountMask) {
+    return `${item.accountName} ••${item.accountMask}`;
+  }
+  if (item.accountName) return item.accountName;
+  if (item.accountMask) return `••${item.accountMask}`;
+  return '';
+}
 
 export default function BreakdownPage() {
   const api = useApiClient();
@@ -94,6 +106,7 @@ export default function BreakdownPage() {
     loans: false,
     other: false,
     variable: false,
+    transfers: false,
   });
 
   const toggle = (key: SectionKey) => {
@@ -187,7 +200,10 @@ export default function BreakdownPage() {
                   <div className={styles.categoryItems}>
                     {breakdown.income.items.map((item) => (
                       <div key={item.id} className={styles.item}>
-                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                        <div className={styles.itemMain}>
+                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                        </div>
                         <span className={styles.itemMeta}>{formatFrequency(item.frequency)}</span>
                         <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                       </div>
@@ -217,8 +233,11 @@ export default function BreakdownPage() {
                   <div className={styles.categoryItems}>
                     {breakdown.subscriptions.items.map((item) => (
                       <div key={item.id} className={styles.item}>
-                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · Last {formatDate(item.lastDate)}</span>
+                        <div className={styles.itemMain}>
+                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                        </div>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
                         <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                       </div>
                     ))}
@@ -247,8 +266,11 @@ export default function BreakdownPage() {
                   <div className={styles.categoryItems}>
                     {breakdown.loans.items.map((item) => (
                       <div key={item.id} className={styles.item}>
-                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · Last {formatDate(item.lastDate)}</span>
+                        <div className={styles.itemMain}>
+                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                        </div>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
                         <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                       </div>
                     ))}
@@ -277,8 +299,11 @@ export default function BreakdownPage() {
                   <div className={styles.categoryItems}>
                     {breakdown.other.items.map((item) => (
                       <div key={item.id} className={styles.item}>
-                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · Last {formatDate(item.lastDate)}</span>
+                        <div className={styles.itemMain}>
+                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                        </div>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
                         <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                       </div>
                     ))}
@@ -310,6 +335,44 @@ export default function BreakdownPage() {
                   </div>
                 )}
               </div>
+
+              {/* Transfers Section (excluded from expenses) */}
+              {(breakdown.transfersOut?.count > 0) && (
+                <>
+                  <div className={styles.divider} />
+                  <div className={styles.category}>
+                    <button
+                      className={styles.categoryHeader}
+                      onClick={() => toggle('transfers')}
+                      aria-expanded={expanded.transfers}
+                    >
+                      <div className={styles.categoryLeft}>
+                        <span className={`${styles.chevron} ${expanded.transfers ? styles.open : ''}`}>›</span>
+                        <span className={`${styles.categoryName} ${styles.muted}`}>Internal Transfers</span>
+                        <span className={styles.categoryCount}>{breakdown.transfersOut.count} excluded</span>
+                      </div>
+                      <span className={`${styles.categoryTotal} ${styles.muted}`}>{formatMoney(breakdown.transfersOut.total)}</span>
+                    </button>
+                    {expanded.transfers && breakdown.transfersOut.items.length > 0 && (
+                      <div className={styles.categoryItems}>
+                        <p className={styles.variableNote}>
+                          These are transfers between your own accounts — not counted as expenses.
+                        </p>
+                        {breakdown.transfersOut.items.map((item) => (
+                          <div key={item.id} className={`${styles.item} ${styles.mutedItem}`}>
+                            <div className={styles.itemMain}>
+                              <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                              {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                            </div>
+                            <span className={styles.itemMeta}>{formatFrequency(item.frequency)}</span>
+                            <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <p className={styles.footnote}>
