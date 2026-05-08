@@ -163,8 +163,9 @@ IMPORTANT RULES:
 2. Uber, Lyft without subscription = variable (frequent rides, not subscription)
 3. Amazon could be subscription (Prime) OR variable (frequent shopping) - look at amount
 4. Bank fees, monthly fees, service charges = fee
-5. Payment services (PayPal, Venmo) sending money = transfer
+5. PayPal/Venmo person-to-person transfers = transfer, BUT PayPal MSP/merchant services = subscription (business payment processing)
 6. FordPass/car app subscriptions = subscription, Ford Credit = loan
+7. Transfers are ONLY internal account-to-account movements or person-to-person payments, NOT merchant charges
 
 TRANSACTIONS TO CATEGORIZE:
 ${merchantList}
