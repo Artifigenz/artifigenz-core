@@ -34,6 +34,15 @@ interface Account {
   currency: string | null;
 }
 
+interface ConnectionDiag {
+  id: string;
+  institution: string;
+  status: string;
+  accountCount: number;
+  streamCount: number;
+  lastSynced: string | null;
+}
+
 interface Breakdown {
   generatedAt: string;
   accounts: Account[];
@@ -49,6 +58,11 @@ interface Breakdown {
     totalExpenses: number;
     variableSpend: number;
     leftover: number;
+  };
+  diagnostics?: {
+    connections: ConnectionDiag[];
+    totalStreams: number;
+    streamsByAccount: Array<{ account: string; streams: number }>;
   };
 }
 
@@ -374,6 +388,40 @@ export default function BreakdownPage() {
                 </>
               )}
             </div>
+
+            {/* Diagnostics Section */}
+            {breakdown.diagnostics && (
+              <div className={styles.diagnostics}>
+                <h3 className={styles.diagTitle}>Connection Diagnostics</h3>
+                <div className={styles.diagGrid}>
+                  {breakdown.diagnostics.connections.map((conn) => (
+                    <div key={conn.id} className={`${styles.diagCard} ${conn.streamCount === 0 ? styles.diagWarning : ''}`}>
+                      <div className={styles.diagInstitution}>{conn.institution}</div>
+                      <div className={styles.diagStats}>
+                        <span>Status: {conn.status}</span>
+                        <span>Accounts: {conn.accountCount}</span>
+                        <span className={conn.streamCount === 0 ? styles.diagError : ''}>
+                          Streams: {conn.streamCount}
+                        </span>
+                      </div>
+                      {conn.lastSynced && (
+                        <div className={styles.diagSynced}>
+                          Last synced: {new Date(conn.lastSynced).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {breakdown.diagnostics.connections.some(c => c.streamCount === 0) && (
+                  <p className={styles.diagNote}>
+                    ⚠️ Some connections have 0 recurring streams. This could mean:
+                    <br />• Plaid hasn&apos;t detected recurring patterns yet (needs more transaction history)
+                    <br />• The connection may need to be re-authenticated
+                    <br />• Try regenerating your brief
+                  </p>
+                )}
+              </div>
+            )}
 
             <p className={styles.footnote}>
               Last updated: {new Date(breakdown.generatedAt).toLocaleString()}

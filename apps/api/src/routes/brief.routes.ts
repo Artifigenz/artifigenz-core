@@ -302,7 +302,7 @@ app.get("/breakdown", async (c) => {
   }
 
   // Get all recurring streams from the database
-  const { financeRecurringStreams, financeAccounts } = await import("@artifigenz/db");
+  const { financeRecurringStreams, financeAccounts, dataSourceConnections } = await import("@artifigenz/db");
 
   const streams = await db
     .select()
@@ -313,6 +313,12 @@ app.get("/breakdown", async (c) => {
     .select()
     .from(financeAccounts)
     .where(eq(financeAccounts.agentInstanceId, instance.id));
+
+  // Get all connections for diagnostics
+  const connections = await db
+    .select()
+    .from(dataSourceConnections)
+    .where(eq(dataSourceConnections.agentInstanceId, instance.id));
 
   // Build account lookup map for showing account names
   const accountMap = new Map(accounts.map(a => [a.plaidAccountId, a]));
@@ -496,6 +502,29 @@ app.get("/breakdown", async (c) => {
       totalExpenses: Math.round(expensesMonthly * 100) / 100,
       variableSpend: Math.round((expensesMonthly - recurringTotal) * 100) / 100,
       leftover: Math.round((incomeTotal - expensesMonthly) * 100) / 100,
+    },
+    // Diagnostic info to debug connection issues
+    diagnostics: {
+      connections: connections.map(conn => {
+        const meta = conn.metadata as { institutionName?: string } | null;
+        const connAccounts = accounts.filter(a =>
+          (conn.metadata as { accounts?: Array<{ id: string }> })?.accounts?.some(ca => ca.id === a.plaidAccountId)
+        );
+        const connStreams = streams.filter(s => connAccounts.some(a => a.plaidAccountId === s.plaidAccountId));
+        return {
+          id: conn.id,
+          institution: meta?.institutionName ?? 'Unknown',
+          status: conn.status,
+          accountCount: connAccounts.length,
+          streamCount: connStreams.length,
+          lastSynced: conn.lastSyncedAt,
+        };
+      }),
+      totalStreams: streams.length,
+      streamsByAccount: accounts.map(a => ({
+        account: `${a.name} ••${a.mask}`,
+        streams: streams.filter(s => s.plaidAccountId === a.plaidAccountId).length,
+      })),
     },
   });
 });
