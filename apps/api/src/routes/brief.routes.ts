@@ -334,9 +334,11 @@ app.get("/breakdown", async (c) => {
     nextDate: string | null;
     accountId: string | null;
     category: 'subscription' | 'loan' | 'other';
+    pfcPrimary: string | null;
   }
 
-  const inflowItems: StreamItem[] = [];
+  const incomeItems: StreamItem[] = [];      // True income (PFC = INCOME)
+  const transfersInItems: StreamItem[] = []; // Internal transfers, refunds, etc.
   const subscriptionItems: StreamItem[] = [];
   const loanItems: StreamItem[] = [];
   const otherItems: StreamItem[] = [];
@@ -344,6 +346,7 @@ app.get("/breakdown", async (c) => {
   for (const stream of streams) {
     const name = (stream.merchantName ?? stream.description ?? '').toLowerCase();
     const amount = Math.abs(Number(stream.averageAmount));
+    const pfcPrimary = (stream as { pfcPrimary?: string | null }).pfcPrimary ?? null;
 
     const item: StreamItem = {
       id: stream.id,
@@ -355,10 +358,17 @@ app.get("/breakdown", async (c) => {
       nextDate: stream.predictedNextDate,
       accountId: stream.plaidAccountId,
       category: 'other',
+      pfcPrimary,
     };
 
     if (stream.direction === 'inflow') {
-      inflowItems.push(item);
+      // Only count as income if PFC is INCOME (salary, wages, freelance)
+      // Everything else (TRANSFER_IN, BANK_FEES, etc.) goes to transfers
+      if (pfcPrimary === 'INCOME') {
+        incomeItems.push(item);
+      } else {
+        transfersInItems.push(item);
+      }
     } else {
       // Categorize outflow
       if (loanKeywords.some(kw => name.includes(kw))) {
@@ -386,7 +396,7 @@ app.get("/breakdown", async (c) => {
   }
 
   // Calculate totals
-  const incomeTotal = inflowItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const incomeTotal = incomeItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const subscriptionTotal = subscriptionItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const loanTotal = loanItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const otherTotal = otherItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
@@ -410,7 +420,15 @@ app.get("/breakdown", async (c) => {
     })),
     income: {
       total: Math.round(incomeTotal * 100) / 100,
-      items: inflowItems.map(i => ({
+      items: incomeItems.map(i => ({
+        ...i,
+        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
+      })),
+    },
+    transfersIn: {
+      total: Math.round(transfersInItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0) * 100) / 100,
+      count: transfersInItems.length,
+      items: transfersInItems.map(i => ({
         ...i,
         monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
       })),

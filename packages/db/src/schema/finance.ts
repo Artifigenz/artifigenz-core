@@ -127,6 +127,7 @@ export const financeRecurringStreams = pgTable(
     predictedNextDate: date("predicted_next_date"),
     firstDate: date("first_date"),
     status: varchar("status", { length: 30 }).notNull(),
+    pfcPrimary: varchar("pfc_primary", { length: 50 }), // Plaid Personal Finance Category (INCOME, TRANSFER_IN, etc.)
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => [

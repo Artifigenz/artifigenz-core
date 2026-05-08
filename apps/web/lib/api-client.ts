@@ -403,6 +403,23 @@ export class ApiClient {
           lastDate: string | null;
           nextDate: string | null;
           accountId: string | null;
+          pfcPrimary: string | null;
+        }>;
+      };
+      transfersIn: {
+        total: number;
+        count: number;
+        items: Array<{
+          id: string;
+          merchantName: string;
+          description: string | null;
+          amount: number;
+          monthlyAmount: number;
+          frequency: string;
+          lastDate: string | null;
+          nextDate: string | null;
+          accountId: string | null;
+          pfcPrimary: string | null;
         }>;
       };
       subscriptions: {

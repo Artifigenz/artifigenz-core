@@ -1,0 +1,1 @@
+ALTER TABLE "finance_recurring_streams" ADD COLUMN "pfc_primary" varchar(50);

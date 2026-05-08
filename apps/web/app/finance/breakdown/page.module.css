@@ -149,6 +149,26 @@
   color: var(--text);
 }
 
+.sectionTotal.muted {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.sectionNote {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin: -8px 0 8px 0;
+}
+
+.muted {
+  color: var(--text-dim);
+}
+
+.mutedRow {
+  opacity: 0.7;
+}
+
 /* Color dots */
 .dot {
   width: 10px;

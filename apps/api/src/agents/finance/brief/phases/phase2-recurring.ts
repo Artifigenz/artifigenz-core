@@ -34,6 +34,7 @@ function toDigestStream(
     predictedNextDate: s.predicted_next_date ?? null,
     firstDate: s.first_date,
     status: s.status,
+    pfcPrimary: s.personal_finance_category?.primary ?? null,
   };
 }
 
@@ -104,6 +105,7 @@ export async function phase2FetchRecurring(
     predictedNextDate: s.predictedNextDate,
     firstDate: s.firstDate,
     status: s.status,
+    pfcPrimary: s.pfcPrimary,
   }));
 
   if (rows.length > 0) {

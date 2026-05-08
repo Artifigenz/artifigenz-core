@@ -18,6 +18,7 @@ interface BreakdownItem {
   lastDate: string | null;
   nextDate: string | null;
   accountId: string | null;
+  pfcPrimary?: string | null;
 }
 
 interface Account {
@@ -35,6 +36,7 @@ interface Breakdown {
   generatedAt: string;
   accounts: Account[];
   income: { total: number; items: BreakdownItem[] };
+  transfersIn: { total: number; count: number; items: BreakdownItem[] };
   subscriptions: { total: number; count: number; items: BreakdownItem[] };
   loans: { total: number; count: number; items: BreakdownItem[] };
   other: { total: number; count: number; items: BreakdownItem[] };
@@ -229,6 +231,39 @@ export default function BreakdownPage() {
                       <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
                       <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
                       <span className={`${styles.alignRight} ${styles.bold}`}>{formatMoney(item.monthlyAmount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Transfers In (not counted as income) */}
+            {breakdown.transfersIn?.items.length > 0 && (
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle}>
+                    <span className={styles.muted}>Other Inflows</span>
+                  </h2>
+                  <span className={`${styles.sectionTotal} ${styles.muted}`}>not counted as income</span>
+                </div>
+                <p className={styles.sectionNote}>
+                  These are internal transfers, refunds, or reimbursements — not actual income.
+                </p>
+                <div className={styles.table}>
+                  <div className={styles.tableHeader}>
+                    <span>Source</span>
+                    <span>Category</span>
+                    <span>Frequency</span>
+                    <span className={styles.alignRight}>Amount</span>
+                    <span className={styles.alignRight}>Monthly</span>
+                  </div>
+                  {breakdown.transfersIn.items.map((item) => (
+                    <div key={item.id} className={`${styles.tableRow} ${styles.mutedRow}`}>
+                      <span className={styles.merchantName}>{toTitleCase(item.merchantName)}</span>
+                      <span className={styles.secondary}>{item.pfcPrimary ?? 'Transfer'}</span>
+                      <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
+                      <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
+                      <span className={styles.alignRight}>{formatMoney(item.monthlyAmount)}</span>
                     </div>
                   ))}
                 </div>

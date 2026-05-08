@@ -36,6 +36,7 @@ export interface DigestStream {
   predictedNextDate: string | null;
   firstDate: string | null;
   status: string;
+  pfcPrimary: string | null; // Plaid Personal Finance Category (INCOME, TRANSFER_IN, etc.)
 }
 
 export interface TopMerchant {
