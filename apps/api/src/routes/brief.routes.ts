@@ -323,6 +323,9 @@ app.get("/breakdown", async (c) => {
   // Build account lookup map for showing account names
   const accountMap = new Map(accounts.map(a => [a.plaidAccountId, a]));
 
+  // LLM-categorized category types from the database
+  type DbCategory = 'subscription' | 'loan' | 'fee' | 'rent' | 'utility' | 'insurance' | 'transfer' | 'variable' | 'income';
+
   interface StreamItem {
     id: string;
     merchantName: string;
@@ -334,126 +337,29 @@ app.get("/breakdown", async (c) => {
     accountId: string | null;
     accountName: string | null;
     accountMask: string | null;
-    category: 'subscription' | 'loan' | 'other' | 'transfer';
+    category: DbCategory | null;
+    categoryConfidence: number | null;
     pfcPrimary: string | null;
   }
 
-  const incomeItems: StreamItem[] = [];        // True income
+  const incomeItems: StreamItem[] = [];        // Income streams
   const transfersInItems: StreamItem[] = [];   // Inbound transfers (not income)
-  const transfersOutItems: StreamItem[] = [];  // Outbound transfers (not expenses)
+  const transfersOutItems: StreamItem[] = [];  // Outbound transfers (internal)
   const subscriptionItems: StreamItem[] = [];  // Subscriptions
   const loanItems: StreamItem[] = [];          // Loan payments
-  const otherItems: StreamItem[] = [];         // Other recurring expenses
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MERCHANT-BASED CATEGORIZATION (Most reliable - checked FIRST)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // Known loan/credit merchants (always loans regardless of PFC)
-  const loanMerchants = [
-    'ford credit', 'affirm', 'klarna', 'afterpay', 'sezzle', 'zip',
-    'easyfinancial', 'easy financial', 'money mart', 'fairstone',
-    'lending', 'mortgage', 'student loan', 'car payment', 'auto loan',
-  ];
-
-  // Known subscription services (always subscriptions regardless of PFC)
-  const subscriptionMerchants = [
-    // Streaming
-    'netflix', 'spotify', 'apple music', 'amazon prime', 'amazon music',
-    'disney', 'hulu', 'hbo', 'paramount', 'peacock', 'crave', 'youtube',
-    'crunchyroll', 'funimation', 'audible', 'kindle unlimited',
-    // Software/Tech
-    'adobe', 'microsoft', 'dropbox', 'google one', 'icloud', 'openai',
-    'chatgpt', 'claude', 'notion', 'figma', 'canva', 'slack', 'zoom',
-    'github', 'grammarly', 'lastpass', '1password', 'nordvpn', 'expressvpn',
-    // Gaming
-    'playstation', 'xbox', 'nintendo', 'steam', 'epic games', 'ea play',
-    'twitch', 'discord nitro',
-    // Social/News
-    'patreon', 'substack', 'medium', 'linkedin', 'x corp', 'twitter',
-    // Fitness (gym memberships)
-    'goodlife', 'planet fitness', 'anytime fitness', 'la fitness', 'equinox',
-    'peloton', 'fitbit', 'strava',
-    // Other subscriptions
-    'willow', 'airscr', 'scribd', 'ancestry', 'duolingo',
-    'ford motor comp', // FordPass subscription, not Ford Credit
-  ];
-
-  // Bank fees and service charges (should be in Other, not Transfers)
-  const bankFeeKeywords = [
-    'bank fee', 'monthly fee', 'service charge', 'account fee',
-    'maintenance fee', 'overdraft', 'nsf fee', 'atm fee',
-  ];
-
-  // True internal transfer keywords
-  const transferKeywords = [
-    'transfer to', 'transfer from', 'e-transfer', 'interac',
-    'eft', 'wire', 'pts', // PTS is often Pre-authorized Transfer Service
-  ];
-
-  /**
-   * Multi-layer categorization function
-   * Priority: Merchant matching > PFC > Fallback heuristics
-   */
-  function categorizeStream(
-    merchantName: string | null,
-    description: string | null,
-    pfcPrimary: string | null,
-    amount: number,
-  ): 'subscription' | 'loan' | 'other' | 'transfer' {
-    const name = (merchantName ?? '').toLowerCase();
-    const desc = (description ?? '').toLowerCase();
-    const combined = `${name} ${desc}`;
-
-    // Layer 1: Merchant name matching (most reliable)
-    if (loanMerchants.some(m => name.includes(m) || desc.includes(m))) {
-      return 'loan';
-    }
-    if (subscriptionMerchants.some(m => name.includes(m) || desc.includes(m))) {
-      return 'subscription';
-    }
-
-    // Layer 2: Bank fees should not be transfers
-    if (bankFeeKeywords.some(kw => combined.includes(kw))) {
-      return 'other';
-    }
-
-    // Layer 3: True transfers (only if it looks like an actual transfer)
-    if (pfcPrimary === 'TRANSFER_OUT' || pfcPrimary === 'TRANSFER_IN') {
-      // Only categorize as transfer if it matches transfer keywords
-      // or if it's between accounts (no merchant name, account-to-account)
-      if (transferKeywords.some(kw => combined.includes(kw))) {
-        return 'transfer';
-      }
-      // If it has no merchant and PFC says transfer, trust it
-      if (!merchantName && pfcPrimary === 'TRANSFER_OUT') {
-        return 'transfer';
-      }
-      // Otherwise, it might be a payment tagged incorrectly - put in other
-      return 'other';
-    }
-
-    // Layer 4: PFC-based categorization
-    if (pfcPrimary === 'LOAN_PAYMENTS') {
-      return 'loan';
-    }
-    if (pfcPrimary === 'ENTERTAINMENT') {
-      return 'subscription';
-    }
-
-    // Layer 5: Fallback - small recurring amounts are likely subscriptions
-    // (only if we still don't know what it is)
-    if (amount < 30 && !name.includes('rent') && !name.includes('utility')) {
-      return 'subscription';
-    }
-
-    return 'other';
-  }
+  const feeItems: StreamItem[] = [];           // Fees (CC interest, bank fees)
+  const rentItems: StreamItem[] = [];          // Rent payments
+  const utilityItems: StreamItem[] = [];       // Utilities (hydro, internet, phone)
+  const insuranceItems: StreamItem[] = [];     // Insurance payments
+  const variableItems: StreamItem[] = [];      // Variable recurring (Uber rides, etc.)
+  const otherItems: StreamItem[] = [];         // Uncategorized
 
   for (const stream of streams) {
     const amount = Math.abs(Number(stream.averageAmount));
-    const pfcPrimary = (stream as { pfcPrimary?: string | null }).pfcPrimary ?? null;
+    const pfcPrimary = stream.pfcPrimary ?? null;
     const account = stream.plaidAccountId ? accountMap.get(stream.plaidAccountId) : null;
+    const storedCategory = stream.category as DbCategory | null;
+    const categoryConfidence = stream.categoryConfidence ? Number(stream.categoryConfidence) : null;
 
     // Better display name: prefer merchantName, fallback to description, then 'Unknown'
     let displayName = stream.merchantName;
@@ -475,38 +381,50 @@ app.get("/breakdown", async (c) => {
       accountId: stream.plaidAccountId,
       accountName: account?.name ?? null,
       accountMask: account?.mask ?? null,
-      category: 'other',
+      category: storedCategory,
+      categoryConfidence,
       pfcPrimary,
     };
 
     if (stream.direction === 'inflow') {
-      // Only count as income if PFC is INCOME (salary, wages, freelance)
-      if (pfcPrimary === 'INCOME') {
+      // Use stored category or fallback to PFC-based logic
+      if (storedCategory === 'income' || pfcPrimary === 'INCOME') {
         incomeItems.push(item);
+      } else if (storedCategory === 'transfer') {
+        transfersInItems.push(item);
       } else {
+        // Default inflows without category to transfers
         transfersInItems.push(item);
       }
     } else {
-      // Use multi-layer categorization for outflows
-      const category = categorizeStream(
-        stream.merchantName,
-        stream.description,
-        pfcPrimary,
-        amount,
-      );
-      item.category = category;
-
-      switch (category) {
+      // Outflows — use stored LLM category
+      switch (storedCategory) {
+        case 'subscription':
+          subscriptionItems.push(item);
+          break;
         case 'loan':
           loanItems.push(item);
           break;
-        case 'subscription':
-          subscriptionItems.push(item);
+        case 'fee':
+          feeItems.push(item);
+          break;
+        case 'rent':
+          rentItems.push(item);
+          break;
+        case 'utility':
+          utilityItems.push(item);
+          break;
+        case 'insurance':
+          insuranceItems.push(item);
           break;
         case 'transfer':
           transfersOutItems.push(item);
           break;
+        case 'variable':
+          variableItems.push(item);
+          break;
         default:
+          // Uncategorized streams — put in other (categorization may not have run yet)
           otherItems.push(item);
       }
     }
@@ -528,14 +446,28 @@ app.get("/breakdown", async (c) => {
   const incomeTotal = incomeItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const subscriptionTotal = subscriptionItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const loanTotal = loanItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const feeTotal = feeItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const rentTotal = rentItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const utilityTotal = utilityItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const insuranceTotal = insuranceItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
+  const variableTotal = variableItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const otherTotal = otherItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
   const transfersOutTotal = transfersOutItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0);
-  // Recurring total excludes transfers (they're not real expenses)
-  const recurringTotal = subscriptionTotal + loanTotal + otherTotal;
+
+  // Recurring total excludes transfers and variable (they're not fixed expenses)
+  const fixedRecurringTotal = subscriptionTotal + loanTotal + feeTotal + rentTotal + utilityTotal + insuranceTotal;
+  const recurringTotal = fixedRecurringTotal + variableTotal + otherTotal;
 
   // Get expenses from digest
   const digest = brief.digestSnapshot as DigestSnapshot | null;
   const expensesMonthly = digest?.expenses_monthly ?? recurringTotal;
+
+  // Helper to format items for response
+  const formatItems = (items: StreamItem[]) =>
+    items.map(i => ({
+      ...i,
+      monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
+    }));
 
   return c.json({
     generatedAt: brief.generatedAt,
@@ -551,56 +483,64 @@ app.get("/breakdown", async (c) => {
     })),
     income: {
       total: Math.round(incomeTotal * 100) / 100,
-      items: incomeItems.map(i => ({
-        ...i,
-        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
-      })),
+      items: formatItems(incomeItems),
     },
     transfersIn: {
       total: Math.round(transfersInItems.reduce((sum, i) => sum + normalizeToMonthly(i.amount, i.frequency), 0) * 100) / 100,
       count: transfersInItems.length,
-      items: transfersInItems.map(i => ({
-        ...i,
-        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
-      })),
+      items: formatItems(transfersInItems),
     },
     transfersOut: {
       total: Math.round(transfersOutTotal * 100) / 100,
       count: transfersOutItems.length,
-      items: transfersOutItems.map(i => ({
-        ...i,
-        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
-      })),
+      items: formatItems(transfersOutItems),
     },
     subscriptions: {
       total: Math.round(subscriptionTotal * 100) / 100,
       count: subscriptionItems.length,
-      items: subscriptionItems.map(i => ({
-        ...i,
-        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
-      })),
+      items: formatItems(subscriptionItems),
     },
     loans: {
       total: Math.round(loanTotal * 100) / 100,
       count: loanItems.length,
-      items: loanItems.map(i => ({
-        ...i,
-        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
-      })),
+      items: formatItems(loanItems),
+    },
+    fees: {
+      total: Math.round(feeTotal * 100) / 100,
+      count: feeItems.length,
+      items: formatItems(feeItems),
+    },
+    rent: {
+      total: Math.round(rentTotal * 100) / 100,
+      count: rentItems.length,
+      items: formatItems(rentItems),
+    },
+    utilities: {
+      total: Math.round(utilityTotal * 100) / 100,
+      count: utilityItems.length,
+      items: formatItems(utilityItems),
+    },
+    insurance: {
+      total: Math.round(insuranceTotal * 100) / 100,
+      count: insuranceItems.length,
+      items: formatItems(insuranceItems),
+    },
+    variable: {
+      total: Math.round(variableTotal * 100) / 100,
+      count: variableItems.length,
+      items: formatItems(variableItems),
     },
     other: {
       total: Math.round(otherTotal * 100) / 100,
       count: otherItems.length,
-      items: otherItems.map(i => ({
-        ...i,
-        monthlyAmount: Math.round(normalizeToMonthly(i.amount, i.frequency) * 100) / 100,
-      })),
+      items: formatItems(otherItems),
     },
     totals: {
       income: Math.round(incomeTotal * 100) / 100,
+      fixedRecurring: Math.round(fixedRecurringTotal * 100) / 100,
+      variableRecurring: Math.round(variableTotal * 100) / 100,
       recurringOutflow: Math.round(recurringTotal * 100) / 100,
       totalExpenses: Math.round(expensesMonthly * 100) / 100,
-      variableSpend: Math.round((expensesMonthly - recurringTotal) * 100) / 100,
       leftover: Math.round((incomeTotal - expensesMonthly) * 100) / 100,
     },
     // Diagnostic info to debug connection issues

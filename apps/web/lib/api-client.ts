@@ -379,6 +379,25 @@ export class ApiClient {
   }
 
   async getBriefBreakdown() {
+    // Shared item type for all categories
+    type BreakdownItem = {
+      id: string;
+      merchantName: string;
+      description: string | null;
+      amount: number;
+      monthlyAmount: number;
+      frequency: string;
+      lastDate: string | null;
+      nextDate: string | null;
+      accountId: string | null;
+      accountName: string | null;
+      accountMask: string | null;
+      category: string | null;
+      categoryConfidence: number | null;
+      pfcPrimary: string | null;
+    };
+    type CategorySection = { total: number; count: number; items: BreakdownItem[] };
+
     return this.get<{
       generatedAt: string;
       accounts: Array<{
@@ -391,119 +410,36 @@ export class ApiClient {
         availableBalance: number | null;
         currency: string | null;
       }>;
-      income: {
-        total: number;
-        items: Array<{
-          id: string;
-          merchantName: string;
-          description: string | null;
-          amount: number;
-          monthlyAmount: number;
-          frequency: string;
-          lastDate: string | null;
-          nextDate: string | null;
-          accountId: string | null;
-          accountName: string | null;
-          accountMask: string | null;
-          pfcPrimary: string | null;
-        }>;
-      };
-      transfersIn: {
-        total: number;
-        count: number;
-        items: Array<{
-          id: string;
-          merchantName: string;
-          description: string | null;
-          amount: number;
-          monthlyAmount: number;
-          frequency: string;
-          lastDate: string | null;
-          nextDate: string | null;
-          accountId: string | null;
-          accountName: string | null;
-          accountMask: string | null;
-          pfcPrimary: string | null;
-        }>;
-      };
-      transfersOut: {
-        total: number;
-        count: number;
-        items: Array<{
-          id: string;
-          merchantName: string;
-          description: string | null;
-          amount: number;
-          monthlyAmount: number;
-          frequency: string;
-          lastDate: string | null;
-          nextDate: string | null;
-          accountId: string | null;
-          accountName: string | null;
-          accountMask: string | null;
-          pfcPrimary: string | null;
-        }>;
-      };
-      subscriptions: {
-        total: number;
-        count: number;
-        items: Array<{
-          id: string;
-          merchantName: string;
-          description: string | null;
-          amount: number;
-          monthlyAmount: number;
-          frequency: string;
-          lastDate: string | null;
-          nextDate: string | null;
-          accountId: string | null;
-          accountName: string | null;
-          accountMask: string | null;
-          pfcPrimary: string | null;
-        }>;
-      };
-      loans: {
-        total: number;
-        count: number;
-        items: Array<{
-          id: string;
-          merchantName: string;
-          description: string | null;
-          amount: number;
-          monthlyAmount: number;
-          frequency: string;
-          lastDate: string | null;
-          nextDate: string | null;
-          accountId: string | null;
-          accountName: string | null;
-          accountMask: string | null;
-          pfcPrimary: string | null;
-        }>;
-      };
-      other: {
-        total: number;
-        count: number;
-        items: Array<{
-          id: string;
-          merchantName: string;
-          description: string | null;
-          amount: number;
-          monthlyAmount: number;
-          frequency: string;
-          lastDate: string | null;
-          nextDate: string | null;
-          accountId: string | null;
-          accountName: string | null;
-          accountMask: string | null;
-          pfcPrimary: string | null;
-        }>;
-      };
+      income: { total: number; items: BreakdownItem[] };
+      transfersIn: CategorySection;
+      transfersOut: CategorySection;
+      subscriptions: CategorySection;
+      loans: CategorySection;
+      fees: CategorySection;
+      rent: CategorySection;
+      utilities: CategorySection;
+      insurance: CategorySection;
+      variable: CategorySection;
+      other: CategorySection;
       totals: {
         income: number;
+        fixedRecurring: number;
+        variableRecurring: number;
         recurringOutflow: number;
         totalExpenses: number;
-        variableSpend: number;
         leftover: number;
+      };
+      diagnostics?: {
+        connections: Array<{
+          id: string;
+          institution: string;
+          status: string;
+          accountCount: number;
+          streamCount: number;
+          lastSynced: string | null;
+        }>;
+        totalStreams: number;
+        streamsByAccount: Array<{ account: string; streams: number }>;
       };
     }>('/api/brief/breakdown');
   }

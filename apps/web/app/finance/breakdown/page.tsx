@@ -20,7 +20,15 @@ interface BreakdownItem {
   accountId: string | null;
   accountName: string | null;
   accountMask: string | null;
+  category?: string | null;
+  categoryConfidence?: number | null;
   pfcPrimary?: string | null;
+}
+
+interface CategorySection {
+  total: number;
+  count: number;
+  items: BreakdownItem[];
 }
 
 interface Account {
@@ -47,16 +55,22 @@ interface Breakdown {
   generatedAt: string;
   accounts: Account[];
   income: { total: number; items: BreakdownItem[] };
-  transfersIn: { total: number; count: number; items: BreakdownItem[] };
-  transfersOut: { total: number; count: number; items: BreakdownItem[] };
-  subscriptions: { total: number; count: number; items: BreakdownItem[] };
-  loans: { total: number; count: number; items: BreakdownItem[] };
-  other: { total: number; count: number; items: BreakdownItem[] };
+  transfersIn: CategorySection;
+  transfersOut: CategorySection;
+  subscriptions: CategorySection;
+  loans: CategorySection;
+  fees: CategorySection;
+  rent: CategorySection;
+  utilities: CategorySection;
+  insurance: CategorySection;
+  variable: CategorySection;
+  other: CategorySection;
   totals: {
     income: number;
+    fixedRecurring: number;
+    variableRecurring: number;
     recurringOutflow: number;
     totalExpenses: number;
-    variableSpend: number;
     leftover: number;
   };
   diagnostics?: {
@@ -98,7 +112,7 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-type SectionKey = 'income' | 'subscriptions' | 'loans' | 'other' | 'variable' | 'transfers';
+type SectionKey = 'income' | 'subscriptions' | 'utilities' | 'insurance' | 'loans' | 'rent' | 'fees' | 'variable' | 'other' | 'transfers';
 
 function formatAccount(item: BreakdownItem): string {
   if (item.accountName && item.accountMask) {
@@ -117,9 +131,13 @@ export default function BreakdownPage() {
   const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
     income: false,
     subscriptions: false,
+    utilities: false,
+    insurance: false,
     loans: false,
-    other: false,
+    rent: false,
+    fees: false,
     variable: false,
+    other: false,
     transfers: false,
   });
 
@@ -227,128 +245,270 @@ export default function BreakdownPage() {
               </div>
 
               {/* Subscriptions Section */}
-              <div className={styles.category}>
-                <button
-                  className={styles.categoryHeader}
-                  onClick={() => toggle('subscriptions')}
-                  aria-expanded={expanded.subscriptions}
-                >
-                  <div className={styles.categoryLeft}>
-                    <span className={`${styles.chevron} ${expanded.subscriptions ? styles.open : ''}`}>›</span>
-                    <span className={`${styles.dot} ${styles.s1}`} />
-                    <span className={styles.categoryName}>Subscriptions</span>
-                    {breakdown.subscriptions.count > 0 && (
+              {breakdown.subscriptions.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('subscriptions')}
+                    aria-expanded={expanded.subscriptions}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.subscriptions ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s1}`} />
+                      <span className={styles.categoryName}>Subscriptions</span>
                       <span className={styles.categoryCount}>{breakdown.subscriptions.count} active</span>
-                    )}
-                  </div>
-                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.subscriptions.total)}</span>
-                </button>
-                {expanded.subscriptions && breakdown.subscriptions.items.length > 0 && (
-                  <div className={styles.categoryItems}>
-                    {breakdown.subscriptions.items.map((item) => (
-                      <div key={item.id} className={styles.item}>
-                        <div className={styles.itemMain}>
-                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.subscriptions.total)}</span>
+                  </button>
+                  {expanded.subscriptions && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.subscriptions.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                         </div>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Utilities Section */}
+              {breakdown.utilities?.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('utilities')}
+                    aria-expanded={expanded.utilities}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.utilities ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s2}`} />
+                      <span className={styles.categoryName}>Utilities</span>
+                      <span className={styles.categoryCount}>{breakdown.utilities.count} bills</span>
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.utilities.total)}</span>
+                  </button>
+                  {expanded.utilities && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.utilities.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Insurance Section */}
+              {breakdown.insurance?.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('insurance')}
+                    aria-expanded={expanded.insurance}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.insurance ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s2}`} />
+                      <span className={styles.categoryName}>Insurance</span>
+                      <span className={styles.categoryCount}>{breakdown.insurance.count} policies</span>
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.insurance.total)}</span>
+                  </button>
+                  {expanded.insurance && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.insurance.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Loans Section */}
-              <div className={styles.category}>
-                <button
-                  className={styles.categoryHeader}
-                  onClick={() => toggle('loans')}
-                  aria-expanded={expanded.loans}
-                >
-                  <div className={styles.categoryLeft}>
-                    <span className={`${styles.chevron} ${expanded.loans ? styles.open : ''}`}>›</span>
-                    <span className={`${styles.dot} ${styles.s2}`} />
-                    <span className={styles.categoryName}>Loan Payments</span>
-                    {breakdown.loans.count > 0 && (
+              {breakdown.loans.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('loans')}
+                    aria-expanded={expanded.loans}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.loans ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s2}`} />
+                      <span className={styles.categoryName}>Loan Payments</span>
                       <span className={styles.categoryCount}>{breakdown.loans.count} {breakdown.loans.count === 1 ? 'line' : 'lines'}</span>
-                    )}
-                  </div>
-                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.loans.total)}</span>
-                </button>
-                {expanded.loans && breakdown.loans.items.length > 0 && (
-                  <div className={styles.categoryItems}>
-                    {breakdown.loans.items.map((item) => (
-                      <div key={item.id} className={styles.item}>
-                        <div className={styles.itemMain}>
-                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.loans.total)}</span>
+                  </button>
+                  {expanded.loans && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.loans.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                         </div>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Other Recurring Section */}
-              <div className={styles.category}>
-                <button
-                  className={styles.categoryHeader}
-                  onClick={() => toggle('other')}
-                  aria-expanded={expanded.other}
-                >
-                  <div className={styles.categoryLeft}>
-                    <span className={`${styles.chevron} ${expanded.other ? styles.open : ''}`}>›</span>
-                    <span className={`${styles.dot} ${styles.s3}`} />
-                    <span className={styles.categoryName}>Other Recurring</span>
-                    {breakdown.other.count > 0 && (
+              {/* Rent Section */}
+              {breakdown.rent?.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('rent')}
+                    aria-expanded={expanded.rent}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.rent ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s2}`} />
+                      <span className={styles.categoryName}>Rent</span>
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.rent.total)}</span>
+                  </button>
+                  {expanded.rent && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.rent.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Fees Section (CC interest, bank fees) */}
+              {breakdown.fees?.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('fees')}
+                    aria-expanded={expanded.fees}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.fees ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s3}`} />
+                      <span className={styles.categoryName}>Fees &amp; Interest</span>
+                      <span className={styles.categoryCount}>{breakdown.fees.count} charges</span>
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.fees.total)}</span>
+                  </button>
+                  {expanded.fees && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.fees.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Variable Recurring Section (Uber, etc.) */}
+              {breakdown.variable?.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('variable')}
+                    aria-expanded={expanded.variable}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.variable ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s4}`} />
+                      <span className={styles.categoryName}>Variable Recurring</span>
+                      <span className={styles.categoryCount}>{breakdown.variable.count} vendors</span>
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.variable.total)}</span>
+                  </button>
+                  {expanded.variable && (
+                    <div className={styles.categoryItems}>
+                      <p className={styles.variableNote}>
+                        Frequent purchases that aren&apos;t subscriptions (Uber rides, regular shopping, etc.)
+                      </p>
+                      {breakdown.variable.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Other (Uncategorized) Section */}
+              {breakdown.other.count > 0 && (
+                <div className={styles.category}>
+                  <button
+                    className={styles.categoryHeader}
+                    onClick={() => toggle('other')}
+                    aria-expanded={expanded.other}
+                  >
+                    <div className={styles.categoryLeft}>
+                      <span className={`${styles.chevron} ${expanded.other ? styles.open : ''}`}>›</span>
+                      <span className={`${styles.dot} ${styles.s3}`} />
+                      <span className={styles.categoryName}>Other Recurring</span>
                       <span className={styles.categoryCount}>{breakdown.other.count} items</span>
-                    )}
-                  </div>
-                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.other.total)}</span>
-                </button>
-                {expanded.other && breakdown.other.items.length > 0 && (
-                  <div className={styles.categoryItems}>
-                    {breakdown.other.items.map((item) => (
-                      <div key={item.id} className={styles.item}>
-                        <div className={styles.itemMain}>
-                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                    </div>
+                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.other.total)}</span>
+                  </button>
+                  {expanded.other && (
+                    <div className={styles.categoryItems}>
+                      {breakdown.other.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          <div className={styles.itemMain}>
+                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
+                          </div>
+                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
+                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
                         </div>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Variable Spend Section */}
-              <div className={styles.category}>
-                <button
-                  className={styles.categoryHeader}
-                  onClick={() => toggle('variable')}
-                  aria-expanded={expanded.variable}
-                >
-                  <div className={styles.categoryLeft}>
-                    <span className={`${styles.chevron} ${expanded.variable ? styles.open : ''}`}>›</span>
-                    <span className={`${styles.dot} ${styles.s4}`} />
-                    <span className={styles.categoryName}>Variable Spend</span>
-                    <span className={styles.categoryCount}>90-day avg</span>
-                  </div>
-                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.totals.variableSpend)}</span>
-                </button>
-                {expanded.variable && (
-                  <div className={styles.categoryItems}>
-                    <p className={styles.variableNote}>
-                      Variable spend is calculated as: Total Expenses − Recurring Outflow.
-                      This includes groceries, dining, entertainment, shopping, and other non-recurring purchases.
-                    </p>
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Transfers Section (excluded from expenses) */}
               {(breakdown.transfersOut?.count > 0) && (

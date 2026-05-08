@@ -128,6 +128,10 @@ export const financeRecurringStreams = pgTable(
     firstDate: date("first_date"),
     status: varchar("status", { length: 30 }).notNull(),
     pfcPrimary: varchar("pfc_primary", { length: 50 }), // Plaid Personal Finance Category (INCOME, TRANSFER_IN, etc.)
+    // LLM-powered categorization
+    category: varchar("category", { length: 30 }), // subscription, loan, fee, rent, utility, insurance, transfer, variable, income
+    categorySource: varchar("category_source", { length: 20 }), // llm, global_cache, user_override
+    categoryConfidence: decimal("category_confidence", { precision: 3, scale: 2 }), // 0.00 - 1.00
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => [
@@ -136,6 +140,27 @@ export const financeRecurringStreams = pgTable(
       table.plaidStreamId,
     ),
     index("idx_recurring_streams_dir").on(table.agentInstanceId, table.direction),
+    index("idx_recurring_streams_category").on(table.agentInstanceId, table.category),
+  ],
+);
+
+// ─── Global Merchant Categories (LLM-learned, shared across all users) ───
+
+export const merchantCategories = pgTable(
+  "merchant_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    merchantNameNormalized: varchar("merchant_name_normalized", { length: 255 }).notNull().unique(),
+    category: varchar("category", { length: 30 }).notNull(), // subscription, loan, fee, rent, utility, insurance, transfer, variable
+    confidence: decimal("confidence", { precision: 3, scale: 2 }), // LLM confidence 0.00 - 1.00
+    reasoning: text("reasoning"), // LLM's explanation
+    source: varchar("source", { length: 20 }).notNull(), // llm, llm_search, manual
+    usageCount: integer("usage_count").default(1), // How many times this has been used
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("idx_merchant_categories_category").on(table.category),
   ],
 );
 

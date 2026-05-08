@@ -15,6 +15,13 @@
       "when": 1778218084670,
       "tag": "0001_whole_skaar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778250434239,
+      "tag": "0002_redundant_the_order",
+      "breakpoints": true
     }
   ]
 }

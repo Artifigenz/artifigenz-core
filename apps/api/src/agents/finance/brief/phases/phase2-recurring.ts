@@ -3,9 +3,11 @@ import {
   db,
   dataSourceConnections,
   financeRecurringStreams,
+  financeAccounts,
 } from "@artifigenz/db";
 import { TransactionStreamStatus, type TransactionStream } from "plaid";
 import { getPlaidClient } from "../../lib/plaid-client";
+import { categorizeRecurringStreams } from "../../lib/merchant-categorizer";
 import type { DigestStream } from "../helpers/types";
 
 interface PlaidCredentials {
@@ -87,29 +89,108 @@ export async function phase2FetchRecurring(
     }
   }
 
-  // Replace all cached streams for this agent instance.
-  await db
-    .delete(financeRecurringStreams)
+  // Get current stream IDs from Plaid to detect removed streams
+  const currentPlaidStreamIds = new Set(
+    [...inflow, ...outflow].map((s) => s.plaidStreamId)
+  );
+
+  // Get existing streams to detect removals
+  const existingStreams = await db
+    .select({ id: financeRecurringStreams.id, plaidStreamId: financeRecurringStreams.plaidStreamId })
+    .from(financeRecurringStreams)
     .where(eq(financeRecurringStreams.agentInstanceId, agentInstanceId));
 
-  const rows = [...inflow, ...outflow].map((s) => ({
-    agentInstanceId,
-    plaidStreamId: s.plaidStreamId,
-    direction: s.direction,
-    plaidAccountId: s.plaidAccountId,
+  // Delete streams that no longer exist in Plaid (cancelled subscriptions, etc.)
+  const toDelete = existingStreams.filter(
+    (s) => !currentPlaidStreamIds.has(s.plaidStreamId)
+  );
+  for (const stream of toDelete) {
+    await db
+      .delete(financeRecurringStreams)
+      .where(eq(financeRecurringStreams.id, stream.id));
+  }
+
+  // Upsert streams — preserving existing category data if already set
+  for (const s of [...inflow, ...outflow]) {
+    await db
+      .insert(financeRecurringStreams)
+      .values({
+        agentInstanceId,
+        plaidStreamId: s.plaidStreamId,
+        direction: s.direction,
+        plaidAccountId: s.plaidAccountId,
+        merchantName: s.merchantName,
+        description: s.description,
+        averageAmount: s.averageAmount.toString(),
+        frequency: s.frequency,
+        lastDate: s.lastDate,
+        predictedNextDate: s.predictedNextDate,
+        firstDate: s.firstDate,
+        status: s.status,
+        pfcPrimary: s.pfcPrimary,
+      })
+      .onConflictDoUpdate({
+        target: [
+          financeRecurringStreams.agentInstanceId,
+          financeRecurringStreams.plaidStreamId,
+        ],
+        set: {
+          // Update the fields from Plaid (amounts, dates, etc.)
+          direction: s.direction,
+          plaidAccountId: s.plaidAccountId,
+          merchantName: s.merchantName,
+          description: s.description,
+          averageAmount: s.averageAmount.toString(),
+          frequency: s.frequency,
+          lastDate: s.lastDate,
+          predictedNextDate: s.predictedNextDate,
+          firstDate: s.firstDate,
+          status: s.status,
+          pfcPrimary: s.pfcPrimary,
+          updatedAt: new Date(),
+          // Note: category, categorySource, categoryConfidence are NOT updated
+          // This preserves LLM-learned or user-overridden categories
+        },
+      });
+  }
+
+  // Now fetch all streams that need categorization and run the categorizer
+  const allStreams = await db
+    .select()
+    .from(financeRecurringStreams)
+    .where(eq(financeRecurringStreams.agentInstanceId, agentInstanceId));
+
+  // Get account type info for better categorization context
+  const accounts = await db
+    .select()
+    .from(financeAccounts)
+    .where(eq(financeAccounts.agentInstanceId, agentInstanceId));
+
+  const accountTypeMap = new Map(
+    accounts.map((a) => [a.plaidAccountId, a.type])
+  );
+
+  // Prepare streams for categorization
+  const streamsForCategorization = allStreams.map((s) => ({
+    id: s.id,
     merchantName: s.merchantName,
     description: s.description,
-    averageAmount: s.averageAmount.toString(),
+    averageAmount: s.averageAmount,
     frequency: s.frequency,
-    lastDate: s.lastDate,
-    predictedNextDate: s.predictedNextDate,
-    firstDate: s.firstDate,
-    status: s.status,
     pfcPrimary: s.pfcPrimary,
+    direction: s.direction,
+    category: s.category,
+    accountType: s.plaidAccountId ? accountTypeMap.get(s.plaidAccountId) : null,
   }));
 
-  if (rows.length > 0) {
-    await db.insert(financeRecurringStreams).values(rows);
+  // Run categorization (will use cache for known merchants, LLM for unknowns)
+  const uncategorizedCount = streamsForCategorization.filter(
+    (s) => !s.category && s.direction === "outflow"
+  ).length;
+
+  if (uncategorizedCount > 0) {
+    console.log(`[Phase2] Running categorization for ${uncategorizedCount} uncategorized streams`);
+    await categorizeRecurringStreams(streamsForCategorization);
   }
 
   return { inflow, outflow };
