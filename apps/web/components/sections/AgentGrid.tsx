@@ -22,6 +22,52 @@ const ICON_MAP: Record<string, ReactNode> = {
   'Job Search': <Icons.JobSearchIcon />,
 };
 
+/** Format insight text with bold merchant names and dollar amounts */
+function formatInsightText(text: string): ReactNode[] {
+  // Match merchant name (before "will charge", "charged", etc.) and dollar amounts
+  const patterns = [
+    /^(.+?)(\s+(?:will charge|charged|is charging))/i,
+    /(\$[\d,]+(?:\.\d{2})?)/g,
+  ];
+
+  // First, extract and bold the merchant name
+  const merchantMatch = text.match(patterns[0]);
+  let result = text;
+  let merchantName = '';
+
+  if (merchantMatch) {
+    merchantName = merchantMatch[1];
+    // Capitalize first letter of merchant name
+    merchantName = merchantName.charAt(0).toUpperCase() + merchantName.slice(1);
+  }
+
+  // Split by dollar amounts and bold them
+  const dollarPattern = /(\$[\d,]+(?:\.\d{2})?)/g;
+  const parts = result.split(dollarPattern);
+
+  return parts.map((part, i) => {
+    // Check if this part is a dollar amount
+    if (dollarPattern.test(part)) {
+      dollarPattern.lastIndex = 0; // Reset regex
+      return <strong key={i}>{part}</strong>;
+    }
+    // Check if this part contains the merchant name at the start
+    if (i === 0 && merchantMatch) {
+      const merchantPattern = new RegExp(`^(${merchantMatch[1]})`, 'i');
+      const m = part.match(merchantPattern);
+      if (m) {
+        const rest = part.slice(m[1].length);
+        return (
+          <React.Fragment key={i}>
+            <strong>{merchantName}</strong>{rest}
+          </React.Fragment>
+        );
+      }
+    }
+    return part;
+  });
+}
+
 function CyclingInsight({ insights, tick }: { insights: string[]; tick: number }) {
   const index = tick % insights.length;
   const [visible, setVisible] = useState(true);
@@ -59,7 +105,7 @@ function CyclingInsight({ insights, tick }: { insights: string[]; tick: number }
       key={display}
       className={`${styles.activeInsight} ${!visible ? styles.insightOut : ''} ${shouldScroll ? styles.insightScroll : ''}`}
     >
-      {insights[display]}
+      {formatInsightText(insights[display])}
     </p>
   );
 }
