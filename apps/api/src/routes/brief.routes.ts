@@ -338,38 +338,135 @@ app.get("/breakdown", async (c) => {
     pfcPrimary: string | null;
   }
 
-  const incomeItems: StreamItem[] = [];        // True income (PFC = INCOME)
+  const incomeItems: StreamItem[] = [];        // True income
   const transfersInItems: StreamItem[] = [];   // Inbound transfers (not income)
   const transfersOutItems: StreamItem[] = [];  // Outbound transfers (not expenses)
-  const subscriptionItems: StreamItem[] = [];  // Subscriptions (PFC-based)
-  const loanItems: StreamItem[] = [];          // Loan payments (PFC-based)
+  const subscriptionItems: StreamItem[] = [];  // Subscriptions
+  const loanItems: StreamItem[] = [];          // Loan payments
   const otherItems: StreamItem[] = [];         // Other recurring expenses
 
-  // Plaid PFC categories for subscriptions/entertainment
-  const subscriptionPFCs = [
-    'ENTERTAINMENT',
-    'GENERAL_SERVICES',  // Often includes subscriptions
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MERCHANT-BASED CATEGORIZATION (Most reliable - checked FIRST)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Known loan/credit merchants (always loans regardless of PFC)
+  const loanMerchants = [
+    'ford credit', 'affirm', 'klarna', 'afterpay', 'sezzle', 'zip',
+    'easyfinancial', 'easy financial', 'money mart', 'fairstone',
+    'lending', 'mortgage', 'student loan', 'car payment', 'auto loan',
   ];
 
-  // Plaid PFC categories for loans
-  const loanPFCs = [
-    'LOAN_PAYMENTS',
+  // Known subscription services (always subscriptions regardless of PFC)
+  const subscriptionMerchants = [
+    // Streaming
+    'netflix', 'spotify', 'apple music', 'amazon prime', 'amazon music',
+    'disney', 'hulu', 'hbo', 'paramount', 'peacock', 'crave', 'youtube',
+    'crunchyroll', 'funimation', 'audible', 'kindle unlimited',
+    // Software/Tech
+    'adobe', 'microsoft', 'dropbox', 'google one', 'icloud', 'openai',
+    'chatgpt', 'claude', 'notion', 'figma', 'canva', 'slack', 'zoom',
+    'github', 'grammarly', 'lastpass', '1password', 'nordvpn', 'expressvpn',
+    // Gaming
+    'playstation', 'xbox', 'nintendo', 'steam', 'epic games', 'ea play',
+    'twitch', 'discord nitro',
+    // Social/News
+    'patreon', 'substack', 'medium', 'linkedin', 'x corp', 'twitter',
+    // Fitness (gym memberships)
+    'goodlife', 'planet fitness', 'anytime fitness', 'la fitness', 'equinox',
+    'peloton', 'fitbit', 'strava',
+    // Other subscriptions
+    'willow', 'airscr', 'scribd', 'ancestry', 'duolingo',
+    'ford motor comp', // FordPass subscription, not Ford Credit
   ];
 
-  // Plaid PFC categories for transfers (should be excluded from expenses)
-  const transferPFCs = [
-    'TRANSFER_OUT',
-    'TRANSFER_IN',
+  // Bank fees and service charges (should be in Other, not Transfers)
+  const bankFeeKeywords = [
+    'bank fee', 'monthly fee', 'service charge', 'account fee',
+    'maintenance fee', 'overdraft', 'nsf fee', 'atm fee',
   ];
+
+  // True internal transfer keywords
+  const transferKeywords = [
+    'transfer to', 'transfer from', 'e-transfer', 'interac',
+    'eft', 'wire', 'pts', // PTS is often Pre-authorized Transfer Service
+  ];
+
+  /**
+   * Multi-layer categorization function
+   * Priority: Merchant matching > PFC > Fallback heuristics
+   */
+  function categorizeStream(
+    merchantName: string | null,
+    description: string | null,
+    pfcPrimary: string | null,
+    amount: number,
+  ): 'subscription' | 'loan' | 'other' | 'transfer' {
+    const name = (merchantName ?? '').toLowerCase();
+    const desc = (description ?? '').toLowerCase();
+    const combined = `${name} ${desc}`;
+
+    // Layer 1: Merchant name matching (most reliable)
+    if (loanMerchants.some(m => name.includes(m) || desc.includes(m))) {
+      return 'loan';
+    }
+    if (subscriptionMerchants.some(m => name.includes(m) || desc.includes(m))) {
+      return 'subscription';
+    }
+
+    // Layer 2: Bank fees should not be transfers
+    if (bankFeeKeywords.some(kw => combined.includes(kw))) {
+      return 'other';
+    }
+
+    // Layer 3: True transfers (only if it looks like an actual transfer)
+    if (pfcPrimary === 'TRANSFER_OUT' || pfcPrimary === 'TRANSFER_IN') {
+      // Only categorize as transfer if it matches transfer keywords
+      // or if it's between accounts (no merchant name, account-to-account)
+      if (transferKeywords.some(kw => combined.includes(kw))) {
+        return 'transfer';
+      }
+      // If it has no merchant and PFC says transfer, trust it
+      if (!merchantName && pfcPrimary === 'TRANSFER_OUT') {
+        return 'transfer';
+      }
+      // Otherwise, it might be a payment tagged incorrectly - put in other
+      return 'other';
+    }
+
+    // Layer 4: PFC-based categorization
+    if (pfcPrimary === 'LOAN_PAYMENTS') {
+      return 'loan';
+    }
+    if (pfcPrimary === 'ENTERTAINMENT') {
+      return 'subscription';
+    }
+
+    // Layer 5: Fallback - small recurring amounts are likely subscriptions
+    // (only if we still don't know what it is)
+    if (amount < 30 && !name.includes('rent') && !name.includes('utility')) {
+      return 'subscription';
+    }
+
+    return 'other';
+  }
 
   for (const stream of streams) {
     const amount = Math.abs(Number(stream.averageAmount));
     const pfcPrimary = (stream as { pfcPrimary?: string | null }).pfcPrimary ?? null;
     const account = stream.plaidAccountId ? accountMap.get(stream.plaidAccountId) : null;
 
+    // Better display name: prefer merchantName, fallback to description, then 'Unknown'
+    let displayName = stream.merchantName;
+    if (!displayName || displayName.trim() === '') {
+      displayName = stream.description;
+    }
+    if (!displayName || displayName.trim() === '') {
+      displayName = 'Unknown';
+    }
+
     const item: StreamItem = {
       id: stream.id,
-      merchantName: stream.merchantName ?? stream.description ?? 'Unknown',
+      merchantName: displayName,
       description: stream.description,
       amount,
       frequency: stream.frequency,
@@ -384,30 +481,33 @@ app.get("/breakdown", async (c) => {
 
     if (stream.direction === 'inflow') {
       // Only count as income if PFC is INCOME (salary, wages, freelance)
-      // Everything else (TRANSFER_IN, BANK_FEES, etc.) goes to transfers
       if (pfcPrimary === 'INCOME') {
         incomeItems.push(item);
       } else {
         transfersInItems.push(item);
       }
     } else {
-      // Categorize outflow using Plaid's PFC
-      if (transferPFCs.includes(pfcPrimary ?? '')) {
-        // Internal transfers - don't count as expenses
-        item.category = 'transfer';
-        transfersOutItems.push(item);
-      } else if (loanPFCs.includes(pfcPrimary ?? '')) {
-        // Loan payments
-        item.category = 'loan';
-        loanItems.push(item);
-      } else if (subscriptionPFCs.includes(pfcPrimary ?? '')) {
-        // Entertainment/subscriptions by PFC
-        item.category = 'subscription';
-        subscriptionItems.push(item);
-      } else {
-        // Everything else is "other recurring"
-        // This includes RENT_AND_UTILITIES, TRANSPORTATION, FOOD_AND_DRINK, etc.
-        otherItems.push(item);
+      // Use multi-layer categorization for outflows
+      const category = categorizeStream(
+        stream.merchantName,
+        stream.description,
+        pfcPrimary,
+        amount,
+      );
+      item.category = category;
+
+      switch (category) {
+        case 'loan':
+          loanItems.push(item);
+          break;
+        case 'subscription':
+          subscriptionItems.push(item);
+          break;
+        case 'transfer':
+          transfersOutItems.push(item);
+          break;
+        default:
+          otherItems.push(item);
       }
     }
   }
