@@ -227,6 +227,19 @@ export default function FinanceBriefPage() {
   } | null>(null);
   const [loadingDebug, setLoadingDebug] = useState(false);
 
+  // Category override state
+  const [streams, setStreams] = useState<Array<{
+    id: string;
+    merchantName: string;
+    category: string | null;
+    monthlyAmount: number;
+  }>>([]);
+  const [loadingStreams, setLoadingStreams] = useState(false);
+  const [selectedStreamId, setSelectedStreamId] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [overriding, setOverriding] = useState(false);
+  const [overrideResult, setOverrideResult] = useState<string | null>(null);
+
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
 
@@ -506,6 +519,68 @@ export default function FinanceBriefPage() {
       // ignore
     } finally {
       setLoadingDebug(false);
+    }
+  }
+
+  async function handleLoadStreams() {
+    setLoadingStreams(true);
+    setOverrideResult(null);
+    try {
+      const breakdown = await api.getBriefBreakdown();
+      // Collect all streams from all categories
+      const allStreams: Array<{
+        id: string;
+        merchantName: string;
+        category: string | null;
+        monthlyAmount: number;
+      }> = [];
+
+      const addItems = (items: Array<{ id: string; merchantName: string; category?: string | null; monthlyAmount: number }>, cat: string) => {
+        items.forEach(item => {
+          allStreams.push({
+            id: item.id,
+            merchantName: item.merchantName,
+            category: item.category ?? cat,
+            monthlyAmount: item.monthlyAmount,
+          });
+        });
+      };
+
+      addItems(breakdown.income.items, 'income');
+      addItems(breakdown.subscriptions.items, 'subscription');
+      addItems(breakdown.loans.items, 'loan');
+      if (breakdown.fees) addItems(breakdown.fees.items, 'fee');
+      if (breakdown.rent) addItems(breakdown.rent.items, 'rent');
+      if (breakdown.utilities) addItems(breakdown.utilities.items, 'utility');
+      if (breakdown.insurance) addItems(breakdown.insurance.items, 'insurance');
+      if (breakdown.variable) addItems(breakdown.variable.items, 'variable');
+      addItems(breakdown.other.items, 'other');
+      addItems(breakdown.transfersOut.items, 'transfer');
+      addItems(breakdown.transfersIn.items, 'transfer');
+
+      setStreams(allStreams);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingStreams(false);
+    }
+  }
+
+  async function handleOverrideCategory() {
+    if (!selectedStreamId || !selectedCategory) return;
+    setOverriding(true);
+    setOverrideResult(null);
+    try {
+      const result = await api.overrideStreamCategory(selectedStreamId, selectedCategory);
+      setOverrideResult(`Updated "${result.merchantName}" to "${result.category}"`);
+      // Refresh streams list
+      await handleLoadStreams();
+      setSelectedStreamId('');
+      setSelectedCategory('');
+    } catch (err) {
+      setOverrideResult(`Error: ${(err as { message?: string })?.message ?? 'Failed to override'}`);
+    } finally {
+      setOverriding(false);
     }
   }
 
@@ -924,6 +999,67 @@ export default function FinanceBriefPage() {
                           {loadingDebug ? 'Loading...' : 'Load Debug'}
                         </button>
                       </div>
+
+                      <div className={styles.devtoolsAction}>
+                        <div className={styles.devtoolsInfo}>
+                          <span className={styles.devtoolsLabel}>Override Stream Category</span>
+                          <span className={styles.devtoolsHint}>
+                            Manually fix a miscategorized recurring stream. Updates global cache.
+                          </span>
+                        </div>
+                        <button
+                          className={styles.devtoolsBtn}
+                          onClick={handleLoadStreams}
+                          disabled={loadingStreams}
+                        >
+                          {loadingStreams ? 'Loading...' : 'Load Streams'}
+                        </button>
+                      </div>
+
+                      {streams.length > 0 && (
+                        <div className={styles.categoryOverride}>
+                          <div className={styles.overrideRow}>
+                            <select
+                              className={styles.overrideSelect}
+                              value={selectedStreamId}
+                              onChange={(e) => setSelectedStreamId(e.target.value)}
+                            >
+                              <option value="">Select stream...</option>
+                              {streams.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.merchantName} (${s.monthlyAmount.toFixed(2)}/mo) [{s.category}]
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className={styles.overrideSelect}
+                              value={selectedCategory}
+                              onChange={(e) => setSelectedCategory(e.target.value)}
+                            >
+                              <option value="">New category...</option>
+                              <option value="subscription">Subscription</option>
+                              <option value="loan">Loan</option>
+                              <option value="fee">Fee / Interest</option>
+                              <option value="rent">Rent</option>
+                              <option value="utility">Utility</option>
+                              <option value="insurance">Insurance</option>
+                              <option value="transfer">Transfer</option>
+                              <option value="variable">Variable</option>
+                              <option value="income">Income</option>
+                            </select>
+                            <button
+                              className={styles.devtoolsBtn}
+                              onClick={handleOverrideCategory}
+                              disabled={overriding || !selectedStreamId || !selectedCategory}
+                            >
+                              {overriding ? 'Saving...' : 'Apply'}
+                            </button>
+                          </div>
+                          {overrideResult && (
+                            <p className={styles.overrideResult}>{overrideResult}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {debugInfo && (

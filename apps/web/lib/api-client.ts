@@ -444,6 +444,16 @@ export class ApiClient {
     }>('/api/brief/breakdown');
   }
 
+  async overrideStreamCategory(streamId: string, category: string) {
+    return this.patch<{
+      success: boolean;
+      streamId: string;
+      category: string;
+      merchantName: string;
+      message: string;
+    }>(`/api/brief/streams/${streamId}/category`, { category });
+  }
+
   async getDeliveryPreferences() {
     return this.get<{
       email: { enabled: boolean; address: string | null };
