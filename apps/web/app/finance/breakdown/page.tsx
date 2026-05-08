@@ -81,11 +81,24 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+type SectionKey = 'income' | 'subscriptions' | 'loans' | 'other' | 'variable';
+
 export default function BreakdownPage() {
   const api = useApiClient();
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
+    income: false,
+    subscriptions: false,
+    loans: false,
+    other: false,
+    variable: false,
+  });
+
+  const toggle = (key: SectionKey) => {
+    setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -130,238 +143,174 @@ export default function BreakdownPage() {
           <p className={styles.error}>{error}</p>
         ) : breakdown ? (
           <div className={styles.breakdown}>
-            {/* Summary Cards */}
-            <section className={styles.summarySection}>
-              <h2 className={styles.sectionTitle}>Summary</h2>
-              <div className={styles.summaryGrid}>
-                <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Monthly Income</span>
+            {/* Single Card with Collapsible Categories */}
+            <div className={styles.card}>
+              {/* Summary Row */}
+              <div className={styles.summaryRow}>
+                <div className={styles.summaryItem}>
+                  <span className={styles.summaryLabel}>Income</span>
                   <span className={styles.summaryValue}>{formatMoney(breakdown.totals.income)}</span>
                 </div>
-                <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Recurring Outflow</span>
-                  <span className={styles.summaryValue}>{formatMoney(breakdown.totals.recurringOutflow)}</span>
-                </div>
-                <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Variable Spend</span>
-                  <span className={styles.summaryValue}>{formatMoney(breakdown.totals.variableSpend)}</span>
-                </div>
-                <div className={styles.summaryCard}>
-                  <span className={styles.summaryLabel}>Total Expenses</span>
+                <span className={styles.summaryMinus}>−</span>
+                <div className={styles.summaryItem}>
+                  <span className={styles.summaryLabel}>Expenses</span>
                   <span className={styles.summaryValue}>{formatMoney(breakdown.totals.totalExpenses)}</span>
                 </div>
-                <div className={`${styles.summaryCard} ${breakdown.totals.leftover < 0 ? styles.negative : styles.positive}`}>
-                  <span className={styles.summaryLabel}>Monthly Leftover</span>
-                  <span className={styles.summaryValue}>{formatMoney(breakdown.totals.leftover)}</span>
+                <span className={styles.summaryEquals}>=</span>
+                <div className={styles.summaryItem}>
+                  <span className={styles.summaryLabel}>Leftover</span>
+                  <span className={`${styles.summaryValue} ${breakdown.totals.leftover < 0 ? styles.negative : styles.positive}`}>
+                    {formatMoney(breakdown.totals.leftover)}
+                  </span>
                 </div>
               </div>
-            </section>
 
-            {/* Calculation Explanation */}
-            <section className={styles.calcSection}>
-              <h2 className={styles.sectionTitle}>How It&apos;s Calculated</h2>
-              <div className={styles.calcTable}>
-                <div className={styles.calcRow}>
-                  <span className={styles.calcLabel}>Income (monthly)</span>
-                  <span className={styles.calcValue}>{formatMoney(breakdown.totals.income)}</span>
-                </div>
-                <div className={styles.calcRow}>
-                  <span className={styles.calcLabel}>− Subscriptions ({breakdown.subscriptions.count})</span>
-                  <span className={styles.calcValue}>{formatMoney(breakdown.subscriptions.total)}</span>
-                </div>
-                <div className={styles.calcRow}>
-                  <span className={styles.calcLabel}>− Loans & EMI ({breakdown.loans.count})</span>
-                  <span className={styles.calcValue}>{formatMoney(breakdown.loans.total)}</span>
-                </div>
-                <div className={styles.calcRow}>
-                  <span className={styles.calcLabel}>− Other Recurring ({breakdown.other.count})</span>
-                  <span className={styles.calcValue}>{formatMoney(breakdown.other.total)}</span>
-                </div>
-                <div className={styles.calcRow}>
-                  <span className={styles.calcLabel}>− Variable Spend (90-day avg)</span>
-                  <span className={styles.calcValue}>{formatMoney(breakdown.totals.variableSpend)}</span>
-                </div>
-                <div className={`${styles.calcRow} ${styles.calcTotal}`}>
-                  <span className={styles.calcLabel}>= Leftover</span>
-                  <span className={styles.calcValue}>{formatMoney(breakdown.totals.leftover)}</span>
-                </div>
+              <div className={styles.divider} />
+
+              {/* Income Section */}
+              <div className={styles.category}>
+                <button
+                  className={styles.categoryHeader}
+                  onClick={() => toggle('income')}
+                  aria-expanded={expanded.income}
+                >
+                  <div className={styles.categoryLeft}>
+                    <span className={`${styles.chevron} ${expanded.income ? styles.open : ''}`}>›</span>
+                    <span className={styles.categoryName}>Income</span>
+                    {breakdown.income.items.length > 0 && (
+                      <span className={styles.categoryCount}>{breakdown.income.items.length} source{breakdown.income.items.length !== 1 ? 's' : ''}</span>
+                    )}
+                  </div>
+                  <span className={styles.categoryTotal}>+{formatMoney(breakdown.totals.income)}</span>
+                </button>
+                {expanded.income && breakdown.income.items.length > 0 && (
+                  <div className={styles.categoryItems}>
+                    {breakdown.income.items.map((item) => (
+                      <div key={item.id} className={styles.item}>
+                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)}</span>
+                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </section>
 
-            {/* Connected Accounts */}
-            {breakdown.accounts.length > 0 && (
-              <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Connected Accounts ({breakdown.accounts.length})</h2>
-                <div className={styles.table}>
-                  <div className={styles.tableHeader}>
-                    <span>Account</span>
-                    <span>Type</span>
-                    <span className={styles.alignRight}>Balance</span>
-                  </div>
-                  {breakdown.accounts.map((account) => (
-                    <div key={account.id} className={styles.tableRow}>
-                      <span className={styles.merchantName}>
-                        {account.name ?? 'Account'} {account.mask ? `••${account.mask}` : ''}
-                      </span>
-                      <span className={styles.secondary}>{account.subtype ?? account.type ?? '—'}</span>
-                      <span className={styles.alignRight}>{formatMoney(account.currentBalance)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Income Streams */}
-            {breakdown.income.items.length > 0 && (
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>Income Sources</h2>
-                  <span className={styles.sectionTotal}>{formatMoney(breakdown.income.total)}/mo</span>
-                </div>
-                <div className={styles.table}>
-                  <div className={styles.tableHeader}>
-                    <span>Source</span>
-                    <span>Frequency</span>
-                    <span className={styles.alignRight}>Amount</span>
-                    <span className={styles.alignRight}>Monthly</span>
-                  </div>
-                  {breakdown.income.items.map((item) => (
-                    <div key={item.id} className={styles.tableRow}>
-                      <span className={styles.merchantName}>{toTitleCase(item.merchantName)}</span>
-                      <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
-                      <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
-                      <span className={`${styles.alignRight} ${styles.bold}`}>{formatMoney(item.monthlyAmount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Transfers In (not counted as income) */}
-            {breakdown.transfersIn?.items.length > 0 && (
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>
-                    <span className={styles.muted}>Other Inflows</span>
-                  </h2>
-                  <span className={`${styles.sectionTotal} ${styles.muted}`}>not counted as income</span>
-                </div>
-                <p className={styles.sectionNote}>
-                  These are internal transfers, refunds, or reimbursements — not actual income.
-                </p>
-                <div className={styles.table}>
-                  <div className={styles.tableHeader}>
-                    <span>Source</span>
-                    <span>Category</span>
-                    <span>Frequency</span>
-                    <span className={styles.alignRight}>Amount</span>
-                    <span className={styles.alignRight}>Monthly</span>
-                  </div>
-                  {breakdown.transfersIn.items.map((item) => (
-                    <div key={item.id} className={`${styles.tableRow} ${styles.mutedRow}`}>
-                      <span className={styles.merchantName}>{toTitleCase(item.merchantName)}</span>
-                      <span className={styles.secondary}>{item.pfcPrimary ?? 'Transfer'}</span>
-                      <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
-                      <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
-                      <span className={styles.alignRight}>{formatMoney(item.monthlyAmount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Subscriptions */}
-            {breakdown.subscriptions.items.length > 0 && (
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>
+              {/* Subscriptions Section */}
+              <div className={styles.category}>
+                <button
+                  className={styles.categoryHeader}
+                  onClick={() => toggle('subscriptions')}
+                  aria-expanded={expanded.subscriptions}
+                >
+                  <div className={styles.categoryLeft}>
+                    <span className={`${styles.chevron} ${expanded.subscriptions ? styles.open : ''}`}>›</span>
                     <span className={`${styles.dot} ${styles.s1}`} />
-                    Subscriptions ({breakdown.subscriptions.count})
-                  </h2>
-                  <span className={styles.sectionTotal}>{formatMoney(breakdown.subscriptions.total)}/mo</span>
-                </div>
-                <div className={styles.table}>
-                  <div className={styles.tableHeader}>
-                    <span>Service</span>
-                    <span>Frequency</span>
-                    <span>Last Charged</span>
-                    <span className={styles.alignRight}>Amount</span>
-                    <span className={styles.alignRight}>Monthly</span>
+                    <span className={styles.categoryName}>Subscriptions</span>
+                    {breakdown.subscriptions.count > 0 && (
+                      <span className={styles.categoryCount}>{breakdown.subscriptions.count} active</span>
+                    )}
                   </div>
-                  {breakdown.subscriptions.items.map((item) => (
-                    <div key={item.id} className={styles.tableRow}>
-                      <span className={styles.merchantName}>{toTitleCase(item.merchantName)}</span>
-                      <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
-                      <span className={styles.secondary}>{formatDate(item.lastDate)}</span>
-                      <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
-                      <span className={`${styles.alignRight} ${styles.bold}`}>{formatMoney(item.monthlyAmount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.subscriptions.total)}</span>
+                </button>
+                {expanded.subscriptions && breakdown.subscriptions.items.length > 0 && (
+                  <div className={styles.categoryItems}>
+                    {breakdown.subscriptions.items.map((item) => (
+                      <div key={item.id} className={styles.item}>
+                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · Last {formatDate(item.lastDate)}</span>
+                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {/* Loans & EMI */}
-            {breakdown.loans.items.length > 0 && (
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>
+              {/* Loans Section */}
+              <div className={styles.category}>
+                <button
+                  className={styles.categoryHeader}
+                  onClick={() => toggle('loans')}
+                  aria-expanded={expanded.loans}
+                >
+                  <div className={styles.categoryLeft}>
+                    <span className={`${styles.chevron} ${expanded.loans ? styles.open : ''}`}>›</span>
                     <span className={`${styles.dot} ${styles.s2}`} />
-                    Loans & EMI ({breakdown.loans.count})
-                  </h2>
-                  <span className={styles.sectionTotal}>{formatMoney(breakdown.loans.total)}/mo</span>
-                </div>
-                <div className={styles.table}>
-                  <div className={styles.tableHeader}>
-                    <span>Lender</span>
-                    <span>Frequency</span>
-                    <span>Last Payment</span>
-                    <span className={styles.alignRight}>Amount</span>
-                    <span className={styles.alignRight}>Monthly</span>
+                    <span className={styles.categoryName}>Loan Payments</span>
+                    {breakdown.loans.count > 0 && (
+                      <span className={styles.categoryCount}>{breakdown.loans.count} {breakdown.loans.count === 1 ? 'line' : 'lines'}</span>
+                    )}
                   </div>
-                  {breakdown.loans.items.map((item) => (
-                    <div key={item.id} className={styles.tableRow}>
-                      <span className={styles.merchantName}>{toTitleCase(item.merchantName)}</span>
-                      <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
-                      <span className={styles.secondary}>{formatDate(item.lastDate)}</span>
-                      <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
-                      <span className={`${styles.alignRight} ${styles.bold}`}>{formatMoney(item.monthlyAmount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.loans.total)}</span>
+                </button>
+                {expanded.loans && breakdown.loans.items.length > 0 && (
+                  <div className={styles.categoryItems}>
+                    {breakdown.loans.items.map((item) => (
+                      <div key={item.id} className={styles.item}>
+                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · Last {formatDate(item.lastDate)}</span>
+                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {/* Other Recurring */}
-            {breakdown.other.items.length > 0 && (
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>
+              {/* Other Recurring Section */}
+              <div className={styles.category}>
+                <button
+                  className={styles.categoryHeader}
+                  onClick={() => toggle('other')}
+                  aria-expanded={expanded.other}
+                >
+                  <div className={styles.categoryLeft}>
+                    <span className={`${styles.chevron} ${expanded.other ? styles.open : ''}`}>›</span>
                     <span className={`${styles.dot} ${styles.s3}`} />
-                    Other Recurring ({breakdown.other.count})
-                  </h2>
-                  <span className={styles.sectionTotal}>{formatMoney(breakdown.other.total)}/mo</span>
-                </div>
-                <div className={styles.table}>
-                  <div className={styles.tableHeader}>
-                    <span>Payee</span>
-                    <span>Frequency</span>
-                    <span>Last Payment</span>
-                    <span className={styles.alignRight}>Amount</span>
-                    <span className={styles.alignRight}>Monthly</span>
+                    <span className={styles.categoryName}>Other Recurring</span>
+                    {breakdown.other.count > 0 && (
+                      <span className={styles.categoryCount}>{breakdown.other.count} items</span>
+                    )}
                   </div>
-                  {breakdown.other.items.map((item) => (
-                    <div key={item.id} className={styles.tableRow}>
-                      <span className={styles.merchantName}>{toTitleCase(item.merchantName)}</span>
-                      <span className={styles.secondary}>{formatFrequency(item.frequency)}</span>
-                      <span className={styles.secondary}>{formatDate(item.lastDate)}</span>
-                      <span className={styles.alignRight}>{formatMoney(item.amount)}</span>
-                      <span className={`${styles.alignRight} ${styles.bold}`}>{formatMoney(item.monthlyAmount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.other.total)}</span>
+                </button>
+                {expanded.other && breakdown.other.items.length > 0 && (
+                  <div className={styles.categoryItems}>
+                    {breakdown.other.items.map((item) => (
+                      <div key={item.id} className={styles.item}>
+                        <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
+                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · Last {formatDate(item.lastDate)}</span>
+                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Variable Spend Section */}
+              <div className={styles.category}>
+                <button
+                  className={styles.categoryHeader}
+                  onClick={() => toggle('variable')}
+                  aria-expanded={expanded.variable}
+                >
+                  <div className={styles.categoryLeft}>
+                    <span className={`${styles.chevron} ${expanded.variable ? styles.open : ''}`}>›</span>
+                    <span className={`${styles.dot} ${styles.s4}`} />
+                    <span className={styles.categoryName}>Variable Spend</span>
+                    <span className={styles.categoryCount}>90-day avg</span>
+                  </div>
+                  <span className={styles.categoryTotal}>−{formatMoney(breakdown.totals.variableSpend)}</span>
+                </button>
+                {expanded.variable && (
+                  <div className={styles.categoryItems}>
+                    <p className={styles.variableNote}>
+                      Variable spend is calculated as: Total Expenses − Recurring Outflow.
+                      This includes groceries, dining, entertainment, shopping, and other non-recurring purchases.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
 
             <p className={styles.footnote}>
               Last updated: {new Date(breakdown.generatedAt).toLocaleString()}
