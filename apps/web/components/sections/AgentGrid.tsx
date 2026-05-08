@@ -4,9 +4,15 @@ import React, { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { AGENTS } from '@artifigenz/shared';
 import { useActivatedAgents, agentSlug } from '@/hooks/useActivatedAgents';
+import { useApiClient } from '@/hooks/useApiClient';
 import ExploreGrid from './ExploreGrid';
 import * as Icons from './AgentIcons';
 import styles from './AgentGrid.module.css';
+
+interface FinanceData {
+  verdict: string | null;
+  insights: string[];
+}
 
 const ICON_MAP: Record<string, ReactNode> = {
   Finance: <Icons.FinanceIcon />,
@@ -60,9 +66,37 @@ function CyclingInsight({ insights, tick }: { insights: string[]; tick: number }
 
 export default function AgentGrid() {
   const { slugs, hydrated } = useActivatedAgents();
+  const api = useApiClient();
   const active = AGENTS.filter((a) => slugs.includes(agentSlug(a.name)));
   const [visibleItems, setVisibleItems] = useState<Set<number>>(new Set());
   const [ticks, setTicks] = useState<number[]>([]);
+  const [financeData, setFinanceData] = useState<FinanceData>({ verdict: null, insights: [] });
+
+  // Fetch finance brief and insights
+  useEffect(() => {
+    if (!slugs.includes('finance')) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [brief, feed] = await Promise.all([
+          api.getCurrentBrief().catch(() => null),
+          api.getInsights({ limit: 5 }).catch(() => ({ insights: [] })),
+        ]);
+        if (cancelled) return;
+
+        const insights = feed.insights?.map((i: { title: string }) => i.title) ?? [];
+        setFinanceData({
+          verdict: brief?.verdict ?? null,
+          insights,
+        });
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [api, slugs]);
 
   useEffect(() => {
     setVisibleItems(new Set());
@@ -134,7 +168,19 @@ export default function AgentGrid() {
                   <span className={styles.dot} />
                   <span className={styles.activeTime}>{agent.lastActive}</span>
                 </div>
-                {agent.insights && <CyclingInsight insights={agent.insights} tick={ticks[index] ?? 0} />}
+                {agentSlug(agent.name) === 'finance' ? (
+                  (financeData.verdict || financeData.insights.length > 0) && (
+                    <CyclingInsight
+                      insights={[
+                        ...(financeData.verdict ? [financeData.verdict] : []),
+                        ...financeData.insights,
+                      ]}
+                      tick={ticks[index] ?? 0}
+                    />
+                  )
+                ) : (
+                  agent.insights && <CyclingInsight insights={agent.insights} tick={ticks[index] ?? 0} />
+                )}
               </div>
             </div>
             <span className={styles.activeArrow}>
