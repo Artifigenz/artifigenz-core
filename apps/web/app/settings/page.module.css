@@ -1,3 +1,5 @@
+/* Settings V3 Live — Aura-inspired clean design */
+
 .page {
   min-height: 100vh;
   display: flex;
@@ -9,282 +11,678 @@
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
-  padding: 0 40px 60px;
+  padding: 0 40px 80px;
+}
+
+.hero {
+  padding: 56px 0 48px;
 }
 
 .title {
-  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-  font-weight: 400;
+  margin: 0;
+  font-size: clamp(2.4rem, 5vw, 3.5rem);
+  font-weight: 500;
   letter-spacing: -0.03em;
-  line-height: 1.15;
+  line-height: 1;
   color: var(--text);
-  padding: 60px 0 40px;
 }
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   Section Layout
+   ───────────────────────────────────────────────────────────── */
 
 .section {
-  padding-bottom: 40px;
-  margin-bottom: 40px;
-  border-bottom: 1px solid var(--border-light);
+  scroll-margin-top: 100px;
 }
 
-.section:last-child {
-  border-bottom: none;
-}
-
-.sectionTitle {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 24px;
-}
-
-.field {
+.sectionHead {
   margin-bottom: 20px;
 }
 
-.field:last-child {
-  margin-bottom: 0;
+.sectionTitle {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
-.label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  margin-bottom: 8px;
+.sectionDesc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-mid);
+  max-width: 60ch;
+  line-height: 1.5;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Card Component
+   ───────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius, 16px);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+.card + .card {
+  margin-top: 16px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Row Component — Inline label + control layout
+   ───────────────────────────────────────────────────────────── */
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 1fr;
+  gap: 32px;
+  padding: 22px 24px;
+  align-items: start;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border-light);
+}
+
+.rowLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rowName {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rowHint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+  max-width: 30ch;
+}
+
+.rowHint code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+[data-theme="terminal"] .rowHint code {
+  background: var(--border-light);
+  border-radius: 0;
+}
+
+.rowControl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-self: end;
+  align-items: flex-end;
+  min-width: 0;
+}
+
+/* Row variant: stacked (label above control) */
+.rowStack {
+  display: block;
+  padding: 22px 24px;
+}
+
+.rowStack .rowLabel {
+  margin-bottom: 14px;
+}
+
+.rowStack .rowControl {
+  width: 100%;
+  align-items: stretch;
+  justify-self: stretch;
+}
+
+/* Row variant: action row (for buttons) */
+.rowAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 24px;
+}
+
+.rowAction .rowLabel {
+  flex: 1;
+}
+
+.rowAction + .rowAction {
+  border-top: 1px solid var(--border-light);
+}
+
+/* Row variant: channel (toggle with optional expand) */
+.rowChannel {
+  padding: 22px 24px;
+  flex-wrap: wrap;
+}
+
+.rowControlToggle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Inline Value Display (edit-on-click pattern)
+   ───────────────────────────────────────────────────────────── */
+
+.inlineDisplay {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inlineValue {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Input / Textarea
+   ───────────────────────────────────────────────────────────── */
 
 .input {
-  font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 400;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 10px 14px;
   width: 100%;
-  max-width: 360px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md, 12px);
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
   outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+[data-theme="terminal"] .input {
+  background: transparent;
+  border-radius: 0;
+}
+
+.input:hover {
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
 .input:focus {
   border-color: var(--text);
+  background: #fff;
 }
 
-.fieldHint {
-  font-size: 0.78rem;
-  color: var(--text-dim);
+[data-theme="terminal"] .input:focus {
+  background: transparent;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inputRow .input {
+  flex: 1;
 }
 
 .textarea {
-  font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 400;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 12px 14px;
   width: 100%;
-  max-width: 560px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md, 12px);
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
   outline: none;
   resize: vertical;
   min-height: 110px;
   line-height: 1.55;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+[data-theme="terminal"] .textarea {
+  background: transparent;
+  border-radius: 0;
+}
+
+.textarea:hover {
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
 .textarea:focus {
   border-color: var(--text);
+  background: #fff;
 }
 
-.toggleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 0;
-  max-width: 560px;
+[data-theme="terminal"] .textarea:focus {
+  background: transparent;
 }
 
-.toggleRow + .toggleRow {
-  border-top: 1px solid var(--border-light);
+.textarea::placeholder {
+  color: var(--text-dim);
 }
 
-.toggleInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-
-.toggleTitle {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.toggleSubtitle {
+.counter {
+  text-align: right;
   font-size: 0.75rem;
   color: var(--text-dim);
 }
 
-.switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  background: var(--border-light);
-  cursor: pointer;
-  transition: background 0.15s ease;
+/* ─────────────────────────────────────────────────────────────
+   Buttons
+   ───────────────────────────────────────────────────────────── */
+
+.btnLink {
+  background: transparent;
   border: none;
-  padding: 0;
-}
-
-.switchOn {
-  background: var(--accent);
-}
-
-.switchThumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.15s ease;
-}
-
-.switchOn .switchThumb {
-  transform: translateX(16px);
-}
-
-.rowActions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.primaryBtn {
+  padding: 4px 8px;
   font-family: inherit;
   font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--accent-text);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  padding: 9px 18px;
-  border-radius: 9999px;
+  color: var(--text-mid);
   cursor: pointer;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  border-radius: var(--radius-full, 9999px);
+  transition: color 0.2s, background 0.2s;
 }
 
-.primaryBtn:hover:not(:disabled) {
-  opacity: 0.9;
+.btnLink:hover {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.04);
 }
 
-.primaryBtn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ghostBtn {
+.btnGhost {
+  padding: 7px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full, 9999px);
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--text);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  padding: 9px 18px;
-  border-radius: 9999px;
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
 }
 
-.ghostBtn:hover:not(:disabled) {
-  border-color: var(--text);
-}
-
-.dangerBtn {
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #c44;
+[data-theme="terminal"] .btnGhost {
   background: transparent;
-  border: 1px solid #c44;
-  padding: 9px 18px;
-  border-radius: 9999px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  border-radius: 0;
+  border-color: var(--border);
 }
 
-.dangerBtn:hover:not(:disabled) {
-  background: #c44;
-  color: #fff;
+.btnGhost:hover:not(:disabled) {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
-.dangerBtn:disabled {
+[data-theme="terminal"] .btnGhost:hover:not(:disabled) {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.btnGhost:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.status {
+.btnDanger {
+  padding: 7px 14px;
+  background: rgba(200, 49, 27, 0.08);
+  border: 1px solid rgba(200, 49, 27, 0.2);
+  border-radius: var(--radius-full, 9999px);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #c8311b;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+[data-theme="terminal"] .btnDanger {
+  background: transparent;
+  border-radius: 0;
+}
+
+.btnDanger:hover:not(:disabled) {
+  background: #c8311b;
+  color: #fff;
+  border-color: #c8311b;
+}
+
+.btnDanger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Pills / Badges
+   ───────────────────────────────────────────────────────────── */
+
+.pill {
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--radius-full, 9999px);
+}
+
+[data-theme="terminal"] .pill {
+  border-radius: 0;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
+.pillOk {
+  background: rgba(34, 197, 94, 0.12);
+  color: #1b8753;
+}
+
+.pillWarn {
+  background: rgba(232, 93, 38, 0.12);
+  color: #c4521e;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Toggle Switch
+   ───────────────────────────────────────────────────────────── */
+
+.toggle {
+  width: 44px;
+  height: 26px;
+  background: #d0d0d0;
+  border: none;
+  border-radius: var(--radius-full, 9999px);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+[data-theme="terminal"] .toggle {
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  width: 60px;
+}
+
+.toggle.toggleOn {
+  background: var(--text);
+}
+
+[data-theme="terminal"] .toggle.toggleOn {
+  background: var(--text);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+[data-theme="terminal"] .toggleKnob {
+  border-radius: 0;
+  width: 18px;
+  height: 18px;
+  background: var(--text);
+}
+
+.toggle.toggleOn .toggleKnob {
+  transform: translateX(18px);
+}
+
+[data-theme="terminal"] .toggle.toggleOn .toggleKnob {
+  transform: translateX(34px);
+  background: var(--bg);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Segmented Control
+   ───────────────────────────────────────────────────────────── */
+
+.segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  width: max-content;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-full, 9999px);
+  padding: 3px;
+}
+
+[data-theme="terminal"] .segmented {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0;
+}
+
+.seg {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full, 9999px);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+[data-theme="terminal"] .seg {
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  text-transform: lowercase;
+}
+
+[data-theme="terminal"] .seg:last-child {
+  border-right: none;
+}
+
+.seg.segActive {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="terminal"] .seg.segActive {
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Theme Cards
+   ───────────────────────────────────────────────────────────── */
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.themeCard {
+  text-align: left;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md, 12px);
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+[data-theme="terminal"] .themeCard {
+  border-radius: 0;
+  background: transparent;
+}
+
+.themeCard:hover {
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.themeCard.themeCardActive {
+  border-color: var(--text);
+  border-width: 2px;
+}
+
+.themePreview {
+  height: 100px;
+  background: linear-gradient(135deg, #f4eeff, #fff0eb);
+  padding: 14px;
+  position: relative;
+}
+
+.themePreview.themePreviewMono {
+  background: #fff;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.themeMock {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.themeLine {
+  height: 5px;
+  background: var(--text);
+  border-radius: 3px;
+}
+
+[data-theme="terminal"] .themeLine {
+  border-radius: 0;
+}
+
+.themeLineDim {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.themeSwatches {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+}
+
+.themeSw {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.themePreviewMono .themeSw {
+  border-radius: 0;
+}
+
+.themeMeta {
+  padding: 12px 14px 14px;
+}
+
+.themeName {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.themeDesc {
   font-size: 0.75rem;
   color: var(--text-dim);
-  margin-left: 4px;
+  line-height: 1.4;
 }
 
-.statusSaved {
-  color: #4a9d4a;
+.themeCheck {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 22px;
+  height: 22px;
+  background: var(--text);
+  color: #fff;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
 }
 
-.statusError {
-  color: #c44;
+[data-theme="terminal"] .themeCheck {
+  border-radius: 0;
 }
 
-.inlineField {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  max-width: 560px;
+/* ─────────────────────────────────────────────────────────────
+   Expand Panel (for Telegram setup, etc.)
+   ───────────────────────────────────────────────────────────── */
+
+.expand {
+  width: 100%;
+  margin-top: 16px;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.025);
+  border-radius: var(--radius-md, 12px);
 }
 
-.inlineField .field {
-  flex: 1;
-  min-width: 200px;
-  margin-bottom: 0;
+[data-theme="terminal"] .expand {
+  border-radius: 0;
+  background: var(--border-light);
 }
 
-/* Danger zone */
-.dangerSection {
-  border: 1px solid #c4444433;
-  border-radius: 14px;
-  padding: 20px 24px;
-  background: #c4444408;
-  max-width: 560px;
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.8rem;
+  color: var(--text-mid);
+  line-height: 1.7;
 }
 
-.dangerTitle {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #c44;
-  margin: 0 0 6px;
+.steps code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
 }
 
-.dangerCopy {
-  font-size: 0.78rem;
-  color: var(--text-dim);
-  line-height: 1.5;
-  margin: 0 0 16px;
+[data-theme="terminal"] .steps code {
+  border-radius: 0;
 }
 
-/* Modal */
+/* ─────────────────────────────────────────────────────────────
+   Modal
+   ───────────────────────────────────────────────────────────── */
+
 .modalOverlay {
   position: fixed;
   inset: 0;
@@ -299,11 +697,15 @@
 .modal {
   background: var(--menu-bg, #fff);
   border: 1px solid var(--menu-border, var(--border-light));
-  border-radius: 16px;
+  border-radius: var(--radius, 16px);
   padding: 28px;
   max-width: 420px;
   width: 100%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="terminal"] .modal {
+  border-radius: 0;
 }
 
 .modalTitle {
@@ -327,95 +729,67 @@
   margin-top: 20px;
 }
 
-.modeRow {
-  display: flex;
-  gap: 6px;
-  max-width: 360px;
+/* ─────────────────────────────────────────────────────────────
+   Text helpers
+   ───────────────────────────────────────────────────────────── */
+
+.textDanger {
+  color: #c8311b;
 }
 
-.modeBtn {
-  flex: 1;
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 500;
+.status {
+  font-size: 0.75rem;
   color: var(--text-dim);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 10px 0;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
-.modeBtn:hover {
-  color: var(--text);
-  border-color: var(--text);
+.statusSaved {
+  color: #4a9d4a;
 }
 
-.modeBtnActive {
-  color: var(--accent-text);
-  background: var(--accent);
-  border-color: var(--accent);
+.statusError {
+  color: #c44;
 }
 
-.themeGrid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  max-width: 360px;
-}
-
-.themeCard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: border-color 0.15s ease;
-}
-
-.themeCard:hover {
-  border-color: var(--text);
-}
-
-.themeCardActive {
-  border-color: var(--accent);
-}
-
-.themeName {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.themeDesc {
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: var(--text-dim);
-  line-height: 1.4;
-}
+/* ─────────────────────────────────────────────────────────────
+   Responsive
+   ───────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .rowControl {
+    justify-self: start;
+    align-items: flex-start;
+  }
+
+  .rowAction {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
   .themeGrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 600px) {
   .main {
-    padding: 0 20px 40px;
+    padding: 0 20px 60px;
   }
 
-  .title {
-    padding: 40px 0 28px;
+  .hero {
+    padding: 40px 0 36px;
   }
 
-  .modeRow {
-    max-width: 100%;
+  .sections {
+    gap: 40px;
+  }
+
+  .themeGrid {
+    grid-template-columns: 1fr;
   }
 }

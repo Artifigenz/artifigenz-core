@@ -43,7 +43,7 @@ app.use("/*", logger());
 // CORS — default to local dev origins, override with ALLOWED_ORIGINS env var
 // (comma-separated list of allowed origins, e.g.
 //   "https://artifigenz.vercel.app,https://artifigenz-web-git-mvp.vercel.app")
-const defaultOrigins = ["http://localhost:3000", "http://localhost:8081"];
+const defaultOrigins = ["http://localhost:3000", "http://localhost:3002", "http://localhost:8081"];
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
   : defaultOrigins;

@@ -508,6 +508,14 @@ export class ApiClient {
     return this.patch<{ deliveryPreferences: unknown }>('/api/me/delivery', prefs);
   }
 
+  async generateTelegramLink() {
+    return this.post<{ linkUrl: string; expiresAt: string }>('/api/me/delivery/telegram/link');
+  }
+
+  async getTelegramStatus() {
+    return this.get<{ connected: boolean; linkPending: boolean }>('/api/me/delivery/telegram/status');
+  }
+
   async getConversations() {
     return this.get<{
       conversations: Array<{
