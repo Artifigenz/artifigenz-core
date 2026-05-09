@@ -11,15 +11,20 @@ export function createDataSourceRoutes(registry: AgentRegistry) {
 
   // GET /api/me/agents/:agentInstanceId/connections
   app.get("/:agentInstanceId/connections", async (c) => {
+    const agentInstanceId = c.req.param("agentInstanceId");
+
+    // Select core columns that always exist
     const connections = await db
-      .select()
+      .select({
+        id: dataSourceConnections.id,
+        dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+        displayName: dataSourceConnections.displayName,
+        status: dataSourceConnections.status,
+        metadata: dataSourceConnections.metadata,
+        lastSyncedAt: dataSourceConnections.lastSyncedAt,
+      })
       .from(dataSourceConnections)
-      .where(
-        eq(
-          dataSourceConnections.agentInstanceId,
-          c.req.param("agentInstanceId"),
-        ),
-      );
+      .where(eq(dataSourceConnections.agentInstanceId, agentInstanceId));
 
     return c.json(
       connections.map((conn) => {
@@ -28,21 +33,6 @@ export function createDataSourceRoutes(registry: AgentRegistry) {
           institutionName?: string;
           accounts?: Array<{ id: string; name: string; mask?: string }>;
         };
-
-        // Determine connection health for UX
-        const isHealthy = conn.lastSyncStatus === "success" || !conn.lastSyncStatus;
-        const consecutiveFailures = conn.consecutiveFailures ?? 0;
-
-        // Suggest action when connection is unhealthy
-        let suggestedAction: "reconnect" | "upload" | null = null;
-        if (conn.requiresReauth) {
-          suggestedAction = "reconnect";
-        } else if (consecutiveFailures >= 3) {
-          // After 3 failures, suggest upload as alternative
-          suggestedAction = "upload";
-        } else if (!isHealthy) {
-          suggestedAction = "reconnect";
-        }
 
         return {
           id: conn.id,
@@ -53,18 +43,76 @@ export function createDataSourceRoutes(registry: AgentRegistry) {
           institutionId: metadata.institutionId ?? null,
           institutionName: metadata.institutionName ?? null,
           accounts: metadata.accounts ?? [],
-          // Health status for UX
+          // Health status - will be populated once migration runs
           health: {
-            isHealthy,
-            lastSyncStatus: conn.lastSyncStatus,
-            lastSyncError: conn.lastSyncError,
-            requiresReauth: conn.requiresReauth ?? false,
-            consecutiveFailures,
-            suggestedAction,
+            isHealthy: true,
+            lastSyncStatus: null,
+            lastSyncError: null,
+            requiresReauth: false,
+            consecutiveFailures: 0,
+            suggestedAction: null,
           },
         };
       }),
     );
+  });
+
+  // GET /api/me/agents/:agentInstanceId/connections/health
+  // Separate endpoint for health data (requires migration to be run)
+  app.get("/:agentInstanceId/connections/health", async (c) => {
+    const agentInstanceId = c.req.param("agentInstanceId");
+
+    try {
+      const connections = await db
+        .select({
+          id: dataSourceConnections.id,
+          lastSyncStatus: dataSourceConnections.lastSyncStatus,
+          lastSyncError: dataSourceConnections.lastSyncError,
+          requiresReauth: dataSourceConnections.requiresReauth,
+          consecutiveFailures: dataSourceConnections.consecutiveFailures,
+        })
+        .from(dataSourceConnections)
+        .where(eq(dataSourceConnections.agentInstanceId, agentInstanceId));
+
+      const healthMap: Record<string, {
+        isHealthy: boolean;
+        lastSyncStatus: string | null;
+        lastSyncError: string | null;
+        requiresReauth: boolean;
+        consecutiveFailures: number;
+        suggestedAction: "reconnect" | "upload" | null;
+      }> = {};
+
+      for (const conn of connections) {
+        const lastSyncStatus = conn.lastSyncStatus;
+        const consecutiveFailures = conn.consecutiveFailures ?? 0;
+        const requiresReauth = conn.requiresReauth ?? false;
+        const isHealthy = lastSyncStatus === "success" || !lastSyncStatus;
+
+        let suggestedAction: "reconnect" | "upload" | null = null;
+        if (requiresReauth) {
+          suggestedAction = "reconnect";
+        } else if (consecutiveFailures >= 3) {
+          suggestedAction = "upload";
+        } else if (!isHealthy) {
+          suggestedAction = "reconnect";
+        }
+
+        healthMap[conn.id] = {
+          isHealthy,
+          lastSyncStatus,
+          lastSyncError: conn.lastSyncError,
+          requiresReauth,
+          consecutiveFailures,
+          suggestedAction,
+        };
+      }
+
+      return c.json(healthMap);
+    } catch {
+      // Health columns don't exist yet
+      return c.json({});
+    }
   });
 
   // POST /api/me/agents/:agentInstanceId/connections/:dataSourceTypeId/init

@@ -174,7 +174,26 @@ export class ApiClient {
       institutionId: string | null;
       institutionName: string | null;
       accounts: Array<{ id: string; name: string; mask: string | null }>;
+      health: {
+        isHealthy: boolean;
+        lastSyncStatus: string | null;
+        lastSyncError: string | null;
+        requiresReauth: boolean;
+        consecutiveFailures: number;
+        suggestedAction: 'reconnect' | 'upload' | null;
+      };
     }>>(`/api/me/agents/${agentInstanceId}/connections`);
+  }
+
+  async getConnectionsHealth(agentInstanceId: string) {
+    return this.get<Record<string, {
+      isHealthy: boolean;
+      lastSyncStatus: string | null;
+      lastSyncError: string | null;
+      requiresReauth: boolean;
+      consecutiveFailures: number;
+      suggestedAction: 'reconnect' | 'upload' | null;
+    }>>(`/api/me/agents/${agentInstanceId}/connections/health`);
   }
 
   async initConnection(

@@ -385,6 +385,17 @@ export default function FinanceBriefPage() {
         setConnectionsLoading(true);
         try {
           const data = await api.listConnections(activation.id);
+          // Try to fetch health data and merge it
+          try {
+            const healthData = await api.getConnectionsHealth(activation.id);
+            for (const conn of data) {
+              if (healthData[conn.id]) {
+                conn.health = healthData[conn.id];
+              }
+            }
+          } catch {
+            // Health endpoint may not work yet (migration not run) - that's okay
+          }
           if (!cancelled) setConnections(data);
         } catch {
           // ignore
