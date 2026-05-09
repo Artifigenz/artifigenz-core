@@ -86,7 +86,7 @@ interface DeliveryPrefs {
   whatsapp: { enabled: boolean; number: string | null };
 }
 
-type SettingsTab = 'accounts' | 'delivery' | 'devtools';
+type SettingsTab = 'accounts' | 'upload' | 'delivery' | 'devtools';
 
 function formatSince(iso: number): string {
   if (!iso) return '';
@@ -241,6 +241,23 @@ export default function FinanceBriefPage() {
   const [overrideResult, setOverrideResult] = useState<string | null>(null);
   const [resettingCategories, setResettingCategories] = useState(false);
 
+  // Upload tab state
+  const [uploadHistory, setUploadHistory] = useState<Array<{
+    id: string;
+    filename: string;
+    fileType: string;
+    status: string;
+    transactionCount: number | null;
+    uploadedAt: string;
+    processedAt: string | null;
+    statementPeriod: { start: string; end: string } | null;
+  }>>([]);
+  const [uploadHistoryLoading, setUploadHistoryLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
 
@@ -363,6 +380,16 @@ export default function FinanceBriefPage() {
           // ignore
         } finally {
           if (!cancelled) setConnectionsLoading(false);
+        }
+      } else if (settingsTab === 'upload') {
+        setUploadHistoryLoading(true);
+        try {
+          const data = await api.getUploadHistory();
+          if (!cancelled) setUploadHistory(data.uploads);
+        } catch {
+          // ignore
+        } finally {
+          if (!cancelled) setUploadHistoryLoading(false);
         }
       } else if (settingsTab === 'delivery') {
         setDeliveryLoading(true);
@@ -583,6 +610,48 @@ export default function FinanceBriefPage() {
     } finally {
       setOverriding(false);
     }
+  }
+
+  async function handleFileUpload(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.uploadFile(formData);
+      setUploadSuccess(`Uploaded! Extracted ${result.transactions} transactions.`);
+      // Refresh upload history
+      const history = await api.getUploadHistory();
+      setUploadHistory(history.uploads);
+    } catch (err) {
+      setUploadError((err as { message?: string })?.message ?? 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileUpload(file);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setDragActive(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    setDragActive(false);
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
   }
 
   async function handleResetCategories() {
@@ -818,6 +887,12 @@ export default function FinanceBriefPage() {
                   Accounts
                 </button>
                 <button
+                  className={`${styles.navItem} ${settingsTab === 'upload' ? styles.navItemActive : ''}`}
+                  onClick={() => setSettingsTab('upload')}
+                >
+                  Upload
+                </button>
+                <button
                   className={`${styles.navItem} ${settingsTab === 'delivery' ? styles.navItemActive : ''}`}
                   onClick={() => setSettingsTab('delivery')}
                 >
@@ -879,6 +954,83 @@ export default function FinanceBriefPage() {
                         </>
                       )}
                     </button>
+                  </div>
+                )}
+
+                {settingsTab === 'upload' && (
+                  <div className={styles.uploadTab}>
+                    <p className={styles.tabDescription}>
+                      Upload bank statements for accounts that don&apos;t support Plaid (RBC, international banks).
+                      Supports PDF, CSV, and images.
+                    </p>
+
+                    {/* Drop Zone */}
+                    <div
+                      className={`${styles.dropZone} ${dragActive ? styles.dropZoneActive : ''} ${uploading ? styles.dropZoneUploading : ''}`}
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                    >
+                      {uploading ? (
+                        <div className={styles.dropZoneContent}>
+                          <div className={styles.spinner} />
+                          <span>Processing with AI...</span>
+                        </div>
+                      ) : (
+                        <div className={styles.dropZoneContent}>
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                          </svg>
+                          <span>Drop bank statement here</span>
+                          <span className={styles.dropZoneHint}>or click to browse</span>
+                          <input
+                            type="file"
+                            accept=".pdf,.csv,.txt,.jpg,.jpeg,.png,.webp"
+                            onChange={handleFileSelect}
+                            className={styles.fileInput}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {uploadError && (
+                      <p className={styles.uploadError}>{uploadError}</p>
+                    )}
+                    {uploadSuccess && (
+                      <p className={styles.uploadSuccess}>{uploadSuccess}</p>
+                    )}
+
+                    {/* Upload History */}
+                    {uploadHistoryLoading ? (
+                      <p className={styles.loading}>Loading history...</p>
+                    ) : uploadHistory.length > 0 ? (
+                      <div className={styles.uploadHistory}>
+                        <h4 className={styles.uploadHistoryTitle}>Uploaded Statements</h4>
+                        {uploadHistory.map((upload) => (
+                          <div key={upload.id} className={styles.uploadItem}>
+                            <div className={styles.uploadItemInfo}>
+                              <span className={styles.uploadFilename}>{upload.filename}</span>
+                              {upload.statementPeriod && (
+                                <span className={styles.uploadPeriod}>
+                                  {new Date(upload.statementPeriod.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {' – '}
+                                  {new Date(upload.statementPeriod.end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                              )}
+                            </div>
+                            <div className={styles.uploadItemMeta}>
+                              <span className={`${styles.uploadStatus} ${styles[`status${upload.status}`]}`}>
+                                {upload.status === 'processed' ? `${upload.transactionCount} txns` : upload.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={styles.emptyState}>No statements uploaded yet.</p>
+                    )}
                   </div>
                 )}
 

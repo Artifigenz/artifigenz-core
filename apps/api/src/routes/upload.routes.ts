@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte } from "drizzle-orm";
 import { writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +8,11 @@ import {
   agentInstances,
   dataSourceConnections,
   fileUploads,
+  financeTransactions,
+  financeRecurringStreams,
 } from "@artifigenz/db";
+import { detectRecurring, type TxInput } from "../agents/finance/lib/recurring-detection";
+import { normalizeMerchant } from "../agents/finance/lib/transaction-normalizer";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { fileUploadAdapter } from "../agents/finance/data-sources/file-upload.adapter";
 import { appleHealthAdapter } from "../agents/health/data-sources/apple-health.adapter";
@@ -25,6 +29,77 @@ const inlineRegistry = new AgentRegistry();
 registerFinance(inlineRegistry);
 registerHealth(inlineRegistry);
 const executor = new SkillExecutor(inlineRegistry);
+
+/**
+ * Runs recurring detection on all transactions for an agent instance
+ * and upserts the results into financeRecurringStreams.
+ */
+async function runRecurringDetection(agentInstanceId: string): Promise<number> {
+  // Fetch all transactions for this agent instance
+  const transactions = await db
+    .select({
+      id: financeTransactions.id,
+      transactionDate: financeTransactions.transactionDate,
+      merchantName: financeTransactions.merchantName,
+      description: financeTransactions.description,
+      amount: financeTransactions.amount,
+      accountName: financeTransactions.accountName,
+      category: financeTransactions.personalFinanceCategoryPrimary,
+    })
+    .from(financeTransactions)
+    .where(eq(financeTransactions.agentInstanceId, agentInstanceId));
+
+  if (transactions.length === 0) return 0;
+
+  // Map to TxInput format
+  const txInputs: TxInput[] = transactions.map((tx) => ({
+    id: tx.id,
+    transactionDate: tx.transactionDate,
+    merchantName: tx.merchantName,
+    description: tx.description,
+    amount: parseFloat(tx.amount),
+    accountName: tx.accountName,
+    category: tx.category,
+  }));
+
+  // Run recurring detection
+  const detected = detectRecurring(txInputs);
+
+  // Upsert into financeRecurringStreams
+  for (const sub of detected) {
+    // Generate a synthetic stream ID based on merchant + account
+    const normalizedMerchant = normalizeMerchant(sub.merchantName);
+    const streamId = `upload-${normalizedMerchant}-${sub.accountName ?? "default"}`;
+
+    await db
+      .insert(financeRecurringStreams)
+      .values({
+        agentInstanceId,
+        plaidStreamId: streamId,
+        direction: "outflow",
+        merchantName: sub.merchantName,
+        description: `Detected from ${sub.transactionCount} uploaded transactions`,
+        averageAmount: sub.amount.toFixed(2),
+        frequency: sub.frequency.toUpperCase(),
+        lastDate: sub.lastChargeDate,
+        predictedNextDate: sub.nextChargeDate,
+        status: "MATURE",
+      })
+      .onConflictDoUpdate({
+        target: [financeRecurringStreams.agentInstanceId, financeRecurringStreams.plaidStreamId],
+        set: {
+          merchantName: sub.merchantName,
+          averageAmount: sub.amount.toFixed(2),
+          frequency: sub.frequency.toUpperCase(),
+          lastDate: sub.lastChargeDate,
+          predictedNextDate: sub.nextChargeDate,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  return detected.length;
+}
 
 /**
  * POST /api/upload
@@ -129,7 +204,10 @@ app.post("/", async (c) => {
   // ─── 5. Parse with Claude (inline, ~20s) ──────────────────────
   const syncResult = await fileUploadAdapter.sync(connection);
 
-  // ─── 6. Run subscriptions skill on the new data ───────────────
+  // ─── 6. Run recurring detection on all transactions ──────────
+  const recurringCount = await runRecurringDetection(agentInstance.id);
+
+  // ─── 7. Run subscriptions skill on the new data ───────────────
   const skillResult = await executor.execute({
     agentInstanceId: agentInstance.id,
     skillId: "finance.subscriptions",
@@ -143,6 +221,7 @@ app.post("/", async (c) => {
       type: fileType,
     },
     transactions: syncResult.length,
+    recurringStreams: recurringCount,
     insights: skillResult.insightIds.length,
   });
 });
@@ -232,6 +311,82 @@ app.post("/health", async (c) => {
     file: { name: fileName, size: fileSize, type: fileType },
     metrics: syncResult.length,
     insights: skillResult.insightIds.length,
+  });
+});
+
+/**
+ * GET /api/upload/history
+ * Get upload history for the current user's finance agent
+ */
+app.get("/history", async (c) => {
+  const user = c.get("user");
+
+  // Get the user's finance agent instance
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .limit(1);
+
+  if (!instance) {
+    return c.json({ uploads: [] });
+  }
+
+  // Get the file-upload connection
+  const [connection] = await db
+    .select()
+    .from(dataSourceConnections)
+    .where(
+      and(
+        eq(dataSourceConnections.agentInstanceId, instance.id),
+        eq(dataSourceConnections.dataSourceTypeId, "file-upload"),
+      ),
+    )
+    .limit(1);
+
+  if (!connection) {
+    return c.json({ uploads: [], lastSyncedAt: null });
+  }
+
+  // Get all uploads for this connection
+  const uploads = await db
+    .select({
+      id: fileUploads.id,
+      filename: fileUploads.originalFilename,
+      fileType: fileUploads.fileType,
+      status: fileUploads.extractionStatus,
+      transactionCount: fileUploads.transactionCount,
+      uploadedAt: fileUploads.uploadedAt,
+      processedAt: fileUploads.processedAt,
+      extractionResult: fileUploads.extractionResult,
+    })
+    .from(fileUploads)
+    .where(eq(fileUploads.dataSourceConnectionId, connection.id))
+    .orderBy(fileUploads.uploadedAt);
+
+  // Extract statement periods from extraction results
+  const uploadsWithPeriods = uploads.map((u) => {
+    const result = u.extractionResult as { statement_period?: { start: string; end: string } } | null;
+    return {
+      id: u.id,
+      filename: u.filename,
+      fileType: u.fileType,
+      status: u.status,
+      transactionCount: u.transactionCount,
+      uploadedAt: u.uploadedAt,
+      processedAt: u.processedAt,
+      statementPeriod: result?.statement_period ?? null,
+    };
+  });
+
+  return c.json({
+    uploads: uploadsWithPeriods,
+    lastSyncedAt: connection.lastSyncedAt,
   });
 });
 
@@ -329,6 +484,14 @@ app.post("/sync/:agentInstanceId", async (c) => {
     }
   }
 
+  // Run recurring detection on all transactions
+  let recurringCount = 0;
+  try {
+    recurringCount = await runRecurringDetection(agentInstanceId);
+  } catch (err) {
+    console.error(`[sync] Failed to run recurring detection:`, err);
+  }
+
   // Run the subscriptions skill
   let insightCount = 0;
   try {
@@ -345,6 +508,7 @@ app.post("/sync/:agentInstanceId", async (c) => {
     status: "synced",
     connections: connections.length,
     transactions: totalTransactions,
+    recurringStreams: recurringCount,
     insights: insightCount,
   });
 });

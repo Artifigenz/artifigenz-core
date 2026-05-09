@@ -268,6 +268,22 @@ export class ApiClient {
     return this.patch<void>(`/api/me/insights/${insightId}/read`);
   }
 
+  async getUploadHistory() {
+    return this.get<{
+      uploads: Array<{
+        id: string;
+        filename: string;
+        fileType: string;
+        status: string;
+        transactionCount: number | null;
+        uploadedAt: string;
+        processedAt: string | null;
+        statementPeriod: { start: string; end: string } | null;
+      }>;
+      lastSyncedAt: string | null;
+    }>('/api/upload/history');
+  }
+
   /**
    * Upload a bank statement file. Uses FormData (not JSON), so we bypass
    * the normal request() method and construct the fetch manually.
