@@ -89,7 +89,7 @@ export const fileUploadAdapter: DataSourceTypeDefinition = {
       };
     }
 
-    // Create new connection
+    // Create new connection (return only core columns)
     const [conn] = await db
       .insert(dataSourceConnections)
       .values({
@@ -98,7 +98,14 @@ export const fileUploadAdapter: DataSourceTypeDefinition = {
         displayName: "Uploaded Statements",
         status: "active",
       })
-      .returning();
+      .returning({
+        id: dataSourceConnections.id,
+        agentInstanceId: dataSourceConnections.agentInstanceId,
+        dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+        displayName: dataSourceConnections.displayName,
+        status: dataSourceConnections.status,
+        metadata: dataSourceConnections.metadata,
+      });
 
     return {
       id: conn.id,

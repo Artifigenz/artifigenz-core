@@ -115,7 +115,13 @@ export const plaidAdapter: DataSourceTypeDefinition = {
         credentialsEncrypted: credentials as unknown as Record<string, unknown>,
         metadata: (metadata ?? {}) as Record<string, unknown>,
       })
-      .returning();
+      .returning({
+        id: dataSourceConnections.id,
+        agentInstanceId: dataSourceConnections.agentInstanceId,
+        dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+        displayName: dataSourceConnections.displayName,
+        status: dataSourceConnections.status,
+      });
 
     return {
       id: conn.id,

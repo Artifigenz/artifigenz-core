@@ -108,7 +108,13 @@ export const appleHealthAdapter: DataSourceTypeDefinition = {
         displayName: "Apple Health Export",
         status: "active",
       })
-      .returning();
+      .returning({
+        id: dataSourceConnections.id,
+        agentInstanceId: dataSourceConnections.agentInstanceId,
+        dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+        displayName: dataSourceConnections.displayName,
+        status: dataSourceConnections.status,
+      });
 
     return {
       id: conn.id,
