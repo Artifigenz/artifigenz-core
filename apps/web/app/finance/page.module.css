@@ -711,6 +711,68 @@
   border-color: #c44;
 }
 
+/* Connection health states */
+.connectionUnhealthy {
+  border-color: var(--warning, #d97706);
+  background: color-mix(in srgb, var(--warning, #d97706) 5%, var(--card-bg));
+}
+
+.connectionWarning {
+  margin-left: 6px;
+  font-size: 0.85rem;
+}
+
+.connectionError {
+  font-size: 0.75rem;
+  color: var(--warning, #d97706);
+  margin-top: 4px;
+}
+
+.connectionActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.reconnectBtn {
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.reconnectBtn:hover {
+  opacity: 0.9;
+}
+
+.reconnectBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.uploadInsteadBtn {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.uploadInsteadBtn:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
 .addAccountBtn {
   display: inline-flex;
   align-items: center;

@@ -157,6 +157,7 @@ export const plaidAdapter: DataSourceTypeDefinition = {
   /**
    * Syncs transactions using Plaid's cursor-based /transactions/sync.
    * Upserts into finance_transactions. Returns the raw transactions for downstream.
+   * Tracks sync health for UX (shows when reconnection or upload is needed).
    */
   async sync(connection): Promise<NormalizedData[]> {
     // Re-fetch the connection from DB so we have fresh credentials + cursor
@@ -177,84 +178,121 @@ export const plaidAdapter: DataSourceTypeDefinition = {
     const removed: string[] = [];
     let hasMore = true;
 
-    while (hasMore) {
-      const response = await plaid.transactionsSync({
+    try {
+      while (hasMore) {
+        const response = await plaid.transactionsSync({
+          access_token: creds.accessToken,
+          cursor,
+        });
+        added.push(...response.data.added);
+        modified.push(...response.data.modified);
+        removed.push(...response.data.removed.map((r) => r.transaction_id));
+        hasMore = response.data.has_more;
+        cursor = response.data.next_cursor;
+      }
+
+      // Build account_id → account_name map
+      const accountsResponse = await plaid.accountsGet({
         access_token: creds.accessToken,
-        cursor,
       });
-      added.push(...response.data.added);
-      modified.push(...response.data.modified);
-      removed.push(...response.data.removed.map((r) => r.transaction_id));
-      hasMore = response.data.has_more;
-      cursor = response.data.next_cursor;
-    }
+      const accountMap = new Map<string, string>();
+      for (const acc of accountsResponse.data.accounts) {
+        accountMap.set(acc.account_id, acc.name);
+      }
 
-    // Build account_id → account_name map
-    const accountsResponse = await plaid.accountsGet({
-      access_token: creds.accessToken,
-    });
-    const accountMap = new Map<string, string>();
-    for (const acc of accountsResponse.data.accounts) {
-      accountMap.set(acc.account_id, acc.name);
-    }
+      // Normalize + upsert added transactions
+      for (const tx of added) {
+        if (tx.pending) continue; // Skip pending transactions
 
-    // Normalize + upsert added transactions
-    for (const tx of added) {
-      if (tx.pending) continue; // Skip pending transactions
+        await db
+          .insert(financeTransactions)
+          .values({
+            agentInstanceId: dbConn.agentInstanceId,
+            dataSourceConnectionId: dbConn.id,
+            transactionDate: tx.date,
+            description: tx.name,
+            merchantName: tx.merchant_name ?? null,
+            amount: tx.amount.toString(),
+            category: tx.personal_finance_category?.primary ?? null,
+            accountName: accountMap.get(tx.account_id) ?? null,
+            source: "plaid",
+            plaidTransactionId: tx.transaction_id,
+            rawData: tx as unknown as Record<string, unknown>,
+          })
+          .onConflictDoNothing();
+      }
 
+      // Apply modifications
+      for (const tx of modified) {
+        await db
+          .update(financeTransactions)
+          .set({
+            description: tx.name,
+            merchantName: tx.merchant_name ?? null,
+            amount: tx.amount.toString(),
+            category: tx.personal_finance_category?.primary ?? null,
+          })
+          .where(eq(financeTransactions.plaidTransactionId, tx.transaction_id));
+      }
+
+      // Apply removals
+      for (const txId of removed) {
+        await db
+          .delete(financeTransactions)
+          .where(eq(financeTransactions.plaidTransactionId, txId));
+      }
+
+      // Success! Update cursor and reset health status
       await db
-        .insert(financeTransactions)
-        .values({
-          agentInstanceId: dbConn.agentInstanceId,
-          dataSourceConnectionId: dbConn.id,
-          transactionDate: tx.date,
-          description: tx.name,
-          merchantName: tx.merchant_name ?? null,
-          amount: tx.amount.toString(),
-          category: tx.personal_finance_category?.primary ?? null,
-          accountName: accountMap.get(tx.account_id) ?? null,
-          source: "plaid",
-          plaidTransactionId: tx.transaction_id,
-          rawData: tx as unknown as Record<string, unknown>,
-        })
-        .onConflictDoNothing();
-    }
-
-    // Apply modifications
-    for (const tx of modified) {
-      await db
-        .update(financeTransactions)
+        .update(dataSourceConnections)
         .set({
-          description: tx.name,
-          merchantName: tx.merchant_name ?? null,
-          amount: tx.amount.toString(),
-          category: tx.personal_finance_category?.primary ?? null,
+          syncCursor: cursor,
+          lastSyncedAt: new Date(),
+          lastSyncStatus: "success",
+          lastSyncError: null,
+          requiresReauth: false,
+          consecutiveFailures: 0,
+          updatedAt: new Date(),
         })
-        .where(eq(financeTransactions.plaidTransactionId, tx.transaction_id));
-    }
+        .where(eq(dataSourceConnections.id, dbConn.id));
 
-    // Apply removals
-    for (const txId of removed) {
+      console.log(
+        `[PlaidAdapter] Synced: +${added.length} added, ~${modified.length} modified, -${removed.length} removed`,
+      );
+
+      return added.map((tx) => ({ ...tx })) as unknown as NormalizedData[];
+    } catch (err) {
+      // Check if this is an auth-related error
+      const plaidError = (err as { response?: { data?: {
+        error_code?: string;
+        error_message?: string;
+        error_type?: string;
+      } } }).response?.data;
+
+      const errorCode = plaidError?.error_code;
+      const errorMessage = plaidError?.error_message ?? (err instanceof Error ? err.message : "Sync failed");
+
+      // ITEM_LOGIN_REQUIRED means the bank session expired and user needs to re-auth
+      const requiresReauth = errorCode === "ITEM_LOGIN_REQUIRED" ||
+        errorCode === "INVALID_ACCESS_TOKEN" ||
+        errorCode === "ITEM_LOCKED";
+
+      const currentFailures = (dbConn.consecutiveFailures ?? 0) + 1;
+
       await db
-        .delete(financeTransactions)
-        .where(eq(financeTransactions.plaidTransactionId, txId));
+        .update(dataSourceConnections)
+        .set({
+          lastSyncStatus: "error",
+          lastSyncError: errorMessage,
+          requiresReauth,
+          consecutiveFailures: currentFailures,
+          updatedAt: new Date(),
+        })
+        .where(eq(dataSourceConnections.id, dbConn.id));
+
+      console.error(`[PlaidAdapter] Sync failed (${errorCode}): ${errorMessage}`);
+      throw err;
     }
-
-    // Persist the new cursor
-    await db
-      .update(dataSourceConnections)
-      .set({
-        syncCursor: cursor,
-        lastSyncedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(dataSourceConnections.id, dbConn.id));
-
-    console.log(
-      `[PlaidAdapter] Synced: +${added.length} added, ~${modified.length} modified, -${removed.length} removed`,
-    );
-
-    return added.map((tx) => ({ ...tx })) as unknown as NormalizedData[];
   },
 
   async handleWebhook(payload: unknown) {

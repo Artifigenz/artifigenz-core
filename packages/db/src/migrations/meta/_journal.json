@@ -22,6 +22,13 @@
       "when": 1778250434239,
       "tag": "0002_redundant_the_order",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778302566451,
+      "tag": "0003_add-connection-health-fields",
+      "breakpoints": true
     }
   ]
 }

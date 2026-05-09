@@ -28,6 +28,22 @@ export function createDataSourceRoutes(registry: AgentRegistry) {
           institutionName?: string;
           accounts?: Array<{ id: string; name: string; mask?: string }>;
         };
+
+        // Determine connection health for UX
+        const isHealthy = conn.lastSyncStatus === "success" || !conn.lastSyncStatus;
+        const consecutiveFailures = conn.consecutiveFailures ?? 0;
+
+        // Suggest action when connection is unhealthy
+        let suggestedAction: "reconnect" | "upload" | null = null;
+        if (conn.requiresReauth) {
+          suggestedAction = "reconnect";
+        } else if (consecutiveFailures >= 3) {
+          // After 3 failures, suggest upload as alternative
+          suggestedAction = "upload";
+        } else if (!isHealthy) {
+          suggestedAction = "reconnect";
+        }
+
         return {
           id: conn.id,
           dataSourceTypeId: conn.dataSourceTypeId,
@@ -37,6 +53,15 @@ export function createDataSourceRoutes(registry: AgentRegistry) {
           institutionId: metadata.institutionId ?? null,
           institutionName: metadata.institutionName ?? null,
           accounts: metadata.accounts ?? [],
+          // Health status for UX
+          health: {
+            isHealthy,
+            lastSyncStatus: conn.lastSyncStatus,
+            lastSyncError: conn.lastSyncError,
+            requiresReauth: conn.requiresReauth ?? false,
+            consecutiveFailures,
+            suggestedAction,
+          },
         };
       }),
     );

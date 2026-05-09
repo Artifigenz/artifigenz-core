@@ -71,6 +71,15 @@ interface Insight {
   createdAt: string;
 }
 
+interface ConnectionHealth {
+  isHealthy: boolean;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  requiresReauth: boolean;
+  consecutiveFailures: number;
+  suggestedAction: 'reconnect' | 'upload' | null;
+}
+
 interface Connection {
   id: string;
   displayName: string | null;
@@ -78,6 +87,7 @@ interface Connection {
   institutionName: string | null;
   lastSyncedAt: string | null;
   accounts: { id: string; name: string; mask: string | null }[];
+  health?: ConnectionHealth;
 }
 
 interface DeliveryPrefs {
@@ -919,22 +929,65 @@ export default function FinanceBriefPage() {
                       <p className={styles.emptyState}>No accounts connected yet.</p>
                     ) : (
                       <div className={styles.connectionsList}>
-                        {connections.map((conn) => (
-                          <div key={conn.id} className={styles.connectionCard}>
-                            <div className={styles.connectionInfo}>
-                              <span className={styles.connectionName}>{conn.institutionName}</span>
-                              <span className={styles.connectionAccounts}>
-                                {conn.accounts.map((a) => `${a.name} ••${a.mask}`).join(', ')}
-                              </span>
-                            </div>
-                            <button
-                              className={styles.disconnectBtn}
-                              onClick={() => setDisconnectConfirm(conn)}
+                        {connections.map((conn) => {
+                          const health = conn.health;
+                          const isUnhealthy = health && !health.isHealthy;
+
+                          return (
+                            <div
+                              key={conn.id}
+                              className={`${styles.connectionCard} ${isUnhealthy ? styles.connectionUnhealthy : ''}`}
                             >
-                              Disconnect
-                            </button>
-                          </div>
-                        ))}
+                              <div className={styles.connectionInfo}>
+                                <span className={styles.connectionName}>
+                                  {conn.institutionName}
+                                  {isUnhealthy && (
+                                    <span className={styles.connectionWarning} title={health.lastSyncError ?? 'Connection issue'}>
+                                      ⚠️
+                                    </span>
+                                  )}
+                                </span>
+                                <span className={styles.connectionAccounts}>
+                                  {conn.accounts.map((a) => `${a.name} ••${a.mask}`).join(', ')}
+                                </span>
+                                {isUnhealthy && (
+                                  <span className={styles.connectionError}>
+                                    {health.requiresReauth
+                                      ? 'Bank requires re-authentication'
+                                      : health.consecutiveFailures >= 3
+                                        ? 'Connection unstable — consider uploading statements'
+                                        : 'Sync issue — will retry'}
+                                  </span>
+                                )}
+                              </div>
+                              <div className={styles.connectionActions}>
+                                {health?.suggestedAction === 'reconnect' && (
+                                  <button
+                                    className={styles.reconnectBtn}
+                                    onClick={handleAddAccount}
+                                    disabled={plaidBusy}
+                                  >
+                                    Reconnect
+                                  </button>
+                                )}
+                                {health?.suggestedAction === 'upload' && (
+                                  <button
+                                    className={styles.uploadInsteadBtn}
+                                    onClick={() => setSettingsTab('upload')}
+                                  >
+                                    Upload Instead
+                                  </button>
+                                )}
+                                <button
+                                  className={styles.disconnectBtn}
+                                  onClick={() => setDisconnectConfirm(conn)}
+                                >
+                                  Disconnect
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 

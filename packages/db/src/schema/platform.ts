@@ -164,6 +164,11 @@ export const dataSourceConnections = pgTable("data_source_connections", {
   metadata: jsonb("metadata").default({}),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   syncCursor: varchar("sync_cursor", { length: 500 }),
+  // Connection health tracking
+  lastSyncStatus: varchar("last_sync_status", { length: 20 }), // success | error | pending
+  lastSyncError: text("last_sync_error"), // Error message if last sync failed
+  requiresReauth: boolean("requires_reauth").default(false), // True when bank requires re-authentication
+  consecutiveFailures: integer("consecutive_failures").default(0), // Track repeated failures
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
