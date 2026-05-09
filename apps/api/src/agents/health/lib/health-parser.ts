@@ -78,7 +78,7 @@ export async function parseHealthExport(params: {
     buildMessageContent(params);
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 16384,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
