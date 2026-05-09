@@ -202,16 +202,38 @@ app.post("/", async (c) => {
   });
 
   // ─── 5. Parse with Claude (inline, ~20s) ──────────────────────
-  const syncResult = await fileUploadAdapter.sync(connection);
+  let syncResult: unknown[];
+  try {
+    syncResult = await fileUploadAdapter.sync(connection);
+  } catch (err) {
+    console.error("[upload] Failed to parse file:", err);
+    return c.json({
+      error: "Failed to parse file",
+      details: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
 
   // ─── 6. Run recurring detection on all transactions ──────────
-  const recurringCount = await runRecurringDetection(agentInstance.id);
+  let recurringCount = 0;
+  try {
+    recurringCount = await runRecurringDetection(agentInstance.id);
+  } catch (err) {
+    console.error("[upload] Failed to run recurring detection:", err);
+    // Non-fatal - continue without recurring detection
+  }
 
   // ─── 7. Run subscriptions skill on the new data ───────────────
-  const skillResult = await executor.execute({
-    agentInstanceId: agentInstance.id,
-    skillId: "finance.subscriptions",
-  });
+  let insightCount = 0;
+  try {
+    const skillResult = await executor.execute({
+      agentInstanceId: agentInstance.id,
+      skillId: "finance.subscriptions",
+    });
+    insightCount = skillResult.insightIds.length;
+  } catch (err) {
+    console.error("[upload] Failed to run skill:", err);
+    // Non-fatal - continue without insights
+  }
 
   return c.json({
     status: "processed",
@@ -222,7 +244,7 @@ app.post("/", async (c) => {
     },
     transactions: syncResult.length,
     recurringStreams: recurringCount,
-    insights: skillResult.insightIds.length,
+    insights: insightCount,
   });
 });
 
