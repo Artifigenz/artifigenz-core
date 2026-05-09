@@ -314,9 +314,16 @@ app.get("/breakdown", async (c) => {
     .from(financeAccounts)
     .where(eq(financeAccounts.agentInstanceId, instance.id));
 
-  // Get all connections for diagnostics
+  // Get all connections for diagnostics (select only core columns that always exist)
   const connections = await db
-    .select()
+    .select({
+      id: dataSourceConnections.id,
+      dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+      displayName: dataSourceConnections.displayName,
+      status: dataSourceConnections.status,
+      metadata: dataSourceConnections.metadata,
+      lastSyncedAt: dataSourceConnections.lastSyncedAt,
+    })
     .from(dataSourceConnections)
     .where(eq(dataSourceConnections.agentInstanceId, instance.id));
 
