@@ -136,8 +136,8 @@
 }
 
 .numCard {
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
   border-radius: 14px;
   padding: 22px 24px 20px;
   display: flex;
@@ -147,8 +147,8 @@
 }
 
 .numCard:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(0, 0, 0, 0.1);
+  background: var(--card-hover);
+  border-color: var(--border-light);
 }
 
 .ncTag {
@@ -341,8 +341,8 @@
 
 /* Insight Card */
 .insightCard {
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
   border-radius: 14px;
   padding: 20px 22px 18px;
   display: flex;
@@ -352,8 +352,8 @@
 }
 
 .insightCard:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(0, 0, 0, 0.1);
+  background: var(--card-hover);
+  border-color: var(--border-light);
 }
 
 .insightCard.critical {
@@ -1070,7 +1070,7 @@
   font-size: 0.85rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: white;
+  background: var(--bg);
   color: var(--text);
   cursor: pointer;
 }
@@ -1087,4 +1087,162 @@
   border-radius: 6px;
   font-size: 0.85rem;
   color: #16a34a;
+}
+
+/* Upload Tab */
+.uploadTab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dropZone {
+  position: relative;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.dropZone:hover {
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.dropZoneActive {
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dropZoneUploading {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.dropZoneContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+
+.dropZoneContent svg {
+  opacity: 0.5;
+}
+
+.dropZoneHint {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.fileInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.uploadError {
+  padding: 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.uploadSuccess {
+  padding: 12px;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 8px;
+  color: #16a34a;
+  font-size: 0.9rem;
+}
+
+.uploadHistory {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.uploadHistoryTitle {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin: 0 0 12px 0;
+}
+
+.uploadItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.uploadItem:last-child {
+  border-bottom: none;
+}
+
+.uploadItemInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.uploadFilename {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.uploadPeriod {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.uploadItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.uploadStatus {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--border-light);
+  color: var(--text-dim);
+}
+
+.uploadStatus.statusprocessed {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+.uploadStatus.statusfailed {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+.uploadStatus.statuspending {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
 }
