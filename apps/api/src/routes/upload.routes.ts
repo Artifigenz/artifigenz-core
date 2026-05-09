@@ -337,9 +337,12 @@ app.get("/history", async (c) => {
     return c.json({ uploads: [] });
   }
 
-  // Get the file-upload connection
+  // Get the file-upload connection (select only core columns)
   const [connection] = await db
-    .select()
+    .select({
+      id: dataSourceConnections.id,
+      lastSyncedAt: dataSourceConnections.lastSyncedAt,
+    })
     .from(dataSourceConnections)
     .where(
       and(
@@ -439,9 +442,17 @@ app.post("/sync/:agentInstanceId", async (c) => {
     return c.json({ error: "Agent instance not found" }, 404);
   }
 
-  // Find all active Plaid connections for this instance
+  // Find all active Plaid connections for this instance (select only needed columns)
   const connections = await db
-    .select()
+    .select({
+      id: dataSourceConnections.id,
+      agentInstanceId: dataSourceConnections.agentInstanceId,
+      dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+      displayName: dataSourceConnections.displayName,
+      status: dataSourceConnections.status,
+      credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
+      metadata: dataSourceConnections.metadata,
+    })
     .from(dataSourceConnections)
     .where(
       and(

@@ -161,8 +161,15 @@ export const plaidAdapter: DataSourceTypeDefinition = {
    */
   async sync(connection): Promise<NormalizedData[]> {
     // Re-fetch the connection from DB so we have fresh credentials + cursor
+    // Select only core columns to avoid issues with new columns that may not exist yet
     const [dbConn] = await db
-      .select()
+      .select({
+        id: dataSourceConnections.id,
+        agentInstanceId: dataSourceConnections.agentInstanceId,
+        credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
+        syncCursor: dataSourceConnections.syncCursor,
+        consecutiveFailures: dataSourceConnections.consecutiveFailures,
+      })
       .from(dataSourceConnections)
       .where(eq(dataSourceConnections.id, connection.id))
       .limit(1);
@@ -300,8 +307,13 @@ export const plaidAdapter: DataSourceTypeDefinition = {
 
     // For SYNC_UPDATES_AVAILABLE, find the connection by item_id and queue a sync
     if (body.webhook_code === "SYNC_UPDATES_AVAILABLE" && body.item_id) {
-      // Look up the connection
-      const conns = await db.select().from(dataSourceConnections);
+      // Look up the connection (select only columns we need)
+      const conns = await db
+        .select({
+          id: dataSourceConnections.id,
+          credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
+        })
+        .from(dataSourceConnections);
       const conn = conns.find((c) => {
         const creds = c.credentialsEncrypted as PlaidCredentials | null;
         return creds?.itemId === body.item_id;

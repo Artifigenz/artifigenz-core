@@ -22,8 +22,14 @@ interface PlaidCredentials {
 export async function syncTransactionsForInstance(
   agentInstanceId: string,
 ): Promise<void> {
+  // Select only columns we need (avoid new health columns that may not exist)
   const connections = await db
-    .select()
+    .select({
+      id: dataSourceConnections.id,
+      agentInstanceId: dataSourceConnections.agentInstanceId,
+      credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
+      syncCursor: dataSourceConnections.syncCursor,
+    })
     .from(dataSourceConnections)
     .where(
       and(

@@ -68,8 +68,16 @@ export const appleHealthAdapter: DataSourceTypeDefinition = {
     const { agentInstanceId } = params;
 
     // Check if a connection already exists
+    // Select only columns we need (avoid new health columns that may not exist)
     const existing = await db
-      .select()
+      .select({
+        id: dataSourceConnections.id,
+        agentInstanceId: dataSourceConnections.agentInstanceId,
+        dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+        displayName: dataSourceConnections.displayName,
+        status: dataSourceConnections.status,
+        metadata: dataSourceConnections.metadata,
+      })
       .from(dataSourceConnections)
       .where(
         and(

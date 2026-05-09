@@ -48,8 +48,13 @@ function toDigestStream(
 export async function phase2FetchRecurring(
   agentInstanceId: string,
 ): Promise<{ inflow: DigestStream[]; outflow: DigestStream[] }> {
+  // Select only columns we need (avoid new health columns that may not exist)
   const connections = await db
-    .select()
+    .select({
+      id: dataSourceConnections.id,
+      agentInstanceId: dataSourceConnections.agentInstanceId,
+      credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
+    })
     .from(dataSourceConnections)
     .where(
       and(
