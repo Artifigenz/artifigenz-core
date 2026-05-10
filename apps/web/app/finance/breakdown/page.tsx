@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import { useApiClient } from '@/hooks/useApiClient';
@@ -8,85 +8,36 @@ import { FinanceIcon } from '@/components/sections/AgentIcons';
 import shell from '../../agent/[name]/page.module.css';
 import styles from './page.module.css';
 
-interface BreakdownItem {
+interface Txn {
   id: string;
-  merchantName: string;
-  description: string | null;
+  date: string;
+  description: string;
+  merchantName: string | null;
+  merchantNormalized: string | null;
   amount: number;
-  monthlyAmount: number;
-  frequency: string;
-  lastDate: string | null;
-  nextDate: string | null;
-  accountId: string | null;
+  source: string;
+  category: string | null;
+  isRecurring: boolean | null;
   accountName: string | null;
-  accountMask: string | null;
-  category?: string | null;
-  categoryConfidence?: number | null;
-  pfcPrimary?: string | null;
+  institutionName: string | null;
+  accountLast4: string | null;
 }
 
-interface CategorySection {
-  total: number;
+interface TxResponse {
   count: number;
-  items: BreakdownItem[];
+  totals: { income: number; expenses: number; net: number };
+  transactions: Txn[];
 }
 
-interface Account {
-  id: string;
-  name: string | null;
-  mask: string | null;
-  type: string | null;
-  subtype: string | null;
-  currentBalance: number;
-  availableBalance: number | null;
-  currency: string | null;
-}
-
-interface ConnectionDiag {
-  id: string;
-  institution: string;
-  status: string;
-  accountCount: number;
-  streamCount: number;
-  lastSynced: string | null;
-}
-
-interface Breakdown {
-  generatedAt: string;
-  accounts: Account[];
-  income: { total: number; items: BreakdownItem[] };
-  transfersIn: CategorySection;
-  transfersOut: CategorySection;
-  subscriptions: CategorySection;
-  loans: CategorySection;
-  fees: CategorySection;
-  rent: CategorySection;
-  utilities: CategorySection;
-  insurance: CategorySection;
-  variable: CategorySection;
-  other: CategorySection;
-  totals: {
-    income: number;
-    fixedRecurring: number;
-    variableRecurring: number;
-    recurringOutflow: number;
-    totalExpenses: number;
-    leftover: number;
-  };
-  diagnostics?: {
-    connections: ConnectionDiag[];
-    totalStreams: number;
-    streamsByAccount: Array<{ account: string; streams: number }>;
-  };
-}
-
-function toTitleCase(str: string): string {
-  return str
-    .toLowerCase()
-    .split(/[\s-_]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
+const CATEGORY_LABELS: Record<string, string> = {
+  income: 'Income',
+  subscription: 'Subscription',
+  loan_emi: 'Loan / EMI',
+  fee_interest: 'Fee / Interest',
+  variable_recurring: 'Variable recurring',
+  internal_transfer: 'Internal transfer',
+  miscellaneous: 'Miscellaneous',
+};
 
 function formatMoney(amount: number): string {
   const formatted = Math.abs(amount).toLocaleString('en-US', {
@@ -96,73 +47,71 @@ function formatMoney(amount: number): string {
   return amount < 0 ? `−$${formatted}` : `$${formatted}`;
 }
 
-function formatFrequency(freq: string): string {
-  const map: Record<string, string> = {
-    WEEKLY: 'Weekly',
-    BIWEEKLY: 'Bi-weekly',
-    SEMI_MONTHLY: 'Twice/mo',
-    MONTHLY: 'Monthly',
-    ANNUALLY: 'Yearly',
-  };
-  return map[freq.toUpperCase()] ?? freq;
+function formatDate(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
+    year: '2-digit',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function accountLabel(t: Txn): string {
+  const inst = t.institutionName ?? '';
+  const last4 = t.accountLast4 ? `••${t.accountLast4}` : '';
+  if (inst && last4) return `${inst} ${last4}`;
+  if (t.accountName) return t.accountName;
+  return last4 || '—';
 }
 
-type SectionKey = 'income' | 'subscriptions' | 'utilities' | 'insurance' | 'loans' | 'rent' | 'fees' | 'variable' | 'other' | 'transfers';
-
-function formatAccount(item: BreakdownItem): string {
-  if (item.accountName && item.accountMask) {
-    return `${item.accountName} ••${item.accountMask}`;
-  }
-  if (item.accountName) return item.accountName;
-  if (item.accountMask) return `••${item.accountMask}`;
-  return '';
-}
+type CategoryFilter = 'all' | string;
 
 export default function BreakdownPage() {
   const api = useApiClient();
-  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
+  const [data, setData] = useState<TxResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
-    income: false,
-    subscriptions: false,
-    utilities: false,
-    insurance: false,
-    loans: false,
-    rent: false,
-    fees: false,
-    variable: false,
-    other: false,
-    transfers: false,
-  });
-
-  const toggle = (key: SectionKey) => {
-    setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
-        const data = await api.getBriefBreakdown();
-        if (!cancelled) setBreakdown(data);
+        const res = await api.getFinanceTransactions();
+        if (!cancelled) setData(res);
       } catch (err) {
         if (!cancelled) {
-          setError((err as { message?: string })?.message ?? 'Failed to load breakdown');
+          setError((err as { message?: string })?.message ?? 'Failed to load transactions');
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-
     return () => { cancelled = true; };
   }, [api]);
+
+  const filtered = useMemo(() => {
+    if (!data) return [] as Txn[];
+    const q = search.trim().toLowerCase();
+    return data.transactions.filter((t) => {
+      if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
+      if (!q) return true;
+      const hay = `${t.description} ${t.merchantName ?? ''} ${t.accountName ?? ''} ${t.institutionName ?? ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [data, categoryFilter, search]);
+
+  const categories = useMemo(() => {
+    if (!data) return [] as Array<{ key: string; count: number }>;
+    const counts = new Map<string, number>();
+    for (const t of data.transactions) {
+      const k = t.category ?? 'uncategorized';
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, count]) => ({ key, count }));
+  }, [data]);
 
   return (
     <div className={shell.page}>
@@ -174,421 +123,196 @@ export default function BreakdownPage() {
           <div>
             <div className={shell.nameRow}>
               <span className={shell.icon}><FinanceIcon /></span>
-              <h1 className={shell.agentName}>Financial Breakdown</h1>
+              <h1 className={shell.agentName}>All Transactions</h1>
             </div>
             <p className={shell.since}>
-              Detailed view of how your numbers are calculated
+              The consolidated source-of-truth table: every transaction we&apos;ve ingested,
+              from Plaid syncs and uploaded statements.
             </p>
           </div>
         </div>
 
         {loading ? (
-          <p className={styles.loading}>Loading breakdown...</p>
+          <p className={styles.loading}>Loading transactions...</p>
         ) : error ? (
           <p className={styles.error}>{error}</p>
-        ) : breakdown ? (
+        ) : data ? (
           <div className={styles.breakdown}>
-            {/* Single Card with Collapsible Categories */}
             <div className={styles.card}>
-              {/* Summary Row */}
               <div className={styles.summaryRow}>
                 <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Income</span>
-                  <span className={styles.summaryValue}>{formatMoney(breakdown.totals.income)}</span>
+                  <span className={styles.summaryLabel}>Transactions</span>
+                  <span className={styles.summaryValue}>{data.count}</span>
                 </div>
-                <span className={styles.summaryMinus}>−</span>
+                <span style={{ width: '1px', height: '32px', background: 'rgba(0,0,0,0.08)' }} />
                 <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Expenses</span>
-                  <span className={styles.summaryValue}>{formatMoney(breakdown.totals.totalExpenses)}</span>
+                  <span className={styles.summaryLabel}>Money in</span>
+                  <span className={styles.summaryValue} style={{ color: '#16a34a' }}>
+                    {formatMoney(data.totals.income)}
+                  </span>
                 </div>
-                <span className={styles.summaryEquals}>=</span>
+                <span style={{ width: '1px', height: '32px', background: 'rgba(0,0,0,0.08)' }} />
                 <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Leftover</span>
-                  <span className={`${styles.summaryValue} ${breakdown.totals.leftover < 0 ? styles.negative : styles.positive}`}>
-                    {formatMoney(breakdown.totals.leftover)}
+                  <span className={styles.summaryLabel}>Money out</span>
+                  <span className={styles.summaryValue}>{formatMoney(data.totals.expenses)}</span>
+                </div>
+                <span style={{ width: '1px', height: '32px', background: 'rgba(0,0,0,0.08)' }} />
+                <div className={styles.summaryItem}>
+                  <span className={styles.summaryLabel}>Net</span>
+                  <span
+                    className={styles.summaryValue}
+                    style={{ color: data.totals.net < 0 ? '#dc2626' : '#16a34a' }}
+                  >
+                    {formatMoney(data.totals.net)}
                   </span>
                 </div>
               </div>
 
-              <div className={styles.divider} />
-
-              {/* Income Section */}
-              <div className={styles.category}>
-                <button
-                  className={styles.categoryHeader}
-                  onClick={() => toggle('income')}
-                  aria-expanded={expanded.income}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                padding: '16px 24px',
+                borderTop: '1px solid rgba(0,0,0,0.06)',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}>
+                <input
+                  type="search"
+                  placeholder="Search description, merchant, account…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{
+                    flex: '1 1 240px',
+                    minWidth: 0,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    background: 'rgba(255,255,255,0.7)',
+                    fontSize: '0.85rem',
+                    fontFamily: 'inherit',
+                    color: 'var(--text)',
+                  }}
+                />
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    background: 'rgba(255,255,255,0.7)',
+                    fontSize: '0.85rem',
+                    fontFamily: 'inherit',
+                    color: 'var(--text)',
+                  }}
                 >
-                  <div className={styles.categoryLeft}>
-                    <span className={`${styles.chevron} ${expanded.income ? styles.open : ''}`}>›</span>
-                    <span className={styles.categoryName}>Income</span>
-                    {breakdown.income.items.length > 0 && (
-                      <span className={styles.categoryCount}>{breakdown.income.items.length} source{breakdown.income.items.length !== 1 ? 's' : ''}</span>
-                    )}
-                  </div>
-                  <span className={styles.categoryTotal}>+{formatMoney(breakdown.totals.income)}</span>
-                </button>
-                {expanded.income && breakdown.income.items.length > 0 && (
-                  <div className={styles.categoryItems}>
-                    {breakdown.income.items.map((item) => (
-                      <div key={item.id} className={styles.item}>
-                        <div className={styles.itemMain}>
-                          <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                          {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                        </div>
-                        <span className={styles.itemMeta}>{formatFrequency(item.frequency)}</span>
-                        <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Subscriptions Section */}
-              {breakdown.subscriptions.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('subscriptions')}
-                    aria-expanded={expanded.subscriptions}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.subscriptions ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s1}`} />
-                      <span className={styles.categoryName}>Subscriptions</span>
-                      <span className={styles.categoryCount}>{breakdown.subscriptions.count} active</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.subscriptions.total)}</span>
-                  </button>
-                  {expanded.subscriptions && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.subscriptions.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Utilities Section */}
-              {breakdown.utilities?.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('utilities')}
-                    aria-expanded={expanded.utilities}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.utilities ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s2}`} />
-                      <span className={styles.categoryName}>Utilities</span>
-                      <span className={styles.categoryCount}>{breakdown.utilities.count} bills</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.utilities.total)}</span>
-                  </button>
-                  {expanded.utilities && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.utilities.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Insurance Section */}
-              {breakdown.insurance?.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('insurance')}
-                    aria-expanded={expanded.insurance}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.insurance ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s2}`} />
-                      <span className={styles.categoryName}>Insurance</span>
-                      <span className={styles.categoryCount}>{breakdown.insurance.count} policies</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.insurance.total)}</span>
-                  </button>
-                  {expanded.insurance && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.insurance.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Loans Section */}
-              {breakdown.loans.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('loans')}
-                    aria-expanded={expanded.loans}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.loans ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s2}`} />
-                      <span className={styles.categoryName}>Loan Payments</span>
-                      <span className={styles.categoryCount}>{breakdown.loans.count} {breakdown.loans.count === 1 ? 'line' : 'lines'}</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.loans.total)}</span>
-                  </button>
-                  {expanded.loans && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.loans.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Rent Section */}
-              {breakdown.rent?.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('rent')}
-                    aria-expanded={expanded.rent}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.rent ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s2}`} />
-                      <span className={styles.categoryName}>Rent</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.rent.total)}</span>
-                  </button>
-                  {expanded.rent && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.rent.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Fees Section (CC interest, bank fees) */}
-              {breakdown.fees?.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('fees')}
-                    aria-expanded={expanded.fees}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.fees ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s3}`} />
-                      <span className={styles.categoryName}>Fees &amp; Interest</span>
-                      <span className={styles.categoryCount}>{breakdown.fees.count} charges</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.fees.total)}</span>
-                  </button>
-                  {expanded.fees && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.fees.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Variable Recurring Section (Uber, etc.) */}
-              {breakdown.variable?.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('variable')}
-                    aria-expanded={expanded.variable}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.variable ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s4}`} />
-                      <span className={styles.categoryName}>Variable Recurring</span>
-                      <span className={styles.categoryCount}>{breakdown.variable.count} vendors</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.variable.total)}</span>
-                  </button>
-                  {expanded.variable && (
-                    <div className={styles.categoryItems}>
-                      <p className={styles.variableNote}>
-                        Frequent purchases that aren&apos;t subscriptions (Uber rides, regular shopping, etc.)
-                      </p>
-                      {breakdown.variable.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Other (Uncategorized) Section */}
-              {breakdown.other.count > 0 && (
-                <div className={styles.category}>
-                  <button
-                    className={styles.categoryHeader}
-                    onClick={() => toggle('other')}
-                    aria-expanded={expanded.other}
-                  >
-                    <div className={styles.categoryLeft}>
-                      <span className={`${styles.chevron} ${expanded.other ? styles.open : ''}`}>›</span>
-                      <span className={`${styles.dot} ${styles.s3}`} />
-                      <span className={styles.categoryName}>Other Recurring</span>
-                      <span className={styles.categoryCount}>{breakdown.other.count} items</span>
-                    </div>
-                    <span className={styles.categoryTotal}>−{formatMoney(breakdown.other.total)}</span>
-                  </button>
-                  {expanded.other && (
-                    <div className={styles.categoryItems}>
-                      {breakdown.other.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          <div className={styles.itemMain}>
-                            <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                            {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                          </div>
-                          <span className={styles.itemMeta}>{formatFrequency(item.frequency)} · {formatDate(item.lastDate)}</span>
-                          <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Transfers Section (excluded from expenses) */}
-              {(breakdown.transfersOut?.count > 0) && (
-                <>
-                  <div className={styles.divider} />
-                  <div className={styles.category}>
-                    <button
-                      className={styles.categoryHeader}
-                      onClick={() => toggle('transfers')}
-                      aria-expanded={expanded.transfers}
-                    >
-                      <div className={styles.categoryLeft}>
-                        <span className={`${styles.chevron} ${expanded.transfers ? styles.open : ''}`}>›</span>
-                        <span className={`${styles.categoryName} ${styles.muted}`}>Internal Transfers</span>
-                        <span className={styles.categoryCount}>{breakdown.transfersOut.count} excluded</span>
-                      </div>
-                      <span className={`${styles.categoryTotal} ${styles.muted}`}>{formatMoney(breakdown.transfersOut.total)}</span>
-                    </button>
-                    {expanded.transfers && breakdown.transfersOut.items.length > 0 && (
-                      <div className={styles.categoryItems}>
-                        <p className={styles.variableNote}>
-                          These are transfers between your own accounts — not counted as expenses.
-                        </p>
-                        {breakdown.transfersOut.items.map((item) => (
-                          <div key={item.id} className={`${styles.item} ${styles.mutedItem}`}>
-                            <div className={styles.itemMain}>
-                              <span className={styles.itemName}>{toTitleCase(item.merchantName)}</span>
-                              {formatAccount(item) && <span className={styles.itemAccount}>{formatAccount(item)}</span>}
-                            </div>
-                            <span className={styles.itemMeta}>{formatFrequency(item.frequency)}</span>
-                            <span className={styles.itemAmount}>{formatMoney(item.monthlyAmount)}/mo</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Diagnostics Section */}
-            {breakdown.diagnostics && (
-              <div className={styles.diagnostics}>
-                <h3 className={styles.diagTitle}>Connection Diagnostics</h3>
-                <div className={styles.diagGrid}>
-                  {breakdown.diagnostics.connections.map((conn) => (
-                    <div key={conn.id} className={`${styles.diagCard} ${conn.streamCount === 0 ? styles.diagWarning : ''}`}>
-                      <div className={styles.diagInstitution}>{conn.institution}</div>
-                      <div className={styles.diagStats}>
-                        <span>Status: {conn.status}</span>
-                        <span>Accounts: {conn.accountCount}</span>
-                        <span className={conn.streamCount === 0 ? styles.diagError : ''}>
-                          Streams: {conn.streamCount}
-                        </span>
-                      </div>
-                      {conn.lastSynced && (
-                        <div className={styles.diagSynced}>
-                          Last synced: {new Date(conn.lastSynced).toLocaleDateString()}
-                        </div>
-                      )}
-                    </div>
+                  <option value="all">All categories ({data.count})</option>
+                  {categories.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {CATEGORY_LABELS[c.key] ?? c.key} ({c.count})
+                    </option>
                   ))}
-                </div>
-                {breakdown.diagnostics.connections.some(c => c.streamCount === 0) && (
-                  <p className={styles.diagNote}>
-                    ⚠️ Some connections have 0 recurring streams. This could mean:
-                    <br />• Plaid hasn&apos;t detected recurring patterns yet (needs more transaction history)
-                    <br />• The connection may need to be re-authenticated
-                    <br />• Try regenerating your brief
-                  </p>
-                )}
+                </select>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                  Showing {filtered.length} of {data.count}
+                </span>
               </div>
-            )}
 
-            <p className={styles.footnote}>
-              Last updated: {new Date(breakdown.generatedAt).toLocaleString()}
-            </p>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '0.82rem',
+                }}>
+                  <thead>
+                    <tr style={{
+                      background: 'rgba(0,0,0,0.02)',
+                      borderTop: '1px solid rgba(0,0,0,0.06)',
+                    }}>
+                      <th style={thStyle}>Date</th>
+                      <th style={thStyle}>Description</th>
+                      <th style={thStyle}>Merchant</th>
+                      <th style={thStyle}>Account</th>
+                      <th style={thStyle}>Category</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
+                      <th style={thStyle}>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((t) => (
+                      <tr key={t.id} style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                        <td style={tdStyle}>{formatDate(t.date)}</td>
+                        <td style={{ ...tdStyle, maxWidth: '360px' }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {t.description}
+                          </div>
+                          {t.merchantNormalized && t.merchantNormalized !== t.merchantName?.toLowerCase() && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                              ↳ {t.merchantNormalized}
+                            </div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>{t.merchantName ?? '—'}</td>
+                        <td style={tdStyle}>{accountLabel(t)}</td>
+                        <td style={tdStyle}>
+                          {t.category ? (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(0,0,0,0.05)',
+                              fontSize: '0.72rem',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {CATEGORY_LABELS[t.category] ?? t.category}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{
+                          ...tdStyle,
+                          textAlign: 'right',
+                          fontVariantNumeric: 'tabular-nums',
+                          color: t.amount < 0 ? '#16a34a' : 'var(--text)',
+                        }}>
+                          {formatMoney(t.amount)}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                          {t.source}
+                        </td>
+                      </tr>
+                    ))}
+                    {filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
+                          No transactions match the current filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         ) : null}
       </main>
     </div>
   );
 }
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '10px 14px',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'var(--text-dim)',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '10px 14px',
+  verticalAlign: 'top',
+  color: 'var(--text)',
+};
