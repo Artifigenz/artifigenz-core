@@ -1286,15 +1286,13 @@ export default function FinanceBriefPage() {
                               onChange={(e) => setSelectedCategory(e.target.value)}
                             >
                               <option value="">New category...</option>
-                              <option value="subscription">Subscription</option>
-                              <option value="loan">Loan</option>
-                              <option value="fee">Fee / Interest</option>
-                              <option value="rent">Rent</option>
-                              <option value="utility">Utility</option>
-                              <option value="insurance">Insurance</option>
-                              <option value="transfer">Transfer</option>
-                              <option value="variable">Variable</option>
                               <option value="income">Income</option>
+                              <option value="subscription">Subscription</option>
+                              <option value="loan_emi">Loan / EMI</option>
+                              <option value="fee_interest">Fee / Interest</option>
+                              <option value="variable_recurring">Variable recurring</option>
+                              <option value="internal_transfer">Internal transfer</option>
+                              <option value="miscellaneous">Miscellaneous</option>
                             </select>
                             <button
                               className={styles.devtoolsBtn}
