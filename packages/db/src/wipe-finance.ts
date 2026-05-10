@@ -38,12 +38,12 @@ async function main() {
   `;
   console.log(`  removed ${delIns.count} platform insights`);
 
-  console.log("Resetting agent_instances.last_analyzed_at for finance agents...");
-  const updInst = await sql`
-    UPDATE agent_instances SET last_analyzed_at = NULL
-    WHERE agent_type_id = 'finance'
+  console.log("Deleting data source connections for finance agents...");
+  const delConns = await sql`
+    DELETE FROM data_source_connections
+    WHERE agent_instance_id IN (SELECT id FROM agent_instances WHERE agent_type_id = 'finance')
   `;
-  console.log(`  reset ${updInst.count} instance(s)`);
+  console.log(`  removed ${delConns.count} connections`);
 
   console.log("Clearing agent_instance_skills state for finance agents...");
   const updSkills = await sql`
@@ -52,6 +52,12 @@ async function main() {
     WHERE agent_instance_id IN (SELECT id FROM agent_instances WHERE agent_type_id = 'finance')
   `;
   console.log(`  reset ${updSkills.count} skill row(s)`);
+
+  console.log("Deleting finance agent_instances...");
+  const delInst = await sql`
+    DELETE FROM agent_instances WHERE agent_type_id = 'finance'
+  `;
+  console.log(`  removed ${delInst.count} agent_instance(s)`);
 
   console.log("\nDone.\n");
 
