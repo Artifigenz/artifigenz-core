@@ -6,6 +6,7 @@ import {
   date,
   decimal,
   integer,
+  boolean,
   timestamp,
   jsonb,
   index,
@@ -20,21 +21,28 @@ export const financeTransactions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     dataSourceConnectionId: uuid("data_source_connection_id")
-      .notNull()
-      .references(() => dataSourceConnections.id, { onDelete: "cascade" }),
+      .references(() => dataSourceConnections.id, { onDelete: "set null" }),
     agentInstanceId: uuid("agent_instance_id")
       .notNull()
       .references(() => agentInstances.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").references(() => financeAccounts.id, {
+      onDelete: "cascade",
+    }),
     transactionDate: date("transaction_date").notNull(),
     description: text("description").notNull(),
     merchantName: varchar("merchant_name", { length: 255 }),
+    merchantNormalized: varchar("merchant_normalized", { length: 255 }),
+    descriptionHash: varchar("description_hash", { length: 64 }),
     amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-    category: varchar("category", { length: 100 }),
+    category: varchar("category", { length: 30 }),
+    isRecurring: boolean("is_recurring").default(false),
+    merchantClusterId: uuid("merchant_cluster_id").references(
+      () => merchantClusters.id,
+      { onDelete: "set null" },
+    ),
     accountName: varchar("account_name", { length: 100 }),
     source: varchar("source", { length: 20 }).notNull(),
     plaidTransactionId: varchar("plaid_transaction_id", { length: 255 }).unique(),
-    // Plaid account_id — lets the Brief algorithm join a transaction to its account
-    // type (depository vs credit) without parsing rawData.
     plaidAccountId: varchar("plaid_account_id", { length: 255 }),
     pending: integer("pending").default(0),
     personalFinanceCategoryPrimary: varchar("pfc_primary", { length: 100 }),
@@ -52,6 +60,14 @@ export const financeTransactions = pgTable(
       table.merchantName,
     ),
     index("idx_finance_tx_account").on(table.plaidAccountId),
+    index("idx_finance_tx_account_id").on(table.accountId),
+    index("idx_finance_tx_cluster").on(table.merchantClusterId),
+    uniqueIndex("idx_finance_tx_dedup").on(
+      table.accountId,
+      table.transactionDate,
+      table.amount,
+      table.descriptionHash,
+    ),
   ],
 );
 
@@ -80,7 +96,8 @@ export const financeSubscriptions = pgTable(
   ],
 );
 
-// ─── Accounts (Plaid account snapshot — balances live here) ────────
+// ─── Accounts (source-agnostic: Plaid or file upload) ──────────────
+// Identity across sources: (agent_instance_id, institution_name, account_last4)
 
 export const financeAccounts = pgTable(
   "finance_accounts",
@@ -89,10 +106,13 @@ export const financeAccounts = pgTable(
     agentInstanceId: uuid("agent_instance_id")
       .notNull()
       .references(() => agentInstances.id, { onDelete: "cascade" }),
-    dataSourceConnectionId: uuid("data_source_connection_id")
-      .notNull()
-      .references(() => dataSourceConnections.id, { onDelete: "cascade" }),
-    plaidAccountId: varchar("plaid_account_id", { length: 255 }).notNull().unique(),
+    dataSourceConnectionId: uuid("data_source_connection_id").references(
+      () => dataSourceConnections.id,
+      { onDelete: "set null" },
+    ),
+    institutionName: varchar("institution_name", { length: 100 }),
+    accountLast4: varchar("account_last4", { length: 4 }),
+    plaidAccountId: varchar("plaid_account_id", { length: 255 }).unique(),
     name: varchar("name", { length: 255 }),
     mask: varchar("mask", { length: 10 }),
     type: varchar("type", { length: 20 }),
@@ -104,6 +124,53 @@ export const financeAccounts = pgTable(
   },
   (table) => [
     index("idx_finance_accounts_instance").on(table.agentInstanceId),
+    uniqueIndex("idx_finance_accounts_identity").on(
+      table.agentInstanceId,
+      table.institutionName,
+      table.accountLast4,
+    ),
+  ],
+);
+
+// ─── Merchant Clusters (per-user LLM classification of a merchant) ─
+// One row per (agent_instance, merchant_normalized). Replaces Plaid recurring
+// detection. The LLM looks at all transactions for a merchant and decides:
+// category, whether it's recurring, cadence, and a monthly amount estimate.
+
+export const merchantClusters = pgTable(
+  "merchant_clusters",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentInstanceId: uuid("agent_instance_id")
+      .notNull()
+      .references(() => agentInstances.id, { onDelete: "cascade" }),
+    merchantNormalized: varchar("merchant_normalized", { length: 255 }).notNull(),
+    displayName: varchar("display_name", { length: 255 }),
+    // One of: income, subscription, loan_emi, fee_interest, variable_recurring,
+    // internal_transfer, miscellaneous
+    category: varchar("category", { length: 30 }).notNull(),
+    isRecurring: boolean("is_recurring").default(false).notNull(),
+    cadence: varchar("cadence", { length: 20 }), // monthly | weekly | quarterly | annual | irregular | one_time
+    monthlyAmount: decimal("monthly_amount", { precision: 14, scale: 2 }),
+    txnCount: integer("txn_count").default(0).notNull(),
+    totalAmount: decimal("total_amount", { precision: 14, scale: 2 }).default("0").notNull(),
+    firstSeenDate: date("first_seen_date"),
+    lastSeenDate: date("last_seen_date"),
+    confidence: decimal("confidence", { precision: 3, scale: 2 }),
+    reasoning: text("reasoning"),
+    analyzedAt: timestamp("analyzed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_merchant_clusters_unique").on(
+      table.agentInstanceId,
+      table.merchantNormalized,
+    ),
+    index("idx_merchant_clusters_category").on(
+      table.agentInstanceId,
+      table.category,
+    ),
   ],
 );
 
