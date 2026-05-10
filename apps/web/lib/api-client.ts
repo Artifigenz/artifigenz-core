@@ -267,6 +267,31 @@ export class ApiClient {
     }>(`/api/finance/categorize`);
   }
 
+  /**
+   * Fetch every consolidated transaction for the user's finance agent — the
+   * source-of-truth table backing the breakdown page.
+   */
+  async getFinanceTransactions() {
+    return this.get<{
+      count: number;
+      totals: { income: number; expenses: number; net: number };
+      transactions: Array<{
+        id: string;
+        date: string;
+        description: string;
+        merchantName: string | null;
+        merchantNormalized: string | null;
+        amount: number;
+        source: string;
+        category: string | null;
+        isRecurring: boolean | null;
+        accountName: string | null;
+        institutionName: string | null;
+        accountLast4: string | null;
+      }>;
+    }>('/api/finance/transactions');
+  }
+
   async getInsights(options?: {
     unreadOnly?: boolean;
     agentTypeId?: string;

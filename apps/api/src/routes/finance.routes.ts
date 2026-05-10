@@ -1,6 +1,11 @@
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
-import { db, agentInstances } from "@artifigenz/db";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  db,
+  agentInstances,
+  financeTransactions,
+  financeAccounts,
+} from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import {
   categorizeAgentInstance,
@@ -53,6 +58,73 @@ app.post("/categorize", async (c) => {
       500,
     );
   }
+});
+
+/**
+ * GET /api/finance/transactions
+ *   Returns every consolidated transaction for the user's finance agent —
+ *   the source-of-truth table that the breakdown page renders. Joins
+ *   finance_transactions with finance_accounts so each row carries its
+ *   institution + last4. Sorted newest first.
+ */
+app.get("/transactions", async (c) => {
+  const user = c.get("user");
+
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+
+  if (!instance) return c.json({ error: "No finance agent found" }, 404);
+
+  const rows = await db
+    .select({
+      id: financeTransactions.id,
+      date: financeTransactions.transactionDate,
+      description: financeTransactions.description,
+      merchantName: financeTransactions.merchantName,
+      merchantNormalized: financeTransactions.merchantNormalized,
+      amount: financeTransactions.amount,
+      source: financeTransactions.source,
+      category: financeTransactions.category,
+      isRecurring: financeTransactions.isRecurring,
+      accountName: financeAccounts.name,
+      institutionName: financeAccounts.institutionName,
+      accountLast4: financeAccounts.accountLast4,
+    })
+    .from(financeTransactions)
+    .leftJoin(financeAccounts, eq(financeAccounts.id, financeTransactions.accountId))
+    .where(eq(financeTransactions.agentInstanceId, instance.id))
+    .orderBy(desc(financeTransactions.transactionDate));
+
+  let income = 0;
+  let expenses = 0;
+  for (const r of rows) {
+    const amt = parseFloat(r.amount);
+    // Sign convention: positive = money out, negative = money in.
+    if (amt < 0) income += -amt;
+    else expenses += amt;
+  }
+
+  return c.json({
+    count: rows.length,
+    totals: {
+      income: Math.round(income * 100) / 100,
+      expenses: Math.round(expenses * 100) / 100,
+      net: Math.round((income - expenses) * 100) / 100,
+    },
+    transactions: rows.map((r) => ({
+      ...r,
+      amount: parseFloat(r.amount),
+    })),
+  });
 });
 
 export default app;
