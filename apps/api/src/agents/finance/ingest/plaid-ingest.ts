@@ -77,22 +77,50 @@ export async function ingestPlaidConnection(
   }
 
   // 2. Transactions sync
+  // After Plaid Link finishes, the very first /transactions/sync call often
+  // returns added=[] with next_cursor="" because Plaid is still backfilling
+  // history. Production normally signals readiness via a webhook (~30-90s).
+  // To avoid the "TD has 0 txns" experience during onboarding, retry with
+  // backoff if we get an empty initial pull and no stored cursor yet.
+  const isInitialPull = !conn.syncCursor;
   let cursor = conn.syncCursor ?? undefined;
   const added: PlaidTransaction[] = [];
   const modified: PlaidTransaction[] = [];
   const removed: string[] = [];
   let hasMore = true;
 
-  while (hasMore) {
-    const resp = await plaid.transactionsSync({
-      access_token: creds.accessToken,
-      cursor,
-    });
-    added.push(...resp.data.added);
-    modified.push(...resp.data.modified);
-    removed.push(...resp.data.removed.map((r) => r.transaction_id));
-    hasMore = resp.data.has_more;
-    cursor = resp.data.next_cursor;
+  const initialBackoffsMs = isInitialPull ? [0, 8_000, 15_000, 25_000] : [0];
+  let receivedAnyAdded = false;
+
+  for (const wait of initialBackoffsMs) {
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+
+    while (hasMore) {
+      const resp = await plaid.transactionsSync({
+        access_token: creds.accessToken,
+        cursor,
+      });
+      added.push(...resp.data.added);
+      modified.push(...resp.data.modified);
+      removed.push(...resp.data.removed.map((r) => r.transaction_id));
+      hasMore = resp.data.has_more;
+      cursor = resp.data.next_cursor;
+    }
+
+    if (added.length > 0) {
+      receivedAnyAdded = true;
+      break;
+    }
+    if (!isInitialPull) break;
+    // Reset has_more so the next backoff iteration polls again.
+    hasMore = true;
+  }
+
+  if (isInitialPull && !receivedAnyAdded) {
+    console.warn(
+      `[plaid-ingest] ${connectionId}: initial pull stayed empty after backoff — ` +
+        `Plaid is still backfilling. The webhook handler will pick up txns when ready.`,
+    );
   }
 
   const prepared = added

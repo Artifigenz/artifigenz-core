@@ -11,6 +11,8 @@ export interface CategoryTotal {
   monthly: number;
   total: number;
   txnCount: number;
+  /** Clusters with at least one charge in the last STALE_RECURRING_DAYS days. */
+  activeClusterCount: number;
   topMerchants: Array<{ merchant: string; monthly: number; cadence: string | null }>;
 }
 
@@ -55,6 +57,20 @@ const EXPENSE_CATEGORIES: Category[] = [
   "miscellaneous",
 ];
 
+// Recurring streams whose last charge is older than this stop counting as
+// "active" in the home-card summary (they're treated as cancelled). The cluster
+// row stays in the DB — we just don't sum its monthly_amount into the totals.
+const STALE_RECURRING_DAYS = 60;
+
+function isStaleRecurring(
+  lastSeen: string | null,
+  todayMs: number,
+): boolean {
+  if (!lastSeen) return true;
+  const lastMs = new Date(lastSeen + "T00:00:00Z").getTime();
+  return (todayMs - lastMs) / 86400000 > STALE_RECURRING_DAYS;
+}
+
 export async function buildDigest(agentInstanceId: string): Promise<Digest> {
   const txnRows = await db
     .select({
@@ -79,6 +95,7 @@ export async function buildDigest(agentInstanceId: string): Promise<Digest> {
       cadence: merchantClusters.cadence,
       monthlyAmount: merchantClusters.monthlyAmount,
       confidence: merchantClusters.confidence,
+      lastSeenDate: merchantClusters.lastSeenDate,
     })
     .from(merchantClusters)
     .where(eq(merchantClusters.agentInstanceId, agentInstanceId));
@@ -106,7 +123,13 @@ export async function buildDigest(agentInstanceId: string): Promise<Digest> {
   // Initialize category buckets
   const categoryTotals = {} as Record<Category, CategoryTotal>;
   for (const cat of CATEGORIES) {
-    categoryTotals[cat] = { monthly: 0, total: 0, txnCount: 0, topMerchants: [] };
+    categoryTotals[cat] = {
+      monthly: 0,
+      total: 0,
+      txnCount: 0,
+      activeClusterCount: 0,
+      topMerchants: [],
+    };
   }
 
   // Aggregate by merchant_normalized for top-merchants per category
@@ -146,10 +169,18 @@ export async function buildDigest(agentInstanceId: string): Promise<Digest> {
   // For recurring categories, prefer the LLM-estimated monthly_amount from the
   // cluster (which normalizes cadence). For non-recurring categories, divide
   // the observed total by months_of_data.
+  //
+  // Skip clusters whose last charge is more than STALE_RECURRING_DAYS old —
+  // cancelled subscriptions still have historical txns but shouldn't inflate
+  // the active monthly totals.
+  const todayMs = Date.now();
   for (const cluster of clusters) {
-    if (!cluster.isRecurring) continue;
     const cat = cluster.category as Category;
     if (!(cat in categoryTotals)) continue;
+    const stale = isStaleRecurring(cluster.lastSeenDate, todayMs);
+    if (!stale) categoryTotals[cat].activeClusterCount++;
+    if (!cluster.isRecurring) continue;
+    if (stale) continue;
     categoryTotals[cat].monthly += parseFloat(cluster.monthlyAmount ?? "0");
   }
 
@@ -185,7 +216,9 @@ export async function buildDigest(agentInstanceId: string): Promise<Digest> {
   const leftoverMonthly = incomeMonthly - expensesMonthly;
 
   const recurringStreams: RecurringStream[] = clusters
-    .filter((c) => c.isRecurring)
+    .filter(
+      (c) => c.isRecurring && !isStaleRecurring(c.lastSeenDate, todayMs),
+    )
     .map((c) => ({
       merchant: c.displayName ?? c.merchantNormalized,
       category: c.category as Category,
