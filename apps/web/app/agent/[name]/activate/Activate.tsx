@@ -504,9 +504,12 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
           },
         });
         await refreshConnections(agentInstanceId);
-        // Kick off an inline sync so transactions + subscriptions show up.
-        // Fire-and-forget so the tile appears immediately.
-        api.syncAgent(agentInstanceId).catch(() => {});
+        // Kick off ingest → categorize chain in the background so the tile
+        // appears immediately. Categorize runs the LLM over each new
+        // merchant cluster.
+        api.syncAgent(agentInstanceId)
+          .then(() => api.categorizeFinance())
+          .catch((err) => console.warn('[onboarding] post-sync analyze failed', err));
       } catch (err) {
         setConnectError(err instanceof Error ? err.message : 'Failed to finalize bank');
       } finally {
@@ -613,6 +616,11 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
       // File upload creates a data-source connection on the backend — surface it
       // alongside Plaid connections so the user sees they have data.
       await refreshConnections(agentInstanceId);
+      // Fire categorization in the background so insights are ready when the
+      // user clicks Activate.
+      api.categorizeFinance().catch((err) =>
+        console.warn('[onboarding] post-upload categorize failed', err),
+      );
     } catch (err) {
       setUploadError((err as { message?: string })?.message ?? 'Upload failed');
     } finally {

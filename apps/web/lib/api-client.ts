@@ -253,6 +253,20 @@ export class ApiClient {
     );
   }
 
+  /**
+   * Run LLM categorization across all transactions for the user's finance
+   * agent. Takes ~30-90s depending on how many unique merchants the user has.
+   */
+  async categorizeFinance() {
+    return this.post<{
+      clustersAnalyzed: number;
+      clustersSkippedCached: number;
+      txnsBackfilled: number;
+      orphansBackfilled: number;
+      errors: Array<{ merchant: string; error: string }>;
+    }>(`/api/finance/categorize`);
+  }
+
   async getInsights(options?: {
     unreadOnly?: boolean;
     agentTypeId?: string;
