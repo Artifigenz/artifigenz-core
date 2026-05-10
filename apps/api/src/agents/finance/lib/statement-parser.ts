@@ -12,23 +12,36 @@ export interface ExtractedTransaction {
 export interface ParsedStatement {
   transactions: ExtractedTransaction[];
   accountName: string | null;
+  institutionName: string | null;
+  accountLast4: string | null;
+  accountType: string | null;
+  openingBalance: number | null;
+  closingBalance: number | null;
   statementPeriod: { start: string; end: string } | null;
 }
 
-const SYSTEM_PROMPT = `You are a bank statement parser. Extract all transactions from the provided document into structured JSON.
+const SYSTEM_PROMPT = `You are a bank statement parser. Extract account details and all transactions from the provided document into structured JSON.
 
 Rules:
 - Return positive amounts for charges/debits/spending (money leaving the account)
 - Return negative amounts for deposits/credits/refunds (money entering the account)
 - Dates must be in YYYY-MM-DD format
 - merchant_name should be a cleaned-up version of the description (e.g. "NETFLIX.COM 866-579" → "Netflix")
+- account_last4 is the last 4 digits of the account number on the statement. If the account number is shown as XXXX-XXXX-1234 or ****1234, return "1234".
+- institution_name is the bank name (e.g. "RBC Royal Bank", "TD Canada Trust", "Chase").
+- account_type is one of: "depository" (chequing/savings), "credit" (credit card), "loan", "investment", or null if unclear.
 - category should be one of: ENTERTAINMENT, FOOD_AND_DRINK, GENERAL_SERVICES, GENERAL_MERCHANDISE, TRAVEL, TRANSFER_IN, TRANSFER_OUT, LOAN_PAYMENTS, BANK_FEES, INCOME, MEDICAL, RENT_AND_UTILITIES, PERSONAL_CARE, or null if unclear
 - Include pending transactions if present
 - Skip running balances, totals, subtotals, and summary rows
 
 Return ONLY a valid JSON object matching this schema:
 {
+  "institution_name": "string or null",
   "account_name": "string or null",
+  "account_last4": "4-digit string or null",
+  "account_type": "depository | credit | loan | investment | null",
+  "opening_balance": number or null,
+  "closing_balance": number or null,
   "statement_period": { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" } or null,
   "transactions": [
     {
@@ -83,7 +96,12 @@ export async function parseStatement(params: {
   }
 
   type ParsedResult = {
+    institution_name?: string | null;
     account_name?: string | null;
+    account_last4?: string | null;
+    account_type?: string | null;
+    opening_balance?: number | null;
+    closing_balance?: number | null;
     statement_period?: { start: string; end: string } | null;
     transactions: Array<{
       date: string;
@@ -127,7 +145,12 @@ export async function parseStatement(params: {
   }
 
   return {
+    institutionName: parsed.institution_name ?? null,
     accountName: parsed.account_name ?? null,
+    accountLast4: parsed.account_last4 ? String(parsed.account_last4).slice(-4) : null,
+    accountType: parsed.account_type ?? null,
+    openingBalance: parsed.opening_balance ?? null,
+    closingBalance: parsed.closing_balance ?? null,
     statementPeriod: parsed.statement_period ?? null,
     transactions: (parsed.transactions ?? []).map((t) => ({
       date: t.date,

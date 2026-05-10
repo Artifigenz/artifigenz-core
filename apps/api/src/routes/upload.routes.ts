@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,98 +8,22 @@ import {
   agentInstances,
   dataSourceConnections,
   fileUploads,
-  financeTransactions,
-  financeRecurringStreams,
 } from "@artifigenz/db";
-import { detectRecurring, type TxInput } from "../agents/finance/lib/recurring-detection";
-import { normalizeMerchant } from "../agents/finance/lib/transaction-normalizer";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { fileUploadAdapter } from "../agents/finance/data-sources/file-upload.adapter";
 import { appleHealthAdapter } from "../agents/health/data-sources/apple-health.adapter";
 import { SkillExecutor } from "../platform/execution/skill-executor";
 import { AgentRegistry } from "../platform/registry/agent-registry";
-import { register as registerFinance } from "../agents/finance";
 import { register as registerHealth } from "../agents/health";
 
 const app = new Hono();
 app.use("/*", clerkAuth);
 
-// Inline registry for skill execution
+// Inline registry for health skill execution. Finance no longer runs skills
+// from this route — categorization moved into the new ingest pipeline.
 const inlineRegistry = new AgentRegistry();
-registerFinance(inlineRegistry);
 registerHealth(inlineRegistry);
 const executor = new SkillExecutor(inlineRegistry);
-
-/**
- * Runs recurring detection on all transactions for an agent instance
- * and upserts the results into financeRecurringStreams.
- */
-async function runRecurringDetection(agentInstanceId: string): Promise<number> {
-  // Fetch all transactions for this agent instance
-  const transactions = await db
-    .select({
-      id: financeTransactions.id,
-      transactionDate: financeTransactions.transactionDate,
-      merchantName: financeTransactions.merchantName,
-      description: financeTransactions.description,
-      amount: financeTransactions.amount,
-      accountName: financeTransactions.accountName,
-      category: financeTransactions.personalFinanceCategoryPrimary,
-    })
-    .from(financeTransactions)
-    .where(eq(financeTransactions.agentInstanceId, agentInstanceId));
-
-  if (transactions.length === 0) return 0;
-
-  // Map to TxInput format
-  const txInputs: TxInput[] = transactions.map((tx) => ({
-    id: tx.id,
-    transactionDate: tx.transactionDate,
-    merchantName: tx.merchantName,
-    description: tx.description,
-    amount: parseFloat(tx.amount),
-    accountName: tx.accountName,
-    category: tx.category,
-  }));
-
-  // Run recurring detection
-  const detected = detectRecurring(txInputs);
-
-  // Upsert into financeRecurringStreams
-  for (const sub of detected) {
-    // Generate a synthetic stream ID based on merchant + account
-    const normalizedMerchant = normalizeMerchant(sub.merchantName);
-    const streamId = `upload-${normalizedMerchant}-${sub.accountName ?? "default"}`;
-
-    await db
-      .insert(financeRecurringStreams)
-      .values({
-        agentInstanceId,
-        plaidStreamId: streamId,
-        direction: "outflow",
-        merchantName: sub.merchantName,
-        description: `Detected from ${sub.transactionCount} uploaded transactions`,
-        averageAmount: sub.amount.toFixed(2),
-        frequency: sub.frequency.toUpperCase(),
-        lastDate: sub.lastChargeDate,
-        predictedNextDate: sub.nextChargeDate,
-        status: "MATURE",
-      })
-      .onConflictDoUpdate({
-        target: [financeRecurringStreams.agentInstanceId, financeRecurringStreams.plaidStreamId],
-        set: {
-          merchantName: sub.merchantName,
-          averageAmount: sub.amount.toFixed(2),
-          frequency: sub.frequency.toUpperCase(),
-          lastDate: sub.lastChargeDate,
-          predictedNextDate: sub.nextChargeDate,
-          updatedAt: new Date(),
-        },
-      });
-  }
-
-  return detected.length;
-}
 
 /**
  * POST /api/upload
@@ -154,7 +78,9 @@ app.post("/", async (c) => {
     return c.json({ error: "File too large. Max 10MB." }, 400);
   }
 
-  // ─── 1. Find or create finance agent instance ──────────────────
+  // ─── 1. Find finance agent instance (active OR onboarding) ─────
+  // Allow uploads during onboarding so file upload is a first-class entry
+  // point — not just a post-activation feature.
   const [agentInstance] = await db
     .select()
     .from(agentInstances)
@@ -162,14 +88,14 @@ app.post("/", async (c) => {
       and(
         eq(agentInstances.userId, user.id),
         eq(agentInstances.agentTypeId, "finance"),
-        eq(agentInstances.status, "active"),
       ),
     )
+    .orderBy(agentInstances.createdAt)
     .limit(1);
 
-  if (!agentInstance) {
+  if (!agentInstance || agentInstance.status === "inactive") {
     return c.json(
-      { error: "Finance agent not activated. Activate it first." },
+      { error: "Finance agent not found. Start onboarding first." },
       400,
     );
   }
@@ -201,7 +127,7 @@ app.post("/", async (c) => {
     extractionStatus: "pending",
   });
 
-  // ─── 5. Parse with Claude (inline, ~20s) ──────────────────────
+  // ─── 5. Parse with Claude + ingest (inline, ~20s) ────────────
   let syncResult: unknown[];
   try {
     syncResult = await fileUploadAdapter.sync(connection);
@@ -213,28 +139,8 @@ app.post("/", async (c) => {
     }, 500);
   }
 
-  // ─── 6. Run recurring detection on all transactions ──────────
-  let recurringCount = 0;
-  try {
-    recurringCount = await runRecurringDetection(agentInstance.id);
-  } catch (err) {
-    console.error("[upload] Failed to run recurring detection:", err);
-    // Non-fatal - continue without recurring detection
-  }
-
-  // ─── 7. Run subscriptions skill on the new data ───────────────
-  let insightCount = 0;
-  try {
-    const skillResult = await executor.execute({
-      agentInstanceId: agentInstance.id,
-      skillId: "finance.subscriptions",
-    });
-    insightCount = skillResult.insightIds.length;
-  } catch (err) {
-    console.error("[upload] Failed to run skill:", err);
-    // Non-fatal - continue without insights
-  }
-
+  // Categorization + insights run in later phases of the pipeline (step 3/4
+  // of the unified-finance rewrite). This route now only ingests.
   return c.json({
     status: "processed",
     file: {
@@ -243,8 +149,6 @@ app.post("/", async (c) => {
       type: fileType,
     },
     transactions: syncResult.length,
-    recurringStreams: recurringCount,
-    insights: insightCount,
   });
 });
 
@@ -517,32 +421,12 @@ app.post("/sync/:agentInstanceId", async (c) => {
     }
   }
 
-  // Run recurring detection on all transactions
-  let recurringCount = 0;
-  try {
-    recurringCount = await runRecurringDetection(agentInstanceId);
-  } catch (err) {
-    console.error(`[sync] Failed to run recurring detection:`, err);
-  }
-
-  // Run the subscriptions skill
-  let insightCount = 0;
-  try {
-    const skillResult = await executor.execute({
-      agentInstanceId,
-      skillId: "finance.subscriptions",
-    });
-    insightCount = skillResult.insightIds.length;
-  } catch (err) {
-    console.error(`[sync] Failed to run skill:`, err);
-  }
-
+  // Categorization + insights run in later phases of the pipeline (step 3/4
+  // of the unified-finance rewrite). This route now only ingests.
   return c.json({
     status: "synced",
     connections: connections.length,
     transactions: totalTransactions,
-    recurringStreams: recurringCount,
-    insights: insightCount,
   });
 });
 

@@ -1,10 +1,7 @@
 import { eq, and } from "drizzle-orm";
-import { readFile } from "node:fs/promises";
 import {
   db,
   dataSourceConnections,
-  financeTransactions,
-  fileUploads,
 } from "@artifigenz/db";
 import type {
   DataSourceTypeDefinition,
@@ -12,19 +9,7 @@ import type {
   FinalizeParams,
   NormalizedData,
 } from "../../../platform/registry/types";
-import { parseStatement } from "../lib/statement-parser";
-
-type FileType = "pdf" | "csv" | "text" | "image";
-
-function inferFileType(filename: string): FileType {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".pdf")) return "pdf";
-  if (lower.endsWith(".csv")) return "csv";
-  if (lower.endsWith(".txt")) return "text";
-  if (lower.match(/\.(jpg|jpeg|png|webp)$/)) return "image";
-  // Default to text
-  return "text";
-}
+import { ingestPendingUploadsForConnection } from "../ingest/upload-ingest";
 
 /**
  * File upload adapter — parses uploaded bank statements via Claude API.
@@ -130,92 +115,19 @@ export const fileUploadAdapter: DataSourceTypeDefinition = {
   },
 
   /**
-   * Scans for any pending file uploads for this connection and processes them.
+   * Sync delegates to ingest/upload-ingest which processes pending file_uploads:
+   * Claude parsing → upsertAccount via (institution + last4) → dedup-insert txns.
+   * Returns a synthetic array sized by total inserted txns for sync-worker logging.
    */
   async sync(connection): Promise<NormalizedData[]> {
-    const pending = await db
-      .select()
-      .from(fileUploads)
-      .where(
-        and(
-          eq(fileUploads.dataSourceConnectionId, connection.id),
-          eq(fileUploads.extractionStatus, "pending"),
-        ),
-      );
-
-    const allExtracted: NormalizedData[] = [];
-
-    for (const file of pending) {
-      console.log(
-        `[FileUploadAdapter] Processing "${file.originalFilename}" (${file.fileType})`,
-      );
-
-      try {
-        // Read file content
-        const fileContent = await readFile(file.storagePath);
-        const fileType = inferFileType(file.originalFilename);
-
-        // Parse with Claude
-        const parsed = await parseStatement({
-          fileType,
-          fileContent,
-          filename: file.originalFilename,
-        });
-
-        console.log(
-          `[FileUploadAdapter] Extracted ${parsed.transactions.length} transactions`,
-        );
-
-        // Store transactions
-        for (const tx of parsed.transactions) {
-          await db
-            .insert(financeTransactions)
-            .values({
-              agentInstanceId: connection.agentInstanceId,
-              dataSourceConnectionId: connection.id,
-              transactionDate: tx.date,
-              description: tx.description,
-              merchantName: tx.merchantName,
-              amount: tx.amount.toString(),
-              category: tx.category,
-              accountName: tx.accountName,
-              source: "upload",
-              rawData: tx as unknown as Record<string, unknown>,
-            })
-            .onConflictDoNothing();
-
-          allExtracted.push(tx as unknown as NormalizedData);
-        }
-
-        // Mark file as processed
-        await db
-          .update(fileUploads)
-          .set({
-            extractionStatus: "processed",
-            extractionResult: parsed as unknown as Record<string, unknown>,
-            transactionCount: parsed.transactions.length,
-            processedAt: new Date(),
-          })
-          .where(eq(fileUploads.id, file.id));
-      } catch (err) {
-        console.error(`[FileUploadAdapter] Failed to process file:`, err);
-        await db
-          .update(fileUploads)
-          .set({
-            extractionStatus: "failed",
-            extractionResult: {
-              error: err instanceof Error ? err.message : String(err),
-            },
-          })
-          .where(eq(fileUploads.id, file.id));
-      }
-    }
-
-    await db
-      .update(dataSourceConnections)
-      .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
-      .where(eq(dataSourceConnections.id, connection.id));
-
-    return allExtracted;
+    const results = await ingestPendingUploadsForConnection(connection.id);
+    const totalInserted = results.reduce(
+      (sum, r) => sum + r.transactionsInserted,
+      0,
+    );
+    console.log(
+      `[FileUploadAdapter] Processed ${results.length} file(s), inserted ${totalInserted} txn(s)`,
+    );
+    return Array.from({ length: totalInserted }, () => ({}) as NormalizedData);
   },
 };

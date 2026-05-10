@@ -57,7 +57,15 @@ export async function runSubscriptionRadar(
     .from(financeAccounts)
     .where(eq(financeAccounts.agentInstanceId, agentInstanceId));
 
-  const accountMap = new Map(accounts.map((a) => [a.plaidAccountId, a]));
+  // Map keyed by plaid_account_id for joining streams → accounts. Legacy code
+  // path (will be deleted in step 5 of the unified-finance rewrite). The Map's
+  // value type has extra columns the local Account interfaces don't declare —
+  // structural compatibility is preserved at runtime.
+  const accountMap = new Map(
+    accounts
+      .filter((a) => a.plaidAccountId !== null)
+      .map((a) => [a.plaidAccountId as string, a]),
+  ) as unknown as Map<string, never>;
 
   // Fetch yesterday's transactions for price change / charged detection
   const yesterday = new Date();

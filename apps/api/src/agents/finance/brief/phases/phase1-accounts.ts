@@ -25,6 +25,7 @@ export async function phase1FetchAccounts(
       id: dataSourceConnections.id,
       agentInstanceId: dataSourceConnections.agentInstanceId,
       credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
+      displayName: dataSourceConnections.displayName,
     })
     .from(dataSourceConnections)
     .where(
