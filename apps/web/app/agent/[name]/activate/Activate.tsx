@@ -397,6 +397,12 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   const [connectError, setConnectError] = useState<string | null>(null);
   const [institutions, setInstitutions] = useState<PopularInstitution[]>([]);
   const [connectingInstitutionId, setConnectingInstitutionId] = useState<string | null>(null);
+  // File-upload onboarding path — equal-footing alternative to Plaid for
+  // countries Plaid doesn't cover and accounts whose connection broke.
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; transactions: number }>>([]);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const country = typeof window !== 'undefined' ? detectCountry() : 'US';
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [newGoal, setNewGoal] = useState('');
@@ -498,9 +504,12 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
           },
         });
         await refreshConnections(agentInstanceId);
-        // Kick off an inline sync so transactions + subscriptions show up.
-        // Fire-and-forget so the tile appears immediately.
-        api.syncAgent(agentInstanceId).catch(() => {});
+        // Kick off ingest → categorize chain in the background so the tile
+        // appears immediately. Categorize runs the LLM over each new
+        // merchant cluster.
+        api.syncAgent(agentInstanceId)
+          .then(() => api.categorizeFinance())
+          .catch((err) => console.warn('[onboarding] post-sync analyze failed', err));
       } catch (err) {
         setConnectError(err instanceof Error ? err.message : 'Failed to finalize bank');
       } finally {
@@ -592,6 +601,38 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     } catch {
       // On failure, refetch to restore truth
       await refreshConnections(agentInstanceId);
+    }
+  };
+
+  const uploadStatement = async (file: File) => {
+    if (!agentInstanceId || uploadBusy) return;
+    setUploadError(null);
+    setUploadBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.uploadFile(formData);
+      setUploadedFiles((prev) => [...prev, { name: file.name, transactions: result.transactions }]);
+      // File upload creates a data-source connection on the backend — surface it
+      // alongside Plaid connections so the user sees they have data.
+      await refreshConnections(agentInstanceId);
+      // Fire categorization in the background so insights are ready when the
+      // user clicks Activate.
+      api.categorizeFinance().catch((err) =>
+        console.warn('[onboarding] post-upload categorize failed', err),
+      );
+    } catch (err) {
+      setUploadError((err as { message?: string })?.message ?? 'Upload failed');
+    } finally {
+      setUploadBusy(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
+  };
+
+  const onUploadInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    for (const f of files) {
+      await uploadStatement(f);
     }
   };
 
@@ -1281,6 +1322,96 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                         {connectError}
                       </p>
                     )}
+
+                    {/* Alternative ingest path: upload bank statements. Works in
+                        countries Plaid doesn't cover and for accounts whose
+                        bank connection isn't supported or has broken. */}
+                    <div style={{
+                      marginTop: '24px',
+                      paddingTop: '20px',
+                      borderTop: '1px solid var(--border-light)',
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap',
+                      }}>
+                        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                          <p style={{
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            margin: '0 0 4px',
+                            color: 'var(--text)',
+                          }}>
+                            Don&apos;t see your bank? Upload statements instead.
+                          </p>
+                          <p style={{
+                            fontSize: '0.72rem',
+                            color: 'var(--text-dim)',
+                            margin: 0,
+                          }}>
+                            PDF, CSV, or image. Same analysis, no bank link required.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={uploadBusy || !agentInstanceId}
+                          onClick={() => uploadInputRef.current?.click()}
+                          style={{
+                            padding: '10px 16px',
+                            borderRadius: '10px',
+                            border: '1px solid var(--border-light)',
+                            background: 'var(--bg)',
+                            color: 'var(--text)',
+                            fontSize: '0.78rem',
+                            fontWeight: 500,
+                            fontFamily: 'inherit',
+                            cursor: uploadBusy ? 'wait' : 'pointer',
+                            opacity: uploadBusy || !agentInstanceId ? 0.6 : 1,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {uploadBusy ? 'Parsing…' : 'Upload statement'}
+                        </button>
+                        <input
+                          ref={uploadInputRef}
+                          type="file"
+                          accept=".pdf,.csv,.txt,.jpg,.jpeg,.png,.webp"
+                          multiple
+                          style={{ display: 'none' }}
+                          onChange={onUploadInputChange}
+                        />
+                      </div>
+                      {uploadedFiles.length > 0 && (
+                        <div style={{
+                          marginTop: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                        }}>
+                          {uploadedFiles.map((f, i) => (
+                            <p key={i} style={{
+                              fontSize: '0.72rem',
+                              color: 'var(--text-dim)',
+                              margin: 0,
+                            }}>
+                              ✓ {f.name} — {f.transactions} transactions
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {uploadError && (
+                        <p style={{
+                          marginTop: '10px',
+                          fontSize: '0.72rem',
+                          color: '#dc2626',
+                        }}>
+                          {uploadError}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   </div>
                 </div>

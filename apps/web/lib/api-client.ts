@@ -253,6 +253,20 @@ export class ApiClient {
     );
   }
 
+  /**
+   * Run LLM categorization across all transactions for the user's finance
+   * agent. Takes ~30-90s depending on how many unique merchants the user has.
+   */
+  async categorizeFinance() {
+    return this.post<{
+      clustersAnalyzed: number;
+      clustersSkippedCached: number;
+      txnsBackfilled: number;
+      orphansBackfilled: number;
+      errors: Array<{ merchant: string; error: string }>;
+    }>(`/api/finance/categorize`);
+  }
+
   async getInsights(options?: {
     unreadOnly?: boolean;
     agentTypeId?: string;
@@ -307,7 +321,10 @@ export class ApiClient {
    * Upload a bank statement file. Uses FormData (not JSON), so we bypass
    * the normal request() method and construct the fetch manually.
    */
-  async uploadFile(formData: FormData): Promise<{ transactions: number; insights: number }> {
+  async uploadFile(formData: FormData): Promise<{
+    transactions: number;
+    file: { name: string; size: number; type: string };
+  }> {
     const token = await this.getToken();
     if (!token) throw { status: 401, message: 'Not authenticated' } satisfies ApiError;
 
@@ -326,7 +343,7 @@ export class ApiClient {
       } satisfies ApiError;
     }
 
-    return data as { transactions: number; insights: number };
+    return data as { transactions: number; file: { name: string; size: number; type: string } };
   }
 
   /**

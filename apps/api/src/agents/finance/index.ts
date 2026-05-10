@@ -1,6 +1,5 @@
 import type { AgentRegistry } from "../../platform/registry/agent-registry";
 import type { AgentTypeDefinition } from "../../platform/registry/types";
-import { subscriptionsSkill } from "./skills/subscriptions.skill";
 import { plaidAdapter } from "./data-sources/plaid.adapter";
 import { fileUploadAdapter } from "./data-sources/file-upload.adapter";
 
@@ -10,7 +9,7 @@ export const financeAgent: AgentTypeDefinition = {
   description: "Watches your money. Finds patterns. Delivers insights.",
   icon: "wallet",
   dataSources: [plaidAdapter, fileUploadAdapter],
-  skills: [subscriptionsSkill],
+  skills: [],
 };
 
 export function register(registry: AgentRegistry): void {

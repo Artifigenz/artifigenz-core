@@ -29,6 +29,20 @@
       "when": 1778302566451,
       "tag": "0003_add-connection-health-fields",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778440279650,
+      "tag": "0004_unified_finance_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778446225560,
+      "tag": "0005_drop_legacy_finance_tables",
+      "breakpoints": true
     }
   ]
 }

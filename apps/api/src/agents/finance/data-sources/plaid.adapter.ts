@@ -1,13 +1,8 @@
 import { eq } from "drizzle-orm";
-import {
-  CountryCode,
-  Products,
-  type Transaction as PlaidTransaction,
-} from "plaid";
+import { CountryCode, Products } from "plaid";
 import {
   db,
   dataSourceConnections,
-  financeTransactions,
   agentInstances,
   users,
 } from "@artifigenz/db";
@@ -18,6 +13,7 @@ import type {
   NormalizedData,
 } from "../../../platform/registry/types";
 import { getPlaidClient } from "../lib/plaid-client";
+import { ingestPlaidConnection } from "../ingest/plaid-ingest";
 
 interface PlaidCredentials {
   accessToken: string;
@@ -161,136 +157,35 @@ export const plaidAdapter: DataSourceTypeDefinition = {
   },
 
   /**
-   * Syncs transactions using Plaid's cursor-based /transactions/sync.
-   * Upserts into finance_transactions. Returns the raw transactions for downstream.
-   * Tracks sync health for UX (shows when reconnection or upload is needed).
+   * Sync delegates to ingest/plaid-ingest which:
+   *   - upserts finance_accounts via (institution + last4) identity
+   *   - cursor-syncs Plaid transactions with dedup
+   * Returns a synthetic array sized by inserted-count so the sync worker
+   * logs a meaningful number.
    */
   async sync(connection): Promise<NormalizedData[]> {
-    // Re-fetch the connection from DB so we have fresh credentials + cursor
-    // Select only core columns to avoid issues with new columns that may not exist yet
-    const [dbConn] = await db
-      .select({
-        id: dataSourceConnections.id,
-        agentInstanceId: dataSourceConnections.agentInstanceId,
-        credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
-        syncCursor: dataSourceConnections.syncCursor,
-        consecutiveFailures: dataSourceConnections.consecutiveFailures,
-      })
-      .from(dataSourceConnections)
-      .where(eq(dataSourceConnections.id, connection.id))
-      .limit(1);
-
-    if (!dbConn) throw new Error(`Connection ${connection.id} not found`);
-
-    const creds = dbConn.credentialsEncrypted as unknown as PlaidCredentials;
-    const plaid = getPlaidClient();
-
-    let cursor = dbConn.syncCursor ?? undefined;
-    const added: PlaidTransaction[] = [];
-    const modified: PlaidTransaction[] = [];
-    const removed: string[] = [];
-    let hasMore = true;
-
     try {
-      while (hasMore) {
-        const response = await plaid.transactionsSync({
-          access_token: creds.accessToken,
-          cursor,
-        });
-        added.push(...response.data.added);
-        modified.push(...response.data.modified);
-        removed.push(...response.data.removed.map((r) => r.transaction_id));
-        hasMore = response.data.has_more;
-        cursor = response.data.next_cursor;
-      }
-
-      // Build account_id → account_name map
-      const accountsResponse = await plaid.accountsGet({
-        access_token: creds.accessToken,
-      });
-      const accountMap = new Map<string, string>();
-      for (const acc of accountsResponse.data.accounts) {
-        accountMap.set(acc.account_id, acc.name);
-      }
-
-      // Normalize + upsert added transactions
-      for (const tx of added) {
-        if (tx.pending) continue; // Skip pending transactions
-
-        await db
-          .insert(financeTransactions)
-          .values({
-            agentInstanceId: dbConn.agentInstanceId,
-            dataSourceConnectionId: dbConn.id,
-            transactionDate: tx.date,
-            description: tx.name,
-            merchantName: tx.merchant_name ?? null,
-            amount: tx.amount.toString(),
-            category: tx.personal_finance_category?.primary ?? null,
-            accountName: accountMap.get(tx.account_id) ?? null,
-            source: "plaid",
-            plaidTransactionId: tx.transaction_id,
-            rawData: tx as unknown as Record<string, unknown>,
-          })
-          .onConflictDoNothing();
-      }
-
-      // Apply modifications
-      for (const tx of modified) {
-        await db
-          .update(financeTransactions)
-          .set({
-            description: tx.name,
-            merchantName: tx.merchant_name ?? null,
-            amount: tx.amount.toString(),
-            category: tx.personal_finance_category?.primary ?? null,
-          })
-          .where(eq(financeTransactions.plaidTransactionId, tx.transaction_id));
-      }
-
-      // Apply removals
-      for (const txId of removed) {
-        await db
-          .delete(financeTransactions)
-          .where(eq(financeTransactions.plaidTransactionId, txId));
-      }
-
-      // Success! Update cursor and reset health status
-      await db
-        .update(dataSourceConnections)
-        .set({
-          syncCursor: cursor,
-          lastSyncedAt: new Date(),
-          lastSyncStatus: "success",
-          lastSyncError: null,
-          requiresReauth: false,
-          consecutiveFailures: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(dataSourceConnections.id, dbConn.id));
-
+      const result = await ingestPlaidConnection(connection.id);
       console.log(
-        `[PlaidAdapter] Synced: +${added.length} added, ~${modified.length} modified, -${removed.length} removed`,
+        `[PlaidAdapter] Ingest: +${result.transactionsInserted} new, ` +
+          `${result.transactionsSkipped} dedup-skipped, ` +
+          `~${result.transactionsModified} modified, ` +
+          `-${result.transactionsRemoved} removed, ` +
+          `${result.accountsUpserted} accounts`,
       );
-
-      return added.map((tx) => ({ ...tx })) as unknown as NormalizedData[];
+      // Return an array of the right length for downstream record counting.
+      return Array.from({ length: result.transactionsInserted }, () => ({}) as NormalizedData);
     } catch (err) {
-      // Check if this is an auth-related error
       const plaidError = (err as { response?: { data?: {
         error_code?: string;
         error_message?: string;
-        error_type?: string;
       } } }).response?.data;
 
       const errorCode = plaidError?.error_code;
       const errorMessage = plaidError?.error_message ?? (err instanceof Error ? err.message : "Sync failed");
-
-      // ITEM_LOGIN_REQUIRED means the bank session expired and user needs to re-auth
       const requiresReauth = errorCode === "ITEM_LOGIN_REQUIRED" ||
         errorCode === "INVALID_ACCESS_TOKEN" ||
         errorCode === "ITEM_LOCKED";
-
-      const currentFailures = (dbConn.consecutiveFailures ?? 0) + 1;
 
       await db
         .update(dataSourceConnections)
@@ -298,12 +193,11 @@ export const plaidAdapter: DataSourceTypeDefinition = {
           lastSyncStatus: "error",
           lastSyncError: errorMessage,
           requiresReauth,
-          consecutiveFailures: currentFailures,
           updatedAt: new Date(),
         })
-        .where(eq(dataSourceConnections.id, dbConn.id));
+        .where(eq(dataSourceConnections.id, connection.id));
 
-      console.error(`[PlaidAdapter] Sync failed (${errorCode}): ${errorMessage}`);
+      console.error(`[PlaidAdapter] Sync failed (${errorCode ?? "?"}): ${errorMessage}`);
       throw err;
     }
   },

@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
 import { db, agentInstances, users } from "@artifigenz/db";
 import { getRedisConnection } from "../queues";
-import { runBriefGeneration } from "../../../agents/finance/brief/orchestrator";
+import { generateAndStoreBrief } from "../../../agents/finance/aggregate";
 import { randomUUID } from "node:crypto";
 
 /**
@@ -38,7 +38,7 @@ export function createBriefRefreshWorker() {
           // Full regeneration — insert a new brief row with fresh LLM call.
           // generation_id is unused here (no SSE subscriber), but the
           // orchestrator still emits into its Map; the entry expires via TTL.
-          await runBriefGeneration(userId, agentInstanceId, randomUUID());
+          await generateAndStoreBrief(userId, agentInstanceId, randomUUID());
 
           succeeded += 1;
         } catch (err) {
