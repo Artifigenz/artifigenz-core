@@ -71,31 +71,6 @@ export const financeTransactions = pgTable(
   ],
 );
 
-// ─── Detected Subscriptions ────────────────────────────────────────
-
-export const financeSubscriptions = pgTable(
-  "finance_subscriptions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    agentInstanceId: uuid("agent_instance_id")
-      .notNull()
-      .references(() => agentInstances.id, { onDelete: "cascade" }),
-    merchantName: varchar("merchant_name", { length: 255 }).notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-    frequency: varchar("frequency", { length: 20 }).notNull(),
-    lastChargeDate: date("last_charge_date"),
-    nextChargeDate: date("next_charge_date"),
-    chargeDay: varchar("charge_day", { length: 20 }),
-    accountName: varchar("account_name", { length: 100 }),
-    status: varchar("status", { length: 20 }).default("active"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  },
-  (table) => [
-    index("idx_finance_subs_next").on(table.nextChargeDate),
-  ],
-);
-
 // ─── Accounts (source-agnostic: Plaid or file upload) ──────────────
 // Identity across sources: (agent_instance_id, institution_name, account_last4)
 
@@ -174,63 +149,6 @@ export const merchantClusters = pgTable(
   ],
 );
 
-// ─── Recurring Streams (Plaid /transactions/recurring/get cache) ───
-
-export const financeRecurringStreams = pgTable(
-  "finance_recurring_streams",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    agentInstanceId: uuid("agent_instance_id")
-      .notNull()
-      .references(() => agentInstances.id, { onDelete: "cascade" }),
-    plaidStreamId: varchar("plaid_stream_id", { length: 255 }).notNull(),
-    direction: varchar("direction", { length: 10 }).notNull(), // inflow | outflow
-    plaidAccountId: varchar("plaid_account_id", { length: 255 }),
-    merchantName: varchar("merchant_name", { length: 255 }),
-    description: text("description"),
-    averageAmount: decimal("average_amount", { precision: 14, scale: 2 }).notNull(),
-    frequency: varchar("frequency", { length: 30 }).notNull(),
-    lastDate: date("last_date"),
-    predictedNextDate: date("predicted_next_date"),
-    firstDate: date("first_date"),
-    status: varchar("status", { length: 30 }).notNull(),
-    pfcPrimary: varchar("pfc_primary", { length: 50 }), // Plaid Personal Finance Category (INCOME, TRANSFER_IN, etc.)
-    // LLM-powered categorization
-    category: varchar("category", { length: 30 }), // subscription, loan, fee, rent, utility, insurance, transfer, variable, income
-    categorySource: varchar("category_source", { length: 20 }), // llm, global_cache, user_override
-    categoryConfidence: decimal("category_confidence", { precision: 3, scale: 2 }), // 0.00 - 1.00
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("idx_recurring_streams_instance_stream").on(
-      table.agentInstanceId,
-      table.plaidStreamId,
-    ),
-    index("idx_recurring_streams_dir").on(table.agentInstanceId, table.direction),
-    index("idx_recurring_streams_category").on(table.agentInstanceId, table.category),
-  ],
-);
-
-// ─── Global Merchant Categories (LLM-learned, shared across all users) ───
-
-export const merchantCategories = pgTable(
-  "merchant_categories",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    merchantNameNormalized: varchar("merchant_name_normalized", { length: 255 }).notNull().unique(),
-    category: varchar("category", { length: 30 }).notNull(), // subscription, loan, fee, rent, utility, insurance, transfer, variable
-    confidence: decimal("confidence", { precision: 3, scale: 2 }), // LLM confidence 0.00 - 1.00
-    reasoning: text("reasoning"), // LLM's explanation
-    source: varchar("source", { length: 20 }).notNull(), // llm, llm_search, manual
-    usageCount: integer("usage_count").default(1), // How many times this has been used
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-  },
-  (table) => [
-    index("idx_merchant_categories_category").on(table.category),
-  ],
-);
-
 // ─── Briefs (The Finance agent's home screen output) ───────────────
 
 export const financeBriefs = pgTable(
@@ -286,27 +204,6 @@ export const financeInsights = pgTable(
     index("idx_finance_insights_user_date").on(table.userId, table.date),
     index("idx_finance_insights_instance").on(table.agentInstanceId, table.date),
     index("idx_finance_insights_skill").on(table.skill, table.type),
-  ],
-);
-
-// ─── Recurring Stream Snapshots (for detecting new/cancelled subs) ──
-
-export const financeRecurringSnapshots = pgTable(
-  "finance_recurring_snapshots",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    agentInstanceId: uuid("agent_instance_id")
-      .notNull()
-      .references(() => agentInstances.id, { onDelete: "cascade" }),
-    snapshotDate: date("snapshot_date").notNull(),
-    streams: jsonb("streams").notNull(), // Array of stream objects
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex("idx_recurring_snapshots_instance_date").on(
-      table.agentInstanceId,
-      table.snapshotDate,
-    ),
   ],
 );
 

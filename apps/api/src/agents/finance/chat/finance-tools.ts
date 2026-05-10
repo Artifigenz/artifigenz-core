@@ -2,10 +2,27 @@ import { and, eq, gte, lte, desc, like, sql } from "drizzle-orm";
 import {
   db,
   financeTransactions,
-  financeSubscriptions,
+  merchantClusters,
   agentInstances,
 } from "@artifigenz/db";
 import type { ChatToolDefinition } from "../../../platform/chat/types";
+
+function cadenceToDays(cadence: string | null): number | null {
+  switch (cadence) {
+    case "weekly":
+      return 7;
+    case "biweekly":
+      return 14;
+    case "monthly":
+      return 30;
+    case "quarterly":
+      return 90;
+    case "annual":
+      return 365;
+    default:
+      return null;
+  }
+}
 
 async function getFinanceAgent(userId: string) {
   const [agent] = await db
@@ -41,34 +58,43 @@ export const financeTools: ChatToolDefinition[] = [
 
       const subs = await db
         .select()
-        .from(financeSubscriptions)
+        .from(merchantClusters)
         .where(
           and(
-            eq(financeSubscriptions.agentInstanceId, agent.id),
-            eq(financeSubscriptions.status, "active"),
+            eq(merchantClusters.agentInstanceId, agent.id),
+            eq(merchantClusters.category, "subscription"),
+            eq(merchantClusters.isRecurring, true),
           ),
         );
 
-      const sortBy = (input.sortBy as string) ?? "amount";
-      const sorted = [...subs].sort((a, b) => {
-        if (sortBy === "amount") return Number(b.amount) - Number(a.amount);
-        if (sortBy === "next_charge") {
-          return (a.nextChargeDate ?? "").localeCompare(b.nextChargeDate ?? "");
+      const withNextCharge = subs.map((s) => {
+        const days = cadenceToDays(s.cadence);
+        let nextCharge: string | null = null;
+        if (s.lastSeenDate && days) {
+          const next = new Date(s.lastSeenDate);
+          next.setDate(next.getDate() + days);
+          nextCharge = next.toISOString().slice(0, 10);
         }
-        return (a.merchantName ?? "").localeCompare(b.merchantName ?? "");
+        return {
+          merchant: s.displayName ?? s.merchantNormalized,
+          amount: Number(s.monthlyAmount ?? 0),
+          frequency: s.cadence ?? "irregular",
+          lastCharge: s.lastSeenDate,
+          nextCharge,
+          account: null as string | null,
+        };
       });
 
-      return {
-        subscriptions: sorted.map((s) => ({
-          merchant: s.merchantName,
-          amount: Number(s.amount),
-          frequency: s.frequency,
-          lastCharge: s.lastChargeDate,
-          nextCharge: s.nextChargeDate,
-          account: s.accountName,
-        })),
-        totalCount: sorted.length,
-      };
+      const sortBy = (input.sortBy as string) ?? "amount";
+      const sorted = [...withNextCharge].sort((a, b) => {
+        if (sortBy === "amount") return b.amount - a.amount;
+        if (sortBy === "next_charge") {
+          return (a.nextCharge ?? "").localeCompare(b.nextCharge ?? "");
+        }
+        return (a.merchant ?? "").localeCompare(b.merchant ?? "");
+      });
+
+      return { subscriptions: sorted, totalCount: sorted.length };
     },
   },
 
@@ -94,28 +120,37 @@ export const financeTools: ChatToolDefinition[] = [
 
       const subs = await db
         .select()
-        .from(financeSubscriptions)
+        .from(merchantClusters)
         .where(
           and(
-            eq(financeSubscriptions.agentInstanceId, agent.id),
-            gte(financeSubscriptions.nextChargeDate, today),
-            lte(financeSubscriptions.nextChargeDate, futureStr),
+            eq(merchantClusters.agentInstanceId, agent.id),
+            eq(merchantClusters.isRecurring, true),
           ),
         );
 
-      const sorted = [...subs].sort((a, b) =>
-        (a.nextChargeDate ?? "").localeCompare(b.nextChargeDate ?? ""),
-      );
+      // Predict next charge from last_seen + cadence interval.
+      const charges = subs
+        .map((s) => {
+          const cadenceDays = cadenceToDays(s.cadence);
+          if (!s.lastSeenDate || !cadenceDays) return null;
+          const next = new Date(s.lastSeenDate);
+          next.setDate(next.getDate() + cadenceDays);
+          const nextStr = next.toISOString().slice(0, 10);
+          if (nextStr < today || nextStr > futureStr) return null;
+          return {
+            merchant: s.displayName ?? s.merchantNormalized,
+            amount: Number(s.monthlyAmount ?? 0),
+            date: nextStr,
+            account: null as string | null,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null)
+        .sort((a, b) => a.date.localeCompare(b.date));
 
       return {
-        charges: sorted.map((s) => ({
-          merchant: s.merchantName,
-          amount: Number(s.amount),
-          date: s.nextChargeDate,
-          account: s.accountName,
-        })),
-        totalAmount: sorted.reduce((sum, s) => sum + Number(s.amount), 0),
-        count: sorted.length,
+        charges,
+        totalAmount: charges.reduce((sum, c) => sum + c.amount, 0),
+        count: charges.length,
       };
     },
   },

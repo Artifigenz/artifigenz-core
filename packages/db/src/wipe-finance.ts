@@ -11,13 +11,9 @@ const sql = postgres(url, { max: 1 });
 const tables = [
   "finance_transactions",
   "finance_accounts",
-  "finance_recurring_streams",
-  "finance_subscriptions",
   "finance_briefs",
-  "finance_recurring_snapshots",
   "finance_insights",
   "file_uploads",
-  "merchant_categories",
   "merchant_clusters",
 ];
 

@@ -4,7 +4,7 @@ import {
   users,
   agentInstances,
   insights,
-  financeSubscriptions,
+  merchantClusters,
   healthDailySummaries,
 } from "@artifigenz/db";
 import type { ChatPromptContext } from "./types";
@@ -46,41 +46,48 @@ export async function loadPromptContext(params: {
   const financeAgent = activeAgents.find((a) => a.agentTypeId === "finance");
   if (financeAgent) {
     const subs = await db
-      .select()
-      .from(financeSubscriptions)
+      .select({
+        monthlyAmount: merchantClusters.monthlyAmount,
+        cadence: merchantClusters.cadence,
+        lastSeenDate: merchantClusters.lastSeenDate,
+      })
+      .from(merchantClusters)
       .where(
         and(
-          eq(financeSubscriptions.agentInstanceId, financeAgent.id),
-          eq(financeSubscriptions.status, "active"),
+          eq(merchantClusters.agentInstanceId, financeAgent.id),
+          eq(merchantClusters.category, "subscription"),
+          eq(merchantClusters.isRecurring, true),
         ),
       );
 
-    const monthlyTotal = subs.reduce((sum, s) => {
-      const amt = Number(s.amount);
-      switch (s.frequency) {
-        case "weekly":
-          return sum + amt * 4.33;
-        case "monthly":
-          return sum + amt;
-        case "quarterly":
-          return sum + amt / 3;
-        case "annual":
-          return sum + amt / 12;
-        default:
-          return sum;
-      }
-    }, 0);
+    const monthlyTotal = subs.reduce(
+      (sum, s) => sum + Number(s.monthlyAmount ?? 0),
+      0,
+    );
 
-    const today = new Date().toISOString().slice(0, 10);
-    const week = new Date();
-    week.setDate(week.getDate() + 7);
-    const weekStr = week.toISOString().slice(0, 10);
-    const upcomingCharges = subs.filter(
-      (s) =>
-        s.nextChargeDate &&
-        s.nextChargeDate >= today &&
-        s.nextChargeDate <= weekStr,
-    ).length;
+    // Approximate upcoming-charge count: monthly/weekly/biweekly subs whose
+    // last_seen is older than their cadence interval are likely due soon.
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const upcomingCharges = subs.filter((s) => {
+      if (!s.lastSeenDate) return false;
+      const cadenceDays =
+        s.cadence === "weekly"
+          ? 7
+          : s.cadence === "biweekly"
+            ? 14
+            : s.cadence === "monthly"
+              ? 30
+              : null;
+      if (!cadenceDays) return false;
+      const last = new Date(s.lastSeenDate);
+      const due = new Date(last.getTime() + cadenceDays * 86400000);
+      const dueStr = due.toISOString().slice(0, 10);
+      const weekFromToday = new Date(today.getTime() + 7 * 86400000)
+        .toISOString()
+        .slice(0, 10);
+      return dueStr >= todayStr && dueStr <= weekFromToday;
+    }).length;
 
     financeSnapshot = {
       subscriptionCount: subs.length,
