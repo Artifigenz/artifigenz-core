@@ -39,13 +39,25 @@ Sign convention:
 - Negative amount = money ENTERED the account (income, deposits, refunds, transfers in)
 
 Categories (pick exactly one):
-- income: salary, paychecks, deposits from an external income source
+- income: RECURRING deposits from an employer, business, or government source — paychecks,
+    salary, payroll, freelance retainer, pension, rental income, government benefits.
+    REQUIRES at least 2 deposits in a regular cadence, OR clear employer/payer wording
+    ("PAYROLL", "DIRECT DEPOSIT FROM <COMPANY>", "GOV CANADA"). A SINGLE deposit from
+    an individual person is NOT income — it's a transfer.
 - subscription: fixed recurring digital service charges (Netflix, gym, software, magazines)
 - loan_emi: recurring loan or installment payments (mortgage, car payment, Affirm, student loan)
 - fee_interest: bank fees, interest charges, NSF, overdraft, ATM fees, FX fees
 - variable_recurring: recurring bills with varying amounts (utilities, phone, internet, insurance)
-- internal_transfer: movements between the user's OWN accounts (you will be told which accounts they own)
+- internal_transfer: movements involving the user's OWN money:
+    - between their own accounts (you'll be told which they own)
+    - e-transfers / Interac transfers to or from themselves (same name as user)
+    - one-off money received from another individual (NOT an employer)
+    - credit card payments
 - miscellaneous: one-off spending — groceries, restaurants, retail, travel, anything not above
+
+When in doubt between income vs internal_transfer for an inflow, prefer internal_transfer.
+Income should be conservative — only label as income when there is a clear, repeated
+employment/business pattern.
 
 Cadence options: monthly, weekly, biweekly, quarterly, annual, irregular, one_time
 
@@ -64,15 +76,27 @@ Return ONLY valid JSON matching this schema, no markdown, no explanation:
   "reasoning": "<1-2 sentence explanation>"
 }`;
 
-function buildAccountsBlock(accounts: AccountContext[]): string {
-  if (accounts.length === 0) return "The user has no other accounts.";
+function buildAccountsBlock(
+  accounts: AccountContext[],
+  userName?: string | null,
+): string {
+  const nameLine = userName
+    ? `The user's name is: ${userName} (transfers to/from this name = self-transfer).`
+    : "";
+  if (accounts.length === 0) {
+    return [nameLine, "The user has no other accounts on record."]
+      .filter(Boolean)
+      .join("\n");
+  }
   const lines = accounts.map((a) => {
     const inst = a.institutionName ?? "Unknown bank";
     const last4 = a.accountLast4 ? `…${a.accountLast4}` : "(no number)";
     const type = a.type ?? "unknown type";
     return `- ${inst} ${last4} (${type})`;
   });
-  return `The user owns these accounts:\n${lines.join("\n")}`;
+  return [nameLine, `The user owns these accounts:\n${lines.join("\n")}`]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildTxnsBlock(cluster: MerchantCluster, accountMap: Map<string, AccountContext>): string {
@@ -121,12 +145,13 @@ function isCadence(s: unknown): s is Cadence {
 export async function classifyCluster(
   cluster: MerchantCluster,
   accounts: AccountContext[],
+  userName?: string | null,
 ): Promise<ClassificationResult> {
   const claude = getClaudeClient();
   const accountMap = new Map(accounts.map((a) => [a.id, a]));
 
   const userMessage = [
-    buildAccountsBlock(accounts),
+    buildAccountsBlock(accounts, userName),
     "",
     `Merchant: ${cluster.displayName}`,
     `Normalized key: ${cluster.merchantNormalized}`,

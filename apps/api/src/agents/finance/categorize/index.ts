@@ -3,6 +3,8 @@ import {
   db,
   financeTransactions,
   merchantClusters,
+  agentInstances,
+  users,
 } from "@artifigenz/db";
 import {
   buildClusters,
@@ -33,6 +35,14 @@ export async function categorizeAgentInstance(
 ): Promise<CategorizeResult> {
   const clusters = await buildClusters(agentInstanceId);
   const accounts = await loadAccountContext(agentInstanceId);
+
+  const [userRow] = await db
+    .select({ name: users.name })
+    .from(users)
+    .innerJoin(agentInstances, eq(agentInstances.userId, users.id))
+    .where(eq(agentInstances.id, agentInstanceId))
+    .limit(1);
+  const userName = userRow?.name ?? null;
 
   const existing = await db
     .select({
@@ -70,7 +80,7 @@ export async function categorizeAgentInstance(
     const batch = toAnalyze.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
       batch.map(async (cluster) => {
-        const result = await classifyCluster(cluster, accounts);
+        const result = await classifyCluster(cluster, accounts, userName);
         return { cluster, result };
       }),
     );

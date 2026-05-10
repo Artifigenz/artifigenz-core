@@ -99,6 +99,7 @@ app.get("/generate/:id/events", async (c) => {
 interface CategoryTotal {
   monthly: number;
   txnCount: number;
+  activeClusterCount?: number;
   topMerchants: Array<{ merchant: string; monthly: number; cadence: string | null }>;
 }
 
@@ -121,46 +122,50 @@ function homeSummary(digest: DigestSnapshot | null) {
   const breakdown = [];
 
   const sub = totals.subscription;
-  if (sub && sub.txnCount > 0) {
+  const subActive = sub?.activeClusterCount ?? 0;
+  if (sub && subActive > 0) {
     breakdown.push({
       id: "subscriptions",
       label: "Subscriptions",
-      sublabel: `${sub.txnCount} active`,
+      sublabel: `${subActive} active`,
       amount: sub.monthly,
-      count: sub.txnCount,
+      count: subActive,
     });
   }
 
   const loan = totals.loan_emi;
-  if (loan && loan.txnCount > 0) {
+  const loanActive = loan?.activeClusterCount ?? 0;
+  if (loan && loanActive > 0) {
     breakdown.push({
       id: "loans",
       label: "Loans & EMI",
-      sublabel: `${loan.txnCount} ${loan.txnCount === 1 ? "line" : "lines"}`,
+      sublabel: `${loanActive} ${loanActive === 1 ? "line" : "lines"}`,
       amount: loan.monthly,
-      count: loan.txnCount,
+      count: loanActive,
     });
   }
 
   const variable = totals.variable_recurring;
-  if (variable && variable.txnCount > 0) {
+  const varActive = variable?.activeClusterCount ?? 0;
+  if (variable && varActive > 0) {
     breakdown.push({
       id: "variable",
       label: "Variable recurring",
       sublabel: "utilities, phone, insurance",
       amount: variable.monthly,
-      count: variable.txnCount,
+      count: varActive,
     });
   }
 
   const fees = totals.fee_interest;
-  if (fees && fees.txnCount > 0) {
+  const feesActive = fees?.activeClusterCount ?? 0;
+  if (fees && feesActive > 0) {
     breakdown.push({
       id: "fees",
       label: "Fees & interest",
-      sublabel: `${fees.txnCount} charges`,
+      sublabel: `${feesActive} ${feesActive === 1 ? "charge" : "charges"}`,
       amount: fees.monthly,
-      count: fees.txnCount,
+      count: feesActive,
     });
   }
 
@@ -247,10 +252,24 @@ app.get("/breakdown", async (c) => {
 
   if (!brief) return c.json({ error: "No brief yet" }, 404);
 
-  const clusters = await db
+  const allClusters = await db
     .select()
     .from(merchantClusters)
     .where(eq(merchantClusters.agentInstanceId, instance.id));
+
+  // Hide recurring clusters that haven't seen activity in 60+ days so the
+  // breakdown matches the home card. Non-recurring clusters and recent ones
+  // pass through. Cancelled subscriptions still live in the DB for audit.
+  const STALE_DAYS = 60;
+  const todayMs = Date.now();
+  const isStale = (lastSeen: string | null) => {
+    if (!lastSeen) return true;
+    const last = new Date(lastSeen + "T00:00:00Z").getTime();
+    return (todayMs - last) / 86400000 > STALE_DAYS;
+  };
+  const clusters = allClusters.filter(
+    (c) => !c.isRecurring || !isStale(c.lastSeenDate),
+  );
 
   const accounts = await db
     .select()
