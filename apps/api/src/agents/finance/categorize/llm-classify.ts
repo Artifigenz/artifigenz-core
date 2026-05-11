@@ -34,30 +34,49 @@ export interface ClassificationResult {
 
 const SYSTEM_PROMPT = `You categorize merchants based on a user's transaction history.
 
-Sign convention:
-- Positive amount = money LEFT the account (spending, payments, fees)
-- Negative amount = money ENTERED the account (income, deposits, refunds, transfers in)
+SIGN CONVENTION — READ CAREFULLY:
+- Positive amount = money LEFT the account (spending, payments, fees, charges)
+- Negative amount = money ENTERED the account (deposits, income, refunds, transfers in)
+
+This sign convention is the most important signal:
+- If ALL transactions for a merchant are NEGATIVE, this is an INFLOW pattern.
+  Inflows can ONLY be: income OR internal_transfer. NEVER subscription, loan_emi,
+  fee_interest, variable_recurring, or miscellaneous — those are by definition
+  money going OUT of the account.
+- If ALL transactions are POSITIVE, this is an OUTFLOW. It can be subscription,
+  loan_emi, fee_interest, variable_recurring, or miscellaneous. NEVER income.
+- Mixed signs usually means internal_transfer (the user moves money in both
+  directions) or fee_interest (banks credit then re-debit).
+
+Do not let the merchant NAME override the sign. A company named "Microsoft" can
+be the user's EMPLOYER if all the deposits are negative and regular — in that
+case it is INCOME, not a subscription.
 
 Categories (pick exactly one):
-- income: RECURRING deposits from an employer, business, or government source — paychecks,
-    salary, payroll, freelance retainer, pension, rental income, government benefits.
-    REQUIRES at least 2 deposits in a regular cadence, OR clear employer/payer wording
-    ("PAYROLL", "DIRECT DEPOSIT FROM <COMPANY>", "GOV CANADA"). A SINGLE deposit from
-    an individual person is NOT income — it's a transfer.
-- subscription: fixed recurring digital service charges (Netflix, gym, software, magazines)
-- loan_emi: recurring loan or installment payments (mortgage, car payment, Affirm, student loan)
-- fee_interest: bank fees, interest charges, NSF, overdraft, ATM fees, FX fees
-- variable_recurring: recurring bills with varying amounts (utilities, phone, internet, insurance)
-- internal_transfer: movements involving the user's OWN money:
-    - between their own accounts (you'll be told which they own)
+- income: RECURRING deposits from an employer, business, or government source —
+    paychecks, salary, payroll, freelance retainer, pension, rental income,
+    government benefits. Strong signals: at least 2 deposits in a regular cadence
+    (biweekly, monthly), OR clear payer wording ("PAYROLL", "PAY", "DEPOSIT FROM
+    <COMPANY>", "GOV CANADA"). A SINGLE deposit from an individual person is NOT
+    income — it's an internal_transfer.
+- subscription: fixed recurring digital service charges going OUT (Netflix, gym,
+    software, magazines). All amounts must be positive.
+- loan_emi: recurring loan or installment payments going OUT (mortgage, car
+    payment, Affirm, student loan). All amounts must be positive.
+- fee_interest: bank fees, interest charges, NSF, overdraft, ATM fees, FX fees.
+- variable_recurring: recurring bills with varying amounts going OUT (utilities,
+    phone, internet, insurance). All amounts must be positive.
+- internal_transfer: any movement that isn't income/spending —
+    - between the user's OWN accounts
     - e-transfers / Interac transfers to or from themselves (same name as user)
     - one-off money received from another individual (NOT an employer)
-    - credit card payments
-- miscellaneous: one-off spending — groceries, restaurants, retail, travel, anything not above
+    - credit card payments, line-of-credit payments
+    - investment account contributions / withdrawals
+- miscellaneous: one-off SPENDING — groceries, restaurants, retail, travel,
+    anything not above. All amounts must be positive.
 
-When in doubt between income vs internal_transfer for an inflow, prefer internal_transfer.
-Income should be conservative — only label as income when there is a clear, repeated
-employment/business pattern.
+When in doubt between income vs internal_transfer for an inflow, prefer
+internal_transfer unless there's a clear employer/business pattern.
 
 Cadence options: monthly, weekly, biweekly, quarterly, annual, irregular, one_time
 
@@ -181,20 +200,52 @@ export async function classifyCluster(
     );
   }
 
-  const category: Category = isCategory(parsed.category)
+  let category: Category = isCategory(parsed.category)
     ? parsed.category
     : "miscellaneous";
-  const cadence: Cadence = isCadence(parsed.cadence) ? parsed.cadence : "irregular";
+  let cadence: Cadence = isCadence(parsed.cadence) ? parsed.cadence : "irregular";
+  let isRecurring = parsed.is_recurring === true;
+  let reasoning =
+    typeof parsed.reasoning === "string" ? parsed.reasoning.slice(0, 400) : "";
+
+  // Sign-sanity post-check. The LLM occasionally pattern-matches on a merchant
+  // name and misses that all amounts are negative (an inflow) — e.g. classifies
+  // a "Microsoft" payroll deposit as a subscription. Force inflows into
+  // {income, internal_transfer} and outflows out of {income}.
+  const allNegative = cluster.txns.every((t) => t.amount < 0);
+  const allPositive = cluster.txns.every((t) => t.amount > 0);
+  const EXPENSE_CATEGORIES: Category[] = [
+    "subscription",
+    "loan_emi",
+    "fee_interest",
+    "variable_recurring",
+    "miscellaneous",
+  ];
+
+  if (allNegative && EXPENSE_CATEGORIES.includes(category)) {
+    // Inflows can't be expenses. Promote to income if the LLM thought it was
+    // recurring, otherwise treat as a transfer.
+    const recurringCadence = ["weekly", "biweekly", "monthly", "quarterly", "annual"];
+    if (isRecurring && recurringCadence.includes(cadence)) {
+      category = "income";
+      reasoning = `[sign-corrected: all amounts negative, recurring] ${reasoning}`;
+    } else {
+      category = "internal_transfer";
+      isRecurring = false;
+      reasoning = `[sign-corrected: all amounts negative, one-off] ${reasoning}`;
+    }
+  } else if (allPositive && category === "income") {
+    // Outflows can't be income. Most likely miscellaneous spending.
+    category = "miscellaneous";
+    reasoning = `[sign-corrected: all amounts positive, can't be income] ${reasoning}`;
+  }
 
   return {
     category,
-    isRecurring: parsed.is_recurring === true,
+    isRecurring,
     cadence,
     monthlyAmount: Math.abs(clampNumber(parsed.monthly_amount, 0, 1_000_000, 0)),
     confidence: clampNumber(parsed.confidence, 0, 1, 0.5),
-    reasoning:
-      typeof parsed.reasoning === "string"
-        ? parsed.reasoning.slice(0, 400)
-        : "",
+    reasoning,
   };
 }

@@ -61,12 +61,16 @@ export const plaidAdapter: DataSourceTypeDefinition = {
     if (!user) throw new Error(`User ${instance.userId} not found`);
 
     const plaid = getPlaidClient();
+    // days_requested controls how far back Plaid backfills history on initial
+    // pull. Default is ~30 days, which gives the LLM almost nothing to detect
+    // recurring patterns from. 730 is the Plaid maximum.
     const response = await plaid.linkTokenCreate({
       user: { client_user_id: user.id },
       client_name: "Artifigenz",
       products: [Products.Transactions],
       country_codes: [CountryCode.Us, CountryCode.Ca],
       language: "en",
+      transactions: { days_requested: 730 },
       ...(options?.redirectUri ? { redirect_uri: options.redirectUri } : {}),
       ...(options?.institutionId ? { institution_id: options.institutionId } : {}),
     });
