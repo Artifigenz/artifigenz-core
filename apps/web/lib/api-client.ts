@@ -271,6 +271,19 @@ export class ApiClient {
    * Fetch every consolidated transaction for the user's finance agent — the
    * source-of-truth table backing the breakdown page.
    */
+  /**
+   * Devtools: nuke all finance data and the agent instance for the caller.
+   * Plaid OAuth tokens are deleted — you'll re-link banks on the next
+   * onboarding pass.
+   */
+  async wipeFinanceAgent() {
+    return this.post<{
+      success: boolean;
+      message: string;
+      removed: Record<string, number>;
+    }>('/api/finance/wipe');
+  }
+
   async getFinanceTransactions() {
     return this.get<{
       count: number;

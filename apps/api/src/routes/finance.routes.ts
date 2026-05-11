@@ -1,10 +1,17 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   db,
   agentInstances,
   financeTransactions,
   financeAccounts,
+  financeBriefs,
+  financeInsights,
+  merchantClusters,
+  fileUploads,
+  dataSourceConnections,
+  insights,
+  agentInstanceSkills,
 } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import {
@@ -124,6 +131,110 @@ app.get("/transactions", async (c) => {
       ...r,
       amount: parseFloat(r.amount),
     })),
+  });
+});
+
+/**
+ * POST /api/finance/wipe
+ *   Devtools: nuke all finance data and connections for the caller, including
+ *   the agent_instance itself, so the next page load starts onboarding from
+ *   zero. Plaid OAuth tokens are deleted (you'll re-link banks).
+ *
+ *   Returns counts of what was removed.
+ */
+app.post("/wipe", async (c) => {
+  const user = c.get("user");
+
+  const instances = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    );
+
+  if (instances.length === 0) {
+    return c.json({
+      success: true,
+      message: "No finance agent to wipe.",
+      removed: {},
+    });
+  }
+
+  const instanceIds = instances.map((i) => i.id);
+
+  // Order matters: delete children before parents. Most tables cascade from
+  // agent_instances, but we delete explicitly so we can return counts.
+  const accountsDel = await db
+    .delete(financeAccounts)
+    .where(inArray(financeAccounts.agentInstanceId, instanceIds))
+    .returning({ id: financeAccounts.id });
+  const txsDel = await db
+    .delete(financeTransactions)
+    .where(inArray(financeTransactions.agentInstanceId, instanceIds))
+    .returning({ id: financeTransactions.id });
+  const clustersDel = await db
+    .delete(merchantClusters)
+    .where(inArray(merchantClusters.agentInstanceId, instanceIds))
+    .returning({ id: merchantClusters.id });
+  const briefsDel = await db
+    .delete(financeBriefs)
+    .where(inArray(financeBriefs.agentInstanceId, instanceIds))
+    .returning({ id: financeBriefs.id });
+  const financeInsightsDel = await db
+    .delete(financeInsights)
+    .where(inArray(financeInsights.agentInstanceId, instanceIds))
+    .returning({ id: financeInsights.id });
+  const platformInsightsDel = await db
+    .delete(insights)
+    .where(inArray(insights.agentInstanceId, instanceIds))
+    .returning({ id: insights.id });
+  const uploadsDel = await db
+    .delete(fileUploads)
+    .where(
+      inArray(
+        fileUploads.dataSourceConnectionId,
+        db
+          .select({ id: dataSourceConnections.id })
+          .from(dataSourceConnections)
+          .where(inArray(dataSourceConnections.agentInstanceId, instanceIds)),
+      ),
+    )
+    .returning({ id: fileUploads.id });
+  const connsDel = await db
+    .delete(dataSourceConnections)
+    .where(inArray(dataSourceConnections.agentInstanceId, instanceIds))
+    .returning({ id: dataSourceConnections.id });
+  const skillsDel = await db
+    .delete(agentInstanceSkills)
+    .where(inArray(agentInstanceSkills.agentInstanceId, instanceIds))
+    .returning({ id: agentInstanceSkills.id });
+  const instancesDel = await db
+    .delete(agentInstances)
+    .where(inArray(agentInstances.id, instanceIds))
+    .returning({ id: agentInstances.id });
+
+  console.log(
+    `[finance/wipe] user ${user.id}: removed instance(s) ${instanceIds.join(", ")}`,
+  );
+
+  return c.json({
+    success: true,
+    message: "Finance agent wiped. Refresh to start onboarding fresh.",
+    removed: {
+      agentInstances: instancesDel.length,
+      connections: connsDel.length,
+      accounts: accountsDel.length,
+      transactions: txsDel.length,
+      merchantClusters: clustersDel.length,
+      briefs: briefsDel.length,
+      financeInsights: financeInsightsDel.length,
+      platformInsights: platformInsightsDel.length,
+      fileUploads: uploadsDel.length,
+      agentInstanceSkills: skillsDel.length,
+    },
   });
 });
 

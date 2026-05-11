@@ -4,10 +4,12 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useUser, useClerk, useAuth } from '@clerk/nextjs';
 import { useTheme } from '@/components/ThemeProvider';
+import DevtoolsModal from './DevtoolsModal';
 import styles from './ProfileMenu.module.css';
 
 export default function ProfileMenu() {
   const [open, setOpen] = useState(false);
+  const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
@@ -75,6 +77,16 @@ export default function ProfileMenu() {
               <Link href="/settings" className={styles.menuLink} onClick={() => setOpen(false)}>
                 Settings
               </Link>
+              <button
+                className={styles.menuLink}
+                onClick={() => {
+                  setOpen(false);
+                  setDevtoolsOpen(true);
+                }}
+                style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                Devtools
+              </button>
 
               <button className={styles.menuLink} onClick={handleSignOut} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }}>
                 Sign out
@@ -122,6 +134,7 @@ export default function ProfileMenu() {
           )}
         </div>
       </div>
+      <DevtoolsModal open={devtoolsOpen} onClose={() => setDevtoolsOpen(false)} />
     </>
   );
 }
