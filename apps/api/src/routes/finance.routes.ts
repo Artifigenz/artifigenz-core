@@ -18,6 +18,7 @@ import {
   categorizeAgentInstance,
   backfillOrphans,
 } from "../agents/finance/categorize";
+import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
 
 const app = new Hono();
 app.use("/*", clerkAuth);
@@ -131,6 +132,88 @@ app.get("/transactions", async (c) => {
       ...r,
       amount: parseFloat(r.amount),
     })),
+  });
+});
+
+/**
+ * POST /api/finance/resync
+ *   Re-runs Plaid ingestion for every active Plaid connection on the caller's
+ *   finance agent, then re-categorizes. Useful when Plaid's initial historical
+ *   backfill arrived after the onboarding sync (the webhook normally handles
+ *   that, but you can also trigger it manually from Devtools).
+ *
+ *   Returns per-connection sync counts.
+ */
+app.post("/resync", async (c) => {
+  const user = c.get("user");
+
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+
+  if (!instance) return c.json({ error: "No finance agent found" }, 404);
+
+  const conns = await db
+    .select({
+      id: dataSourceConnections.id,
+      displayName: dataSourceConnections.displayName,
+    })
+    .from(dataSourceConnections)
+    .where(
+      and(
+        eq(dataSourceConnections.agentInstanceId, instance.id),
+        eq(dataSourceConnections.dataSourceTypeId, "plaid"),
+        eq(dataSourceConnections.status, "active"),
+      ),
+    );
+
+  const perConnection: Array<{
+    displayName: string | null;
+    inserted: number;
+    skipped: number;
+    accounts: number;
+    error?: string;
+  }> = [];
+
+  for (const conn of conns) {
+    try {
+      const result = await ingestPlaidConnection(conn.id);
+      perConnection.push({
+        displayName: conn.displayName,
+        inserted: result.transactionsInserted,
+        skipped: result.transactionsSkipped,
+        accounts: result.accountsUpserted,
+      });
+    } catch (err) {
+      perConnection.push({
+        displayName: conn.displayName,
+        inserted: 0,
+        skipped: 0,
+        accounts: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const categorize = await categorizeAgentInstance(instance.id);
+  await backfillOrphans(instance.id);
+
+  return c.json({
+    success: true,
+    perConnection,
+    categorize: {
+      clustersAnalyzed: categorize.clustersAnalyzed,
+      clustersSkippedCached: categorize.clustersSkippedCached,
+      txnsBackfilled: categorize.txnsBackfilled,
+    },
   });
 });
 

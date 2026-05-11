@@ -284,6 +284,29 @@ export class ApiClient {
     }>('/api/finance/wipe');
   }
 
+  /**
+   * Re-pull Plaid history for all active bank connections on the user's
+   * finance agent, then re-categorize. Useful when Plaid's historical
+   * backfill landed after the initial sync.
+   */
+  async resyncFinance() {
+    return this.post<{
+      success: boolean;
+      perConnection: Array<{
+        displayName: string | null;
+        inserted: number;
+        skipped: number;
+        accounts: number;
+        error?: string;
+      }>;
+      categorize: {
+        clustersAnalyzed: number;
+        clustersSkippedCached: number;
+        txnsBackfilled: number;
+      };
+    }>('/api/finance/resync');
+  }
+
   async getFinanceTransactions() {
     return this.get<{
       count: number;

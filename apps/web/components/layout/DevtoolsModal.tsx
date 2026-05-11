@@ -15,12 +15,22 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
   const [result, setResult] = useState<{ removed: Record<string, number> } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [resyncing, setResyncing] = useState(false);
+  const [resyncResult, setResyncResult] = useState<{
+    perConnection: Array<{ displayName: string | null; inserted: number; skipped: number; accounts: number; error?: string }>;
+    categorize: { clustersAnalyzed: number; clustersSkippedCached: number; txnsBackfilled: number };
+  } | null>(null);
+  const [resyncError, setResyncError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open) {
       setConfirming(false);
       setWiping(false);
       setResult(null);
       setError(null);
+      setResyncing(false);
+      setResyncResult(null);
+      setResyncError(null);
     }
   }, [open]);
 
@@ -44,6 +54,23 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
       setError((err as { message?: string })?.message ?? 'Wipe failed');
     } finally {
       setWiping(false);
+    }
+  };
+
+  const resync = async () => {
+    setResyncing(true);
+    setResyncError(null);
+    setResyncResult(null);
+    try {
+      const res = await api.resyncFinance();
+      setResyncResult({
+        perConnection: res.perConnection,
+        categorize: res.categorize,
+      });
+    } catch (err) {
+      setResyncError((err as { message?: string })?.message ?? 'Resync failed');
+    } finally {
+      setResyncing(false);
     }
   };
 
@@ -103,6 +130,74 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
             ×
           </button>
         </div>
+
+        <section style={{
+          border: '1px solid var(--border-light)',
+          borderRadius: '10px',
+          padding: '16px',
+          marginBottom: '14px',
+        }}>
+          <h3 style={{ fontSize: '0.88rem', fontWeight: 600, margin: '0 0 4px', color: 'var(--text)' }}>
+            Re-sync bank connections
+          </h3>
+          <p style={{ fontSize: '0.76rem', color: 'var(--text-dim)', margin: '0 0 14px', lineHeight: 1.5 }}>
+            Pulls the latest transactions from every active Plaid connection, then
+            re-categorizes new merchants. Use this if Plaid&apos;s historical backfill
+            landed after the initial onboarding sync (you&apos;d see only a few weeks
+            of data when expecting more).
+          </p>
+
+          {resyncResult ? (
+            <div style={{
+              fontSize: '0.76rem',
+              color: 'var(--text)',
+              background: 'color-mix(in srgb, var(--bg), green 6%)',
+              border: '1px solid color-mix(in srgb, var(--border-light), green 30%)',
+              borderRadius: '8px',
+              padding: '12px 14px',
+            }}>
+              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Re-sync complete.</p>
+              <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {resyncResult.perConnection.map((p, i) => (
+                  <li key={i}>
+                    {p.displayName ?? '(connection)'}: <strong>+{p.inserted}</strong> new,{' '}
+                    {p.skipped} dedup-skipped, {p.accounts} accounts
+                    {p.error && <span style={{ color: '#dc2626' }}> — {p.error}</span>}
+                  </li>
+                ))}
+              </ul>
+              <p style={{ margin: '10px 0 0', color: 'var(--text-dim)' }}>
+                Categorized {resyncResult.categorize.clustersAnalyzed} new merchant cluster(s);
+                {resyncResult.categorize.txnsBackfilled} transactions updated.
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={resyncing}
+              onClick={resync}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-light)',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: '0.82rem',
+                fontWeight: 500,
+                cursor: resyncing ? 'wait' : 'pointer',
+                opacity: resyncing ? 0.7 : 1,
+              }}
+            >
+              {resyncing ? 'Re-syncing…' : 'Re-sync banks'}
+            </button>
+          )}
+
+          {resyncError && (
+            <p style={{ fontSize: '0.76rem', color: '#dc2626', marginTop: '10px' }}>
+              {resyncError}
+            </p>
+          )}
+        </section>
 
         <section style={{
           border: '1px solid var(--border-light)',
