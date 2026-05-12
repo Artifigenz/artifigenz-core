@@ -285,6 +285,36 @@ export class ApiClient {
   }
 
   /**
+   * Per-connection ingestion progress. The onboarding loading screen polls
+   * this every ~3s; each call also opportunistically kicks throttled syncs
+   * for connections still pulling history.
+   */
+  async getAgentStatus() {
+    return this.get<{
+      agentExists: boolean;
+      agentStatus?: string;
+      ingestionComplete: boolean;
+      totalTransactions: number;
+      connections: Array<{
+        id: string;
+        dataSourceTypeId: string;
+        displayName: string | null;
+        ingestionState: 'pending' | 'in_progress' | 'complete' | 'needs_auth' | 'failed';
+        ingestionStartedAt: string | null;
+        ingestionCompletedAt: string | null;
+        lastSyncedAt: string | null;
+        lastSyncStatus: string | null;
+        lastSyncError: string | null;
+        lastSyncAddedCount: number | null;
+        consecutiveEmptySyncs: number | null;
+        transactionCount: number;
+        accountCount: number;
+        syncTriggered: boolean;
+      }>;
+    }>('/api/finance/agent-status');
+  }
+
+  /**
    * Re-pull Plaid history for all active bank connections on the user's
    * finance agent, then re-categorize. Useful when Plaid's historical
    * backfill landed after the initial sync.

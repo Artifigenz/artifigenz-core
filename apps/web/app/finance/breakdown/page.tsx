@@ -29,16 +29,6 @@ interface TxResponse {
   transactions: Txn[];
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  income: 'Income',
-  subscription: 'Subscription',
-  loan_emi: 'Loan / EMI',
-  fee_interest: 'Fee / Interest',
-  variable_recurring: 'Variable recurring',
-  internal_transfer: 'Internal transfer',
-  miscellaneous: 'Miscellaneous',
-};
-
 function formatMoney(amount: number): string {
   const formatted = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -63,14 +53,11 @@ function accountLabel(t: Txn): string {
   return last4 || '—';
 }
 
-type CategoryFilter = 'all' | string;
-
 export default function BreakdownPage() {
   const api = useApiClient();
   const [data, setData] = useState<TxResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -93,25 +80,12 @@ export default function BreakdownPage() {
   const filtered = useMemo(() => {
     if (!data) return [] as Txn[];
     const q = search.trim().toLowerCase();
+    if (!q) return data.transactions;
     return data.transactions.filter((t) => {
-      if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
-      if (!q) return true;
       const hay = `${t.description} ${t.merchantName ?? ''} ${t.accountName ?? ''} ${t.institutionName ?? ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [data, categoryFilter, search]);
-
-  const categories = useMemo(() => {
-    if (!data) return [] as Array<{ key: string; count: number }>;
-    const counts = new Map<string, number>();
-    for (const t of data.transactions) {
-      const k = t.category ?? 'uncategorized';
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([key, count]) => ({ key, count }));
-  }, [data]);
+  }, [data, search]);
 
   return (
     <div className={shell.page}>
@@ -193,26 +167,6 @@ export default function BreakdownPage() {
                     color: 'var(--text)',
                   }}
                 />
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(0,0,0,0.1)',
-                    background: 'rgba(255,255,255,0.7)',
-                    fontSize: '0.85rem',
-                    fontFamily: 'inherit',
-                    color: 'var(--text)',
-                  }}
-                >
-                  <option value="all">All categories ({data.count})</option>
-                  {categories.map((c) => (
-                    <option key={c.key} value={c.key}>
-                      {CATEGORY_LABELS[c.key] ?? c.key} ({c.count})
-                    </option>
-                  ))}
-                </select>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
                   Showing {filtered.length} of {data.count}
                 </span>
@@ -233,7 +187,6 @@ export default function BreakdownPage() {
                       <th style={thStyle}>Description</th>
                       <th style={thStyle}>Merchant</th>
                       <th style={thStyle}>Account</th>
-                      <th style={thStyle}>Category</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
                       <th style={thStyle}>Source</th>
                     </tr>
@@ -254,22 +207,6 @@ export default function BreakdownPage() {
                         </td>
                         <td style={tdStyle}>{t.merchantName ?? '—'}</td>
                         <td style={tdStyle}>{accountLabel(t)}</td>
-                        <td style={tdStyle}>
-                          {t.category ? (
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: 'rgba(0,0,0,0.05)',
-                              fontSize: '0.72rem',
-                              whiteSpace: 'nowrap',
-                            }}>
-                              {CATEGORY_LABELS[t.category] ?? t.category}
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem' }}>—</span>
-                          )}
-                        </td>
                         <td style={{
                           ...tdStyle,
                           textAlign: 'right',
@@ -285,7 +222,7 @@ export default function BreakdownPage() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
+                        <td colSpan={6} style={{ ...tdStyle, textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
                           No transactions match the current filter.
                         </td>
                       </tr>

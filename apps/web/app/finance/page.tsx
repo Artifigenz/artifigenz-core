@@ -214,6 +214,14 @@ export default function FinanceBriefPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(true);
+  // Dev-mode (Challenge 1): no brief is generated; we show a placeholder
+  // backed by ingestion status. This state holds the snapshot used by
+  // that placeholder.
+  const [devStatus, setDevStatus] = useState<{
+    totalTransactions: number;
+    connectionCount: number;
+    accountCount: number;
+  } | null>(null);
 
   // Settings modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -274,58 +282,40 @@ export default function FinanceBriefPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function waitForGeneration(generationId: string): Promise<void> {
-      const res = await api.briefEventsResponse(generationId);
-      if (!res.body) return;
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done || cancelled) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let sepIdx;
-        while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
-          const block = buffer.slice(0, sepIdx);
-          buffer = buffer.slice(sepIdx + 2);
-          const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
-          if (!dataLine) continue;
-          try {
-            const event = JSON.parse(dataLine.slice(5).trim());
-            if (event.type === 'complete' || event.type === 'error') return;
-          } catch {
-            // ignore malformed
-          }
-        }
-      }
-    }
-
+    // Challenge 1 dev mode: skip the brief pipeline entirely. We just check
+    // ingestion status: if any connection is still pulling, push the user
+    // to the loading screen; otherwise show the dev-mode placeholder.
     (async () => {
       try {
         if (shouldRegen) {
-          setRegenerating(true);
-          const { generation_id } = await api.generateBrief();
-          await waitForGeneration(generation_id);
-          if (cancelled) return;
-          // Reload page without ?regen to fetch fresh brief
+          // No-op in dev mode — brief generation is disabled. Strip the
+          // query param and reload cleanly so the user doesn't get stuck.
           window.location.href = '/finance';
           return;
         }
-        const data = await api.getCurrentBrief();
-        if (!cancelled) setBrief(data);
-      } catch (err) {
+        const status = await api.getAgentStatus();
         if (cancelled) return;
-        setRegenerating(false);
-        const status = (err as { status?: number })?.status;
-        if (status === 404) {
+        if (!status.agentExists) {
+          router.replace('/app');
+          return;
+        }
+        if (!status.ingestionComplete) {
           router.replace('/finance/loading');
           return;
         }
+        setDevStatus({
+          totalTransactions: status.totalTransactions,
+          connectionCount: status.connections.length,
+          accountCount: status.connections.reduce(
+            (sum, c) => sum + c.accountCount,
+            0,
+          ),
+        });
+      } catch (err) {
+        if (cancelled) return;
         setError(
           (err as { message?: string })?.message ??
-            'Failed to load your brief',
+            'Failed to load agent status',
         );
       }
     })();
@@ -732,6 +722,62 @@ export default function FinanceBriefPage() {
           <p className={styles.verdict}>Regenerating your brief…</p>
         ) : error ? (
           <p className={styles.verdict}>{error}</p>
+        ) : !brief && devStatus ? (
+          <div style={{
+            marginTop: '12px',
+            padding: '24px 28px',
+            border: '1px solid var(--border-light)',
+            borderRadius: '14px',
+            background: 'rgba(255,255,255,0.55)',
+            maxWidth: '720px',
+          }}>
+            <p style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.7rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: 'var(--text-dim)',
+              margin: '0 0 14px',
+            }}>
+              Finance · dev mode
+            </p>
+            <p style={{
+              fontSize: '1.4rem',
+              fontWeight: 500,
+              lineHeight: 1.3,
+              margin: '0 0 12px',
+              color: 'var(--text)',
+            }}>
+              {devStatus.totalTransactions.toLocaleString()} transactions across{' '}
+              {devStatus.accountCount} account{devStatus.accountCount === 1 ? '' : 's'}.
+            </p>
+            <p style={{
+              fontSize: '0.86rem',
+              color: 'var(--text-dim)',
+              margin: '0 0 18px',
+              lineHeight: 1.5,
+              maxWidth: '52ch',
+            }}>
+              Ingestion is complete. Categorization and brief generation are
+              disabled in this phase — we&apos;re focused on getting the consolidated
+              transactions table right first.
+            </p>
+            <Link
+              href="/finance/breakdown"
+              style={{
+                display: 'inline-block',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                background: 'var(--text)',
+                color: 'var(--bg)',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                textDecoration: 'none',
+              }}
+            >
+              View all transactions →
+            </Link>
+          </div>
         ) : brief ? (
           <>
             <h2 className={styles.verdict}>

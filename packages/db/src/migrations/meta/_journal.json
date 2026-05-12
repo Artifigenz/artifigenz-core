@@ -43,6 +43,13 @@
       "when": 1778446225560,
       "tag": "0005_drop_legacy_finance_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778594334764,
+      "tag": "0006_ingestion_state_machine",
+      "breakpoints": true
     }
   ]
 }

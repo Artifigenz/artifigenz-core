@@ -117,6 +117,131 @@
   color: var(--bg);
 }
 
+/* Per-connection ingestion panel */
+
+.connections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+  margin-bottom: 16px;
+}
+
+.connectionsEmpty {
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.connection {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.connDot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.connDotActive {
+  background: transparent;
+  border: 2px solid var(--text);
+  animation: loadingPulse 1.4s ease-in-out infinite;
+}
+
+.connDotDone {
+  background: var(--text);
+  border: 2px solid var(--text);
+  color: var(--bg);
+}
+
+.connDotError {
+  background: transparent;
+  border: 2px solid #b43;
+  color: #b43;
+}
+
+.connBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.connHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.connName {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.connState {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: lowercase;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.connMeta {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.connError {
+  color: #b43;
+}
+
+.totalLine {
+  font-size: 0.86rem;
+  color: var(--text);
+  margin: 0 0 24px;
+  max-width: 720px;
+}
+
+.banner {
+  max-width: 720px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg), #fbbf24 12%);
+  border: 1px solid color-mix(in srgb, var(--border-light), #fbbf24 40%);
+  font-size: 0.82rem;
+  color: var(--text);
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+.bannerError {
+  background: color-mix(in srgb, var(--bg), #dc2626 8%);
+  border-color: color-mix(in srgb, var(--border-light), #dc2626 40%);
+}
+
+.placeholderTag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
 @keyframes loadingPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }

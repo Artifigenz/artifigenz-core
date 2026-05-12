@@ -4,7 +4,6 @@ import { Webhook } from "svix";
 import { db, users } from "@artifigenz/db";
 import { plaidAdapter } from "../agents/finance/data-sources/plaid.adapter";
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
-import { categorizeAgentInstance } from "../agents/finance/categorize";
 
 const app = new Hono();
 
@@ -65,13 +64,16 @@ app.post("/clerk", async (c) => {
 });
 
 // POST /api/webhooks/plaid — Plaid sync trigger.
-// Plaid fires SYNC_UPDATES_AVAILABLE once its initial historical backfill is
-// ready (typically 5-60 min after Link). The adapter resolves the connection
-// from item_id; we then run the full ingest path so the newly available
-// transactions land in our DB. Categorization is fire-and-forget after.
+// Plaid fires SYNC_UPDATES_AVAILABLE as more historical backfill becomes
+// available (typically several events over 5-60 min after Link). The adapter
+// resolves the connection from item_id; we then call ingestPlaidConnection
+// which advances the ingestion state machine.
 //
-// Signature verification is a TODO — for now we trust Plaid's IPs (Plaid sends
-// these from a known range; signing requires a separate setup step).
+// Categorization is intentionally NOT triggered here — Challenge 1 is
+// ingestion-only. Categorization will be wired in when its phase comes.
+//
+// Signature verification is a TODO — for now we trust Plaid's IPs (signing
+// requires a separate setup step).
 app.post("/plaid", async (c) => {
   const body = await c.req.json();
   console.log("[Webhook] Plaid event:", body.webhook_type, body.webhook_code, body.item_id);
@@ -84,22 +86,8 @@ app.post("/plaid", async (c) => {
     if (decision.action === "sync" && decision.connectionId) {
       const result = await ingestPlaidConnection(decision.connectionId);
       console.log(
-        `[Webhook/plaid] synced connection ${decision.connectionId}: +${result.transactionsInserted} new, ${result.accountsUpserted} accounts`,
+        `[Webhook/plaid] synced connection ${decision.connectionId}: +${result.transactionsInserted} new, state=${result.ingestionState}`,
       );
-      // Re-categorize new merchants in the background — don't block the webhook.
-      void (async () => {
-        try {
-          // We need the agent_instance_id to categorize; load it from the connection.
-          const { db: db2, dataSourceConnections } = await import("@artifigenz/db");
-          const [conn] = await db2
-            .select({ agentInstanceId: dataSourceConnections.agentInstanceId })
-            .from(dataSourceConnections)
-            .where(eq(dataSourceConnections.id, decision.connectionId));
-          if (conn) await categorizeAgentInstance(conn.agentInstanceId);
-        } catch (err) {
-          console.error("[Webhook/plaid] post-sync categorize failed:", err);
-        }
-      })();
     }
   } catch (err) {
     console.error("[Webhook/plaid] handler failed:", err);

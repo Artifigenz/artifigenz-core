@@ -169,6 +169,27 @@ export const dataSourceConnections = pgTable("data_source_connections", {
   lastSyncError: text("last_sync_error"), // Error message if last sync failed
   requiresReauth: boolean("requires_reauth").default(false), // True when bank requires re-authentication
   consecutiveFailures: integer("consecutive_failures").default(0), // Track repeated failures
+  // Ingestion state machine — drives the onboarding progress UI and tells the
+  // system when to stop polling Plaid for more historical backfill.
+  //   pending      — created but no sync started yet
+  //   in_progress  — actively pulling data
+  //   complete     — stable (3 consecutive empty syncs OR 30 min timeout)
+  //   needs_auth   — Plaid returned ITEM_LOGIN_REQUIRED mid-pull
+  //   failed       — too many consecutive errors
+  ingestionState: varchar("ingestion_state", { length: 20 })
+    .notNull()
+    .default("pending"),
+  ingestionStartedAt: timestamp("ingestion_started_at", { withTimezone: true }),
+  ingestionCompletedAt: timestamp("ingestion_completed_at", {
+    withTimezone: true,
+  }),
+  // Stability tracking — 3 consecutive empty syncs means Plaid is done.
+  lastSyncAddedCount: integer("last_sync_added_count").default(0),
+  consecutiveEmptySyncs: integer("consecutive_empty_syncs").default(0),
+  // Soft lock to prevent the frontend poll and the Plaid webhook from racing
+  // the same /transactions/sync call. Best-effort — dedup index makes a true
+  // race harmless, this just saves Plaid API quota.
+  ingestionInFlight: boolean("ingestion_in_flight").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

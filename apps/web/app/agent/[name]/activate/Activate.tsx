@@ -504,12 +504,13 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
           },
         });
         await refreshConnections(agentInstanceId);
-        // Kick off ingest → categorize chain in the background so the tile
-        // appears immediately. Categorize runs the LLM over each new
-        // merchant cluster.
-        api.syncAgent(agentInstanceId)
-          .then(() => api.categorizeFinance())
-          .catch((err) => console.warn('[onboarding] post-sync analyze failed', err));
+        // Kick off Plaid ingestion in the background. The loading screen
+        // afterwards polls /api/finance/agent-status and shows per-connection
+        // progress until the historical pull finishes. Categorization runs
+        // in a later phase — disabled in dev mode (Challenge 1 only).
+        api.syncAgent(agentInstanceId).catch((err) =>
+          console.warn('[onboarding] post-sync analyze failed', err),
+        );
       } catch (err) {
         setConnectError(err instanceof Error ? err.message : 'Failed to finalize bank');
       } finally {
@@ -616,11 +617,9 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
       // File upload creates a data-source connection on the backend — surface it
       // alongside Plaid connections so the user sees they have data.
       await refreshConnections(agentInstanceId);
-      // Fire categorization in the background so insights are ready when the
-      // user clicks Activate.
-      api.categorizeFinance().catch((err) =>
-        console.warn('[onboarding] post-upload categorize failed', err),
-      );
+      // Categorization is disabled in dev mode (Challenge 1 — ingestion only).
+      // The uploaded file is fully parsed by the time uploadFile returns, so
+      // its connection is already complete — nothing else to trigger here.
     } catch (err) {
       setUploadError((err as { message?: string })?.message ?? 'Upload failed');
     } finally {
