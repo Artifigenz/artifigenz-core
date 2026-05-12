@@ -9,7 +9,7 @@ import type {
   FinalizeParams,
   NormalizedData,
 } from "../../../platform/registry/types";
-import { ingestPendingUploadsForConnection } from "../ingest/upload-ingest";
+import { advanceUploadsForConnection } from "../ingest/upload-ingest";
 
 /**
  * File upload adapter — parses uploaded bank statements via Claude API.
@@ -115,19 +115,18 @@ export const fileUploadAdapter: DataSourceTypeDefinition = {
   },
 
   /**
-   * Sync delegates to ingest/upload-ingest which processes pending file_uploads:
-   * Claude parsing → upsertAccount via (institution + last4) → dedup-insert txns.
-   * Returns a synthetic array sized by total inserted txns for sync-worker logging.
+   * Drive any pending/validated files on this connection toward complete.
+   * The two-phase split lives in advanceUploadsForConnection — validation
+   * usually happens inline on /api/upload, this is the retry/poll path.
    */
   async sync(connection): Promise<NormalizedData[]> {
-    const results = await ingestPendingUploadsForConnection(connection.id);
-    const totalInserted = results.reduce(
-      (sum, r) => sum + r.transactionsInserted,
-      0,
-    );
+    const result = await advanceUploadsForConnection(connection.id);
     console.log(
-      `[FileUploadAdapter] Processed ${results.length} file(s), inserted ${totalInserted} txn(s)`,
+      `[FileUploadAdapter] advanced: +${result.validated} validated, +${result.parsed} parsed`,
     );
-    return Array.from({ length: totalInserted }, () => ({}) as NormalizedData);
+    return Array.from(
+      { length: result.parsed },
+      () => ({}) as NormalizedData,
+    );
   },
 };

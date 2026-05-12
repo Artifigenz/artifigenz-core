@@ -311,6 +311,15 @@ export class ApiClient {
         transactionCount: number;
         accountCount: number;
         syncTriggered: boolean;
+        files: Array<{
+          id: string;
+          filename: string;
+          parseState: 'pending' | 'validated' | 'parsing' | 'complete' | 'failed';
+          institutionName: string | null;
+          accountLast4: string | null;
+          statementPeriodStart: string | null;
+          statementPeriodEnd: string | null;
+        }>;
       }>;
     }>('/api/finance/agent-status');
   }
@@ -336,6 +345,47 @@ export class ApiClient {
         txnsBackfilled: number;
       };
     }>('/api/finance/resync');
+  }
+
+  /**
+   * One row per finance_account joined with its sources (Plaid + uploads).
+   * Powers /finance/accounts.
+   */
+  async getFinanceAccounts() {
+    return this.get<{
+      accounts: Array<{
+        id: string;
+        institutionName: string | null;
+        accountLast4: string | null;
+        name: string | null;
+        type: string | null;
+        subtype: string | null;
+        currentBalance: number | null;
+        availableBalance: number | null;
+        isoCurrencyCode: string | null;
+        transactionCount: number;
+        plaid: {
+          connectionId: string;
+          displayName: string | null;
+          status: string;
+          lastSyncedAt: string | null;
+          requiresReauth: boolean;
+          ingestionState: string;
+        } | null;
+        upload: {
+          connectionId: string;
+          statements: Array<{
+            id: string;
+            filename: string;
+            parseState: 'pending' | 'validated' | 'parsing' | 'complete' | 'failed';
+            uploadedAt: string | null;
+            statementPeriodStart: string | null;
+            statementPeriodEnd: string | null;
+            transactionCount: number | null;
+          }>;
+        } | null;
+      }>;
+    }>('/api/finance/accounts');
   }
 
   async getFinanceTransactions() {
@@ -414,8 +464,15 @@ export class ApiClient {
    * the normal request() method and construct the fetch manually.
    */
   async uploadFile(formData: FormData): Promise<{
-    transactions: number;
+    status: 'validated';
+    fileId: string;
     file: { name: string; size: number; type: string };
+    metadata: {
+      institutionName: string | null;
+      accountLast4: string | null;
+      accountType: string | null;
+      statementPeriod: { start: string; end: string } | null;
+    };
   }> {
     const token = await this.getToken();
     if (!token) throw { status: 401, message: 'Not authenticated' } satisfies ApiError;
@@ -435,7 +492,17 @@ export class ApiClient {
       } satisfies ApiError;
     }
 
-    return data as { transactions: number; file: { name: string; size: number; type: string } };
+    return data as {
+      status: 'validated';
+      fileId: string;
+      file: { name: string; size: number; type: string };
+      metadata: {
+        institutionName: string | null;
+        accountLast4: string | null;
+        accountType: string | null;
+        statementPeriod: { start: string; end: string } | null;
+      };
+    };
   }
 
   /**

@@ -1,7 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
 import { db, fileUploads, dataSourceConnections } from "@artifigenz/db";
-import { parseStatement, type ParsedStatement } from "../lib/statement-parser";
+import {
+  parseStatement,
+  validateStatement,
+  type ParsedStatement,
+  type ValidationResult,
+} from "../lib/statement-parser";
 import { upsertAccount } from "./account-matcher";
 import { insertTransactions, prepareTransaction } from "./dedup";
 
@@ -16,31 +21,27 @@ function inferFileType(filename: string): FileType {
   return "text";
 }
 
-export interface UploadIngestResult {
-  parsed: ParsedStatement;
-  accountId: string;
-  transactionsInserted: number;
-  transactionsSkipped: number;
+export interface ValidateUploadResult {
+  validation: ValidationResult;
+  accountId: string | null;
+  rejected: boolean;
 }
 
 /**
- * Full ingest path for a single uploaded statement:
- *   1. read file, parse with Claude → institution/last4/accountType + txns
- *   2. upsert finance_accounts via (institution + last4) identity
- *   3. dedup + insert transactions
- *
- * If the statement doesn't reveal an account number (rare), we fall back to a
- * placeholder last4 of "0000" so the account still upserts deterministically.
+ * Phase 1: validate-only. Runs the short Claude classifier to confirm the
+ * file is a bank statement and pull institution/last4/type/period. Upserts
+ * the account row immediately so the user sees "RBC Royal Bank ••8794" on
+ * their upload tile. No transaction extraction yet — that's deferred until
+ * the processing page polls /api/finance/agent-status.
  */
-export async function ingestUpload(
+export async function validateUpload(
   fileUploadId: string,
-): Promise<UploadIngestResult> {
+): Promise<ValidateUploadResult> {
   const [file] = await db
     .select()
     .from(fileUploads)
     .where(eq(fileUploads.id, fileUploadId))
     .limit(1);
-
   if (!file) throw new Error(`File upload ${fileUploadId} not found`);
 
   const [conn] = await db
@@ -51,137 +52,276 @@ export async function ingestUpload(
     .from(dataSourceConnections)
     .where(eq(dataSourceConnections.id, file.dataSourceConnectionId))
     .limit(1);
-
   if (!conn) throw new Error(`Connection for upload ${fileUploadId} not found`);
 
   const fileType = inferFileType(file.originalFilename);
   const fileContent = await readFile(file.storagePath);
 
-  const parsed = await parseStatement({
-    fileType,
-    fileContent,
-    filename: file.originalFilename,
-  });
+  let validation: ValidationResult;
+  try {
+    validation = await validateStatement({
+      fileType,
+      fileContent,
+      filename: file.originalFilename,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await db
+      .update(fileUploads)
+      .set({
+        parseState: "failed",
+        parseError: `Validator error: ${msg}`,
+      })
+      .where(eq(fileUploads.id, fileUploadId));
+    throw err;
+  }
 
-  const last4 = parsed.accountLast4 ?? "0000";
+  if (!validation.isStatement) {
+    await db
+      .update(fileUploads)
+      .set({
+        parseState: "failed",
+        parseError:
+          validation.rejectionReason ?? "Not recognized as a bank statement",
+      })
+      .where(eq(fileUploads.id, fileUploadId));
+    return { validation, accountId: null, rejected: true };
+  }
+
+  // Even when validation succeeds, the bank/last4 may be missing for older
+  // statements. We still upsert under "Unknown ••0000" so transactions land
+  // somewhere — the user can fix the metadata later.
+  const last4 = validation.accountLast4 ?? "0000";
   const accountId = await upsertAccount({
     agentInstanceId: conn.agentInstanceId,
-    institutionName: parsed.institutionName ?? "Unknown",
+    institutionName: validation.institutionName ?? "Unknown",
     accountLast4: last4,
     dataSourceConnectionId: conn.id,
-    name: parsed.accountName,
+    name: validation.accountName,
     mask: last4,
-    type: parsed.accountType,
-    currentBalance: parsed.closingBalance?.toString() ?? null,
+    type: validation.accountType,
   });
-
-  const prepared = parsed.transactions.map((tx) =>
-    prepareTransaction({
-      raw: {
-        transactionDate: tx.date,
-        description: tx.description,
-        merchantName: tx.merchantName,
-        amount: tx.amount.toString(),
-        source: "upload",
-        accountName: tx.accountName ?? parsed.accountName,
-        personalFinanceCategoryPrimary: tx.category,
-        rawData: tx as unknown as Record<string, unknown>,
-      },
-      agentInstanceId: conn.agentInstanceId,
-      accountId,
-      dataSourceConnectionId: conn.id,
-    }),
-  );
-
-  const stats = await insertTransactions(prepared);
 
   await db
     .update(fileUploads)
     .set({
-      extractionStatus: "processed",
-      extractionResult: parsed as unknown as Record<string, unknown>,
-      transactionCount: parsed.transactions.length,
-      processedAt: new Date(),
+      parseState: "validated",
+      parseError: null,
+      institutionName: validation.institutionName,
+      accountLast4: last4,
+      accountType: validation.accountType,
+      statementPeriodStart: validation.statementPeriod?.start ?? null,
+      statementPeriodEnd: validation.statementPeriod?.end ?? null,
+      accountId,
     })
     .where(eq(fileUploads.id, fileUploadId));
 
-  await db
-    .update(dataSourceConnections)
-    .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
-    .where(eq(dataSourceConnections.id, conn.id));
-
-  return {
-    parsed,
-    accountId,
-    transactionsInserted: stats.inserted,
-    transactionsSkipped: stats.skipped,
-  };
-}
-
-/**
- * Ingest all pending uploads for a connection. Used after a batch upload.
- *
- * Drives the ingestion state machine on the connection:
- *   pending → in_progress (while parsing) → complete (all files done) | failed
- *
- * Unlike Plaid, uploads are fully synchronous — Claude parses each file in
- * one call, no async backfill. So we can declare the connection complete as
- * soon as the loop finishes.
- */
-export async function ingestPendingUploadsForConnection(
-  connectionId: string,
-): Promise<UploadIngestResult[]> {
+  // Mark connection as actively ingesting so the loading screen sees us.
   await db
     .update(dataSourceConnections)
     .set({
       ingestionState: "in_progress",
       ingestionStartedAt: new Date(),
-      ingestionInFlight: true,
       updatedAt: new Date(),
     })
-    .where(eq(dataSourceConnections.id, connectionId));
+    .where(
+      and(
+        eq(dataSourceConnections.id, conn.id),
+        // don't overwrite a 'complete' state — only kick in_progress if pending
+        inArray(dataSourceConnections.ingestionState, ["pending", "in_progress"]),
+      ),
+    );
 
-  const pending = await db
-    .select({ id: fileUploads.id })
+  return { validation, accountId, rejected: false };
+}
+
+export interface ParseUploadFullResult {
+  parsed: ParsedStatement;
+  transactionsInserted: number;
+  transactionsSkipped: number;
+}
+
+/**
+ * Phase 2: full transaction extraction. Called by the agent-status poller
+ * once the file is in the 'validated' state. Sets parse_state='parsing'
+ * up front so concurrent calls are skipped.
+ */
+export async function parseUploadFull(
+  fileUploadId: string,
+): Promise<ParseUploadFullResult | null> {
+  // Atomic claim — only proceed if still validated.
+  const claimed = await db
+    .update(fileUploads)
+    .set({ parseState: "parsing" })
+    .where(
+      and(
+        eq(fileUploads.id, fileUploadId),
+        eq(fileUploads.parseState, "validated"),
+      ),
+    )
+    .returning({ id: fileUploads.id });
+  if (claimed.length === 0) return null;
+
+  try {
+    const [file] = await db
+      .select()
+      .from(fileUploads)
+      .where(eq(fileUploads.id, fileUploadId))
+      .limit(1);
+    if (!file) throw new Error(`File ${fileUploadId} not found mid-parse`);
+
+    const [conn] = await db
+      .select({
+        id: dataSourceConnections.id,
+        agentInstanceId: dataSourceConnections.agentInstanceId,
+      })
+      .from(dataSourceConnections)
+      .where(eq(dataSourceConnections.id, file.dataSourceConnectionId))
+      .limit(1);
+    if (!conn) throw new Error(`Connection for ${fileUploadId} not found`);
+
+    const accountId = file.accountId;
+    if (!accountId) {
+      throw new Error(`File ${fileUploadId} has no account_id — validation skipped?`);
+    }
+
+    const fileType = inferFileType(file.originalFilename);
+    const fileContent = await readFile(file.storagePath);
+
+    const parsed = await parseStatement({
+      fileType,
+      fileContent,
+      filename: file.originalFilename,
+    });
+
+    const prepared = parsed.transactions.map((tx) =>
+      prepareTransaction({
+        raw: {
+          transactionDate: tx.date,
+          description: tx.description,
+          merchantName: tx.merchantName,
+          amount: tx.amount.toString(),
+          source: "upload",
+          accountName: tx.accountName ?? parsed.accountName,
+          personalFinanceCategoryPrimary: tx.category,
+          rawData: tx as unknown as Record<string, unknown>,
+        },
+        agentInstanceId: conn.agentInstanceId,
+        accountId,
+        dataSourceConnectionId: conn.id,
+      }),
+    );
+
+    const stats = await insertTransactions(prepared);
+
+    await db
+      .update(fileUploads)
+      .set({
+        parseState: "complete",
+        extractionStatus: "processed",
+        extractionResult: parsed as unknown as Record<string, unknown>,
+        transactionCount: parsed.transactions.length,
+        processedAt: new Date(),
+      })
+      .where(eq(fileUploads.id, fileUploadId));
+
+    // Maybe the whole connection is done now — check all files.
+    await maybeMarkConnectionComplete(conn.id);
+
+    return {
+      parsed,
+      transactionsInserted: stats.inserted,
+      transactionsSkipped: stats.skipped,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await db
+      .update(fileUploads)
+      .set({
+        parseState: "failed",
+        parseError: msg,
+        extractionStatus: "failed",
+      })
+      .where(eq(fileUploads.id, fileUploadId));
+    throw err;
+  }
+}
+
+/**
+ * If every file on the connection is complete or failed, transition the
+ * connection's ingestion_state to 'complete'. Called after each full parse.
+ */
+async function maybeMarkConnectionComplete(connectionId: string): Promise<void> {
+  const files = await db
+    .select({ parseState: fileUploads.parseState })
     .from(fileUploads)
     .where(eq(fileUploads.dataSourceConnectionId, connectionId));
 
-  const results: UploadIngestResult[] = [];
-  let anyFailed = false;
+  if (files.length === 0) return;
+  const allDone = files.every(
+    (f) => f.parseState === "complete" || f.parseState === "failed",
+  );
+  if (!allDone) return;
 
-  for (const f of pending) {
-    try {
-      const result = await ingestUpload(f.id);
-      results.push(result);
-    } catch (err) {
-      anyFailed = true;
-      console.error(`[upload-ingest] failed for ${f.id}:`, err);
-      await db
-        .update(fileUploads)
-        .set({
-          extractionStatus: "failed",
-          extractionResult: {
-            error: err instanceof Error ? err.message : String(err),
-          },
-        })
-        .where(eq(fileUploads.id, f.id));
-    }
-  }
-
-  // Connection is complete after all files are parsed. If every file failed
-  // and we have nothing, mark failed; otherwise complete (partial success is
-  // still complete — the user can see the parsed files).
-  const allFailed = anyFailed && results.length === 0;
   await db
     .update(dataSourceConnections)
     .set({
-      ingestionState: allFailed ? "failed" : "complete",
+      ingestionState: "complete",
       ingestionCompletedAt: new Date(),
-      ingestionInFlight: false,
       lastSyncedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(dataSourceConnections.id, connectionId));
+}
 
-  return results;
+/**
+ * Drive any pending/validated files on a connection toward complete.
+ * - 'pending' files get validated (rare — usually validation runs inline
+ *   on upload, but a retry path needs this)
+ * - 'validated' files get fully parsed
+ * Used by the agent-status endpoint as a throttled background trigger.
+ */
+export async function advanceUploadsForConnection(
+  connectionId: string,
+): Promise<{ validated: number; parsed: number }> {
+  let validated = 0;
+  let parsed = 0;
+
+  const pending = await db
+    .select({ id: fileUploads.id })
+    .from(fileUploads)
+    .where(
+      and(
+        eq(fileUploads.dataSourceConnectionId, connectionId),
+        eq(fileUploads.parseState, "pending"),
+      ),
+    );
+  for (const f of pending) {
+    try {
+      await validateUpload(f.id);
+      validated++;
+    } catch (err) {
+      console.error(`[upload-ingest] validate failed for ${f.id}:`, err);
+    }
+  }
+
+  const ready = await db
+    .select({ id: fileUploads.id })
+    .from(fileUploads)
+    .where(
+      and(
+        eq(fileUploads.dataSourceConnectionId, connectionId),
+        eq(fileUploads.parseState, "validated"),
+      ),
+    );
+  for (const f of ready) {
+    try {
+      const result = await parseUploadFull(f.id);
+      if (result) parsed++;
+    } catch (err) {
+      console.error(`[upload-ingest] parse failed for ${f.id}:`, err);
+    }
+  }
+
+  return { validated, parsed };
 }

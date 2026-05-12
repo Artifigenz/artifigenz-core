@@ -163,6 +163,91 @@ export async function parseStatement(params: {
   };
 }
 
+// ─── Fast validation pass ──────────────────────────────────────────
+// Used on upload to confirm the file is a bank statement and pull
+// just the identifying metadata. No transaction extraction → much
+// smaller Claude response, returns in ~3-5s.
+
+export interface ValidationResult {
+  isStatement: boolean;
+  institutionName: string | null;
+  accountName: string | null;
+  accountLast4: string | null;
+  accountType: string | null;
+  statementPeriod: { start: string; end: string } | null;
+  rejectionReason?: string;
+}
+
+const VALIDATE_SYSTEM_PROMPT = `You inspect a document and decide whether it is a bank statement, then extract identifying metadata. Do NOT extract any transactions in this pass.
+
+Rules:
+- A bank statement is a periodic account summary from a financial institution that lists transactions. It has a bank name, an account number (often masked), a statement period, and at least a few transaction lines.
+- If the document is NOT a bank statement (receipt, invoice, tax form, random PDF, blank page, etc.), return is_statement=false with a one-line reason.
+- account_last4 is the last 4 digits of the account number on the statement. If shown as ****1234 or XXXX-1234, return "1234". If you can't find an account number at all, return null.
+- institution_name is the bank name (e.g. "RBC Royal Bank", "TD Canada Trust", "Chase", "Bank of America").
+- account_type: one of "depository" (chequing/savings), "credit" (credit card), "loan", "investment", null if unclear.
+- statement_period: dates in YYYY-MM-DD. If only a single date is visible, return null.
+
+Return ONLY valid JSON in this exact shape, no markdown:
+{
+  "is_statement": boolean,
+  "rejection_reason": "string (only if is_statement=false)",
+  "institution_name": "string or null",
+  "account_name": "string or null",
+  "account_last4": "4-digit string or null",
+  "account_type": "depository | credit | loan | investment | null",
+  "statement_period": { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" } or null
+}`;
+
+export async function validateStatement(params: {
+  fileType: "pdf" | "csv" | "text" | "image";
+  fileContent: Buffer | string;
+  filename?: string;
+}): Promise<ValidationResult> {
+  const client = getClaudeClient();
+
+  const content: Anthropic.MessageCreateParams["messages"][0]["content"] =
+    buildMessageContent(params);
+
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 400,
+    system: VALIDATE_SYSTEM_PROMPT,
+    messages: [{ role: "user", content }],
+  });
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("Validator returned no text content");
+  }
+
+  const jsonText = extractJson(textBlock.text);
+  let parsed: {
+    is_statement?: boolean;
+    rejection_reason?: string;
+    institution_name?: string | null;
+    account_name?: string | null;
+    account_last4?: string | null;
+    account_type?: string | null;
+    statement_period?: { start: string; end: string } | null;
+  };
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    throw new Error(`Validator returned invalid JSON: ${err}`);
+  }
+
+  return {
+    isStatement: parsed.is_statement === true,
+    rejectionReason: parsed.rejection_reason,
+    institutionName: parsed.institution_name ?? null,
+    accountName: parsed.account_name ?? null,
+    accountLast4: parsed.account_last4 ? String(parsed.account_last4).slice(-4) : null,
+    accountType: parsed.account_type ?? null,
+    statementPeriod: parsed.statement_period ?? null,
+  };
+}
+
 // Need the Anthropic type for content blocks
 import type Anthropic from "@anthropic-ai/sdk";
 

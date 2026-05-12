@@ -208,16 +208,36 @@ export const financeInsights = pgTable(
 );
 
 // ─── File Uploads ──────────────────────────────────────────────────
+// Two-phase parse lifecycle:
+//   pending    — file saved, not yet validated
+//   validated  — Claude confirmed it's a statement + extracted institution,
+//                last4, type, period. No transactions yet.
+//   parsing    — full transaction extraction in flight
+//   complete   — transactions inserted into finance_transactions
+//   failed     — either validation said "not a statement" or parse errored
 
 export const fileUploads = pgTable("file_uploads", {
   id: uuid("id").primaryKey().defaultRandom(),
   dataSourceConnectionId: uuid("data_source_connection_id")
     .notNull()
     .references(() => dataSourceConnections.id, { onDelete: "cascade" }),
+  accountId: uuid("account_id").references(() => financeAccounts.id, {
+    onDelete: "set null",
+  }),
   originalFilename: varchar("original_filename", { length: 255 }).notNull(),
   fileType: varchar("file_type", { length: 20 }).notNull(),
   storagePath: varchar("storage_path", { length: 500 }).notNull(),
   fileSizeBytes: integer("file_size_bytes"),
+  // Phase tracking
+  parseState: varchar("parse_state", { length: 20 }).default("pending").notNull(),
+  parseError: text("parse_error"),
+  // Metadata captured during validation (before full parse)
+  institutionName: varchar("institution_name", { length: 100 }),
+  accountLast4: varchar("account_last4", { length: 4 }),
+  accountType: varchar("account_type", { length: 20 }),
+  statementPeriodStart: date("statement_period_start"),
+  statementPeriodEnd: date("statement_period_end"),
+  // Filled after full parse
   extractionStatus: varchar("extraction_status", { length: 20 }).default("pending"),
   extractionResult: jsonb("extraction_result"),
   transactionCount: integer("transaction_count"),

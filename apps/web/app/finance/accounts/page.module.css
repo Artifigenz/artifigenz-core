@@ -1,0 +1,153 @@
+.loading,
+.error,
+.empty {
+  padding: 32px 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+.error {
+  color: #b43;
+}
+
+.list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 20px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rowHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.rowTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.institution {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.last4 {
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.typeBadge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  padding: 3px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+}
+
+.txnCount {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metaLine {
+  font-size: 0.82rem;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.sourceDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-mid);
+  flex: none;
+  margin-top: 6px;
+}
+
+.balance {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.metaDim {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.statementList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  padding-top: 10px;
+}
+
+.statementRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+}
+
+.statementName {
+  color: var(--text-mid);
+}
+
+.statementMeta {
+  font-variant-numeric: tabular-nums;
+}
+
+.state_complete {
+  color: #16a34a;
+}
+
+.state_parsing,
+.state_validated,
+.state_pending {
+  color: #f59e0b;
+}
+
+.state_failed {
+  color: #b43;
+}

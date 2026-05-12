@@ -401,7 +401,13 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   // countries Plaid doesn't cover and accounts whose connection broke.
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; transactions: number }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    name: string;
+    institutionName: string | null;
+    accountLast4: string | null;
+    accountType: string | null;
+    period: { start: string; end: string } | null;
+  }>>([]);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const country = typeof window !== 'undefined' ? detectCountry() : 'US';
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
@@ -613,7 +619,16 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
       const formData = new FormData();
       formData.append('file', file);
       const result = await api.uploadFile(formData);
-      setUploadedFiles((prev) => [...prev, { name: file.name, transactions: result.transactions }]);
+      setUploadedFiles((prev) => [
+        ...prev,
+        {
+          name: file.name,
+          institutionName: result.metadata.institutionName,
+          accountLast4: result.metadata.accountLast4,
+          accountType: result.metadata.accountType,
+          period: result.metadata.statementPeriod,
+        },
+      ]);
       // File upload creates a data-source connection on the backend — surface it
       // alongside Plaid connections so the user sees they have data.
       await refreshConnections(agentInstanceId);
@@ -1388,17 +1403,25 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                           marginTop: '12px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '4px',
+                          gap: '6px',
                         }}>
-                          {uploadedFiles.map((f, i) => (
-                            <p key={i} style={{
-                              fontSize: '0.72rem',
-                              color: 'var(--text-dim)',
-                              margin: 0,
-                            }}>
-                              ✓ {f.name} — {f.transactions} transactions
-                            </p>
-                          ))}
+                          {uploadedFiles.map((f, i) => {
+                            const inst = f.institutionName ?? 'Unknown bank';
+                            const last4 = f.accountLast4 ? `••${f.accountLast4}` : '';
+                            const period = f.period
+                              ? `${new Date(f.period.start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} statement`
+                              : '';
+                            return (
+                              <div key={i} style={{ fontSize: '0.74rem' }}>
+                                <div style={{ color: 'var(--text)', fontWeight: 500 }}>
+                                  ✓ {inst} {last4 && <span style={{ color: 'var(--text-dim)' }}>{last4}</span>}
+                                </div>
+                                <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem', marginTop: '2px' }}>
+                                  {f.name}{period && ` — ${period}`}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                       {uploadError && (

@@ -19,6 +19,7 @@ import {
   backfillOrphans,
 } from "../agents/finance/categorize";
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
+import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ingest";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
@@ -223,26 +224,71 @@ app.get("/agent-status", async (c) => {
     perConnAccounts.get(connId)!.add(tx.accountId);
   }
 
-  // Kick throttled Plaid syncs for in_progress connections.
+  // Pull per-connection file_upload state so we can show parsing progress.
+  const fileRows = await db
+    .select({
+      id: fileUploads.id,
+      dataSourceConnectionId: fileUploads.dataSourceConnectionId,
+      originalFilename: fileUploads.originalFilename,
+      parseState: fileUploads.parseState,
+      institutionName: fileUploads.institutionName,
+      accountLast4: fileUploads.accountLast4,
+      statementPeriodStart: fileUploads.statementPeriodStart,
+      statementPeriodEnd: fileUploads.statementPeriodEnd,
+    })
+    .from(fileUploads)
+    .where(
+      inArray(
+        fileUploads.dataSourceConnectionId,
+        conns.map((c) => c.id),
+      ),
+    );
+  const filesByConn = new Map<string, typeof fileRows>();
+  for (const f of fileRows) {
+    const arr = filesByConn.get(f.dataSourceConnectionId) ?? [];
+    arr.push(f);
+    filesByConn.set(f.dataSourceConnectionId, arr);
+  }
+
+  // Kick throttled Plaid syncs + file parses for in_progress connections.
   const now = Date.now();
   const triggered: string[] = [];
   for (const conn of conns) {
-    if (conn.dataSourceTypeId !== "plaid") continue;
-    if (conn.ingestionState !== "in_progress" && conn.ingestionState !== "pending") continue;
     const lastSyncMs = conn.lastSyncedAt
       ? new Date(conn.lastSyncedAt).getTime()
       : 0;
-    if (now - lastSyncMs < SYNC_THROTTLE_MS) continue;
-    triggered.push(conn.id);
-    // Fire-and-forget. ingestPlaidConnection acquires the in-flight lock; if
-    // a webhook-triggered sync is already running we no-op gracefully.
-    void ingestPlaidConnection(conn.id).catch((err) => {
-      console.error(`[agent-status] background sync failed for ${conn.id}:`, err);
-    });
+
+    if (conn.dataSourceTypeId === "plaid") {
+      if (conn.ingestionState !== "in_progress" && conn.ingestionState !== "pending") continue;
+      if (now - lastSyncMs < SYNC_THROTTLE_MS) continue;
+      triggered.push(conn.id);
+      void ingestPlaidConnection(conn.id).catch((err) => {
+        console.error(`[agent-status] plaid sync failed for ${conn.id}:`, err);
+      });
+    } else if (conn.dataSourceTypeId === "file-upload") {
+      // For file uploads, kick the parse advance if there are pending or
+      // validated files. The validation step is idempotent and fast; the
+      // full parse claims the row atomically so multiple polls don't race.
+      const files = filesByConn.get(conn.id) ?? [];
+      const hasWork = files.some(
+        (f) => f.parseState === "validated" || f.parseState === "pending",
+      );
+      if (!hasWork) continue;
+      // Throttle: only kick once per 5s per connection (parse is slow; we
+      // don't want to spam Claude requests if a poll happens mid-parse).
+      if (now - lastSyncMs < 5000) continue;
+      triggered.push(conn.id);
+      void advanceUploadsForConnection(conn.id).catch((err) => {
+        console.error(`[agent-status] upload parse failed for ${conn.id}:`, err);
+      });
+    }
   }
 
   const ingestionComplete = conns.every(
-    (c) => c.ingestionState === "complete" || c.ingestionState === "failed" || c.ingestionState === "needs_auth",
+    (c) =>
+      c.ingestionState === "complete" ||
+      c.ingestionState === "failed" ||
+      c.ingestionState === "needs_auth",
   );
 
   return c.json({
@@ -251,23 +297,151 @@ app.get("/agent-status", async (c) => {
     agentStatus: instance.status,
     ingestionComplete,
     totalTransactions: txRows.length,
-    connections: conns.map((c) => ({
-      id: c.id,
-      dataSourceTypeId: c.dataSourceTypeId,
-      displayName: c.displayName,
-      ingestionState: c.ingestionState,
-      ingestionStartedAt: c.ingestionStartedAt,
-      ingestionCompletedAt: c.ingestionCompletedAt,
-      lastSyncedAt: c.lastSyncedAt,
-      lastSyncStatus: c.lastSyncStatus,
-      lastSyncError: c.lastSyncError,
-      lastSyncAddedCount: c.lastSyncAddedCount,
-      consecutiveEmptySyncs: c.consecutiveEmptySyncs,
-      transactionCount: perConnCount.get(c.id) ?? 0,
-      accountCount: (perConnAccounts.get(c.id) ?? new Set()).size,
-      syncTriggered: triggered.includes(c.id),
-    })),
+    connections: conns.map((c) => {
+      const files = filesByConn.get(c.id) ?? [];
+      return {
+        id: c.id,
+        dataSourceTypeId: c.dataSourceTypeId,
+        displayName: c.displayName,
+        ingestionState: c.ingestionState,
+        ingestionStartedAt: c.ingestionStartedAt,
+        ingestionCompletedAt: c.ingestionCompletedAt,
+        lastSyncedAt: c.lastSyncedAt,
+        lastSyncStatus: c.lastSyncStatus,
+        lastSyncError: c.lastSyncError,
+        lastSyncAddedCount: c.lastSyncAddedCount,
+        consecutiveEmptySyncs: c.consecutiveEmptySyncs,
+        transactionCount: perConnCount.get(c.id) ?? 0,
+        accountCount: (perConnAccounts.get(c.id) ?? new Set()).size,
+        syncTriggered: triggered.includes(c.id),
+        files: files.map((f) => ({
+          id: f.id,
+          filename: f.originalFilename,
+          parseState: f.parseState,
+          institutionName: f.institutionName,
+          accountLast4: f.accountLast4,
+          statementPeriodStart: f.statementPeriodStart,
+          statementPeriodEnd: f.statementPeriodEnd,
+        })),
+      };
+    }),
   });
+});
+
+/**
+ * GET /api/finance/accounts
+ *   Lists every finance_account the user has, joined with its source
+ *   signals — Plaid connection (if any) and uploaded statements (if any).
+ *   One row per account, regardless of how many sources it has.
+ */
+app.get("/accounts", async (c) => {
+  const user = c.get("user");
+
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+
+  if (!instance) return c.json({ accounts: [] });
+
+  const accts = await db
+    .select()
+    .from(financeAccounts)
+    .where(eq(financeAccounts.agentInstanceId, instance.id));
+
+  // Pull every connection on the instance so we can attach source info.
+  const conns = await db
+    .select()
+    .from(dataSourceConnections)
+    .where(eq(dataSourceConnections.agentInstanceId, instance.id));
+  const connById = new Map(conns.map((c) => [c.id, c]));
+
+  // Pull every file_upload so each account can list its statements.
+  const files = await db
+    .select()
+    .from(fileUploads)
+    .where(
+      inArray(
+        fileUploads.dataSourceConnectionId,
+        conns.map((c) => c.id),
+      ),
+    );
+
+  // Transaction counts per account (one query, group in JS).
+  const txCounts = await db
+    .select({
+      accountId: financeTransactions.accountId,
+      id: financeTransactions.id,
+    })
+    .from(financeTransactions)
+    .where(eq(financeTransactions.agentInstanceId, instance.id));
+  const perAccount = new Map<string, number>();
+  for (const t of txCounts) {
+    if (!t.accountId) continue;
+    perAccount.set(t.accountId, (perAccount.get(t.accountId) ?? 0) + 1);
+  }
+
+  const accounts = accts.map((a) => {
+    const ownerConn = a.dataSourceConnectionId
+      ? connById.get(a.dataSourceConnectionId)
+      : null;
+    const plaidConn =
+      ownerConn?.dataSourceTypeId === "plaid"
+        ? ownerConn
+        : conns.find((c) => c.dataSourceTypeId === "plaid" && c.id === a.dataSourceConnectionId);
+    const uploadConn = conns.find((c) => c.dataSourceTypeId === "file-upload");
+
+    const statements = files
+      .filter((f) => f.accountId === a.id)
+      .sort((x, y) => (x.statementPeriodEnd ?? '').localeCompare(y.statementPeriodEnd ?? ''))
+      .map((f) => ({
+        id: f.id,
+        filename: f.originalFilename,
+        parseState: f.parseState,
+        uploadedAt: f.uploadedAt,
+        statementPeriodStart: f.statementPeriodStart,
+        statementPeriodEnd: f.statementPeriodEnd,
+        transactionCount: f.transactionCount,
+      }));
+
+    return {
+      id: a.id,
+      institutionName: a.institutionName,
+      accountLast4: a.accountLast4,
+      name: a.name,
+      type: a.type,
+      subtype: a.subtype,
+      currentBalance: a.currentBalance ? parseFloat(a.currentBalance) : null,
+      availableBalance: a.availableBalance ? parseFloat(a.availableBalance) : null,
+      isoCurrencyCode: a.isoCurrencyCode,
+      transactionCount: perAccount.get(a.id) ?? 0,
+      plaid: plaidConn
+        ? {
+            connectionId: plaidConn.id,
+            displayName: plaidConn.displayName,
+            status: plaidConn.status,
+            lastSyncedAt: plaidConn.lastSyncedAt,
+            requiresReauth: plaidConn.requiresReauth ?? false,
+            ingestionState: plaidConn.ingestionState,
+          }
+        : null,
+      upload: statements.length > 0 && uploadConn
+        ? {
+            connectionId: uploadConn.id,
+            statements,
+          }
+        : null,
+    };
+  });
+
+  return c.json({ accounts });
 });
 
 /**

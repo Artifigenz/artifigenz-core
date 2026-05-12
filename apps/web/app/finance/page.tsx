@@ -733,7 +733,9 @@ export default function FinanceBriefPage() {
       const formData = new FormData();
       formData.append('file', file);
       const result = await api.uploadFile(formData);
-      setUploadSuccess(`Uploaded! Extracted ${result.transactions} transactions.`);
+      const inst = result.metadata.institutionName ?? 'statement';
+      const last4 = result.metadata.accountLast4 ? ` ••${result.metadata.accountLast4}` : '';
+      setUploadSuccess(`Validated ${inst}${last4} — parsing in background.`);
       // Refresh upload history
       const history = await api.getUploadHistory();
       setUploadHistory(history.uploads);
@@ -920,6 +922,12 @@ export default function FinanceBriefPage() {
                   <div className={styles.detailsLink}>
                     <Link href="/finance/breakdown">
                       View detailed breakdown
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14M13 5l7 7-7 7" />
+                      </svg>
+                    </Link>
+                    <Link href="/finance/accounts" style={{ marginLeft: '24px' }}>
+                      View accounts
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M5 12h14M13 5l7 7-7 7" />
                       </svg>

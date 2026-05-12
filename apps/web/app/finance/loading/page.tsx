@@ -24,6 +24,15 @@ interface ConnectionStatus {
   lastSyncError: string | null;
   transactionCount: number;
   accountCount: number;
+  files?: Array<{
+    id: string;
+    filename: string;
+    parseState: 'pending' | 'validated' | 'parsing' | 'complete' | 'failed';
+    institutionName: string | null;
+    accountLast4: string | null;
+    statementPeriodStart: string | null;
+    statementPeriodEnd: string | null;
+  }>;
 }
 
 function formatElapsed(startIso: string | null): string {
@@ -57,9 +66,34 @@ function buildActivityFrames(
 
   for (const c of active) {
     const name = c.displayName ?? 'your bank';
-    frames.push(`Pulling transactions from <strong>${name}</strong>`);
-    if (c.transactionCount > 0) {
-      frames.push(`<strong>${c.transactionCount.toLocaleString()}</strong> transactions from ${name} so far`);
+    if (c.dataSourceTypeId === 'file-upload') {
+      // For uploads, drive frames off file_uploads state.
+      const parsing = (c.files ?? []).filter((f) => f.parseState === 'parsing');
+      const validated = (c.files ?? []).filter((f) => f.parseState === 'validated');
+      const complete = (c.files ?? []).filter((f) => f.parseState === 'complete');
+      for (const f of parsing) {
+        const fileLabel = f.institutionName
+          ? `${f.institutionName}${f.accountLast4 ? ` ••${f.accountLast4}` : ''}`
+          : f.filename;
+        frames.push(`Parsing <strong>${fileLabel}</strong>`);
+      }
+      for (const f of validated) {
+        const fileLabel = f.institutionName
+          ? `${f.institutionName}${f.accountLast4 ? ` ••${f.accountLast4}` : ''}`
+          : f.filename;
+        frames.push(`Queued: <strong>${fileLabel}</strong>`);
+      }
+      if (complete.length > 0) {
+        frames.push(`<strong>${complete.length}</strong> statement${complete.length === 1 ? '' : 's'} parsed`);
+      }
+    } else {
+      // Plaid connection
+      frames.push(`Pulling transactions from <strong>${name}</strong>`);
+      if (c.transactionCount > 0) {
+        frames.push(
+          `<strong>${c.transactionCount.toLocaleString()}</strong> transactions from ${name} so far`,
+        );
+      }
     }
   }
 
@@ -104,7 +138,7 @@ export default function FinanceLoadingPage() {
         router.replace('/app');
         return;
       }
-      setConnections(res.connections);
+      setConnections(res.connections as ConnectionStatus[]);
       setTotalTxns(res.totalTransactions);
       setIngestionComplete(res.ingestionComplete);
       // Find earliest ingestion start across connections for the "started X

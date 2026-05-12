@@ -11,6 +11,7 @@ import {
 } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { fileUploadAdapter } from "../agents/finance/data-sources/file-upload.adapter";
+import { validateUpload } from "../agents/finance/ingest/upload-ingest";
 import { appleHealthAdapter } from "../agents/health/data-sources/apple-health.adapter";
 import { SkillExecutor } from "../platform/execution/skill-executor";
 import { AgentRegistry } from "../platform/registry/agent-registry";
@@ -113,42 +114,63 @@ app.post("/", async (c) => {
     dataSourceTypeId: "file-upload",
   });
 
-  // ─── 4. Create file_uploads row ───────────────────────────────
-  await db.insert(fileUploads).values({
-    dataSourceConnectionId: connection.id,
-    originalFilename: fileName,
-    fileType: fileType.includes("pdf")
-      ? "pdf"
-      : fileType.includes("csv") || fileType.includes("text")
-        ? "csv"
-        : "image",
-    storagePath: filepath,
-    fileSizeBytes: fileSize,
-    extractionStatus: "pending",
-  });
+  // ─── 4. Create file_uploads row (parse_state defaults to 'pending') ───
+  const [fileRow] = await db
+    .insert(fileUploads)
+    .values({
+      dataSourceConnectionId: connection.id,
+      originalFilename: fileName,
+      fileType: fileType.includes("pdf")
+        ? "pdf"
+        : fileType.includes("csv") || fileType.includes("text")
+          ? "csv"
+          : "image",
+      storagePath: filepath,
+      fileSizeBytes: fileSize,
+    })
+    .returning({ id: fileUploads.id });
 
-  // ─── 5. Parse with Claude + ingest (inline, ~20s) ────────────
-  let syncResult: unknown[];
+  // ─── 5. Validate only (fast ~3-5s Claude classifier) ─────────
+  // Full transaction extraction is deferred to the processing page so the
+  // onboarding feels snappy and the user sees a tile with bank/last4/period
+  // before they click Activate.
+  let validation;
   try {
-    syncResult = await fileUploadAdapter.sync(connection);
+    const result = await validateUpload(fileRow.id);
+    validation = result;
   } catch (err) {
-    console.error("[upload] Failed to parse file:", err);
-    return c.json({
-      error: "Failed to parse file",
-      details: err instanceof Error ? err.message : String(err),
-    }, 500);
+    console.error("[upload] Validation failed:", err);
+    return c.json(
+      {
+        error: "Could not read the file",
+        details: err instanceof Error ? err.message : String(err),
+      },
+      500,
+    );
   }
 
-  // Categorization + insights run in later phases of the pipeline (step 3/4
-  // of the unified-finance rewrite). This route now only ingests.
+  if (validation.rejected) {
+    return c.json(
+      {
+        error:
+          validation.validation.rejectionReason ??
+          "This file doesn't look like a bank statement.",
+        rejected: true,
+      },
+      400,
+    );
+  }
+
   return c.json({
-    status: "processed",
-    file: {
-      name: fileName,
-      size: fileSize,
-      type: fileType,
+    status: "validated",
+    fileId: fileRow.id,
+    file: { name: fileName, size: fileSize, type: fileType },
+    metadata: {
+      institutionName: validation.validation.institutionName,
+      accountLast4: validation.validation.accountLast4,
+      accountType: validation.validation.accountType,
+      statementPeriod: validation.validation.statementPeriod,
     },
-    transactions: syncResult.length,
   });
 });
 
