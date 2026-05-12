@@ -44,6 +44,109 @@ interface Brief {
   generated_at: string;
 }
 
+// PLACEHOLDER brief used while categorization + brief generation are paused
+// (Challenge 1 only ingests transactions). The numbers are dummy values
+// shaped to make the bar graph and cards visually populated. Real
+// generation will overwrite this.
+function buildPlaceholderBrief(accountCount: number, txnCount: number): Brief {
+  const income = 7800;
+  const subscriptions = 350;
+  const loans = 1800;
+  const other = 850;
+  const variable = 2400;
+  const outflow = subscriptions + loans + other + variable;
+  const leftover = income - outflow;
+
+  return {
+    id: 'placeholder',
+    verdict:
+      'Placeholder brief — your real numbers will land here once analysis is wired back in.',
+    numbers: [
+      { value: '$7,800/mo', phrase: 'placeholder income' },
+      { value: '$2,400/mo', phrase: 'placeholder leftover' },
+      { value: '$3,000/mo', phrase: 'placeholder recurring' },
+    ],
+    paragraph:
+      'This brief is dummy content while we rebuild the analysis pipeline. Categorization and recurring detection are paused — only ingestion is live. Real insights will replace this once the next phases are in.',
+    summary: {
+      income,
+      outflow,
+      leftover,
+      breakdown: [
+        {
+          id: 'subscriptions',
+          label: 'Subscriptions',
+          sublabel: '5 active',
+          amount: subscriptions,
+          count: 5,
+        },
+        {
+          id: 'loans',
+          label: 'Loans & EMI',
+          sublabel: '1 line',
+          amount: loans,
+          count: 1,
+        },
+        {
+          id: 'other',
+          label: 'Other recurring',
+          sublabel: 'rent, utilities, autopay',
+          amount: other,
+        },
+      ],
+    },
+    data_scope: `Based on ${accountCount} account${accountCount === 1 ? '' : 's'}, ${txnCount.toLocaleString()} transactions ingested · dev mode.`,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+function buildPlaceholderInsights(): Insight[] {
+  const now = new Date();
+  const iso = (offsetMs: number) => new Date(now.getTime() - offsetMs).toISOString();
+  return [
+    {
+      id: 'placeholder-1',
+      title: 'Placeholder · Netflix will charge $17.99 tomorrow',
+      description: 'Dummy insight while analysis is paused.',
+      insightTypeId: 'placeholder',
+      data: {},
+      isCritical: false,
+      isRead: false,
+      createdAt: iso(0),
+    },
+    {
+      id: 'placeholder-2',
+      title: 'Placeholder · Spotify charged $12.99 — as expected',
+      description: 'Dummy insight while analysis is paused.',
+      insightTypeId: 'placeholder',
+      data: {},
+      isCritical: false,
+      isRead: false,
+      createdAt: iso(3 * 3600_000),
+    },
+    {
+      id: 'placeholder-3',
+      title: 'Placeholder · New subscription detected: Audible',
+      description: 'Dummy insight while analysis is paused.',
+      insightTypeId: 'placeholder',
+      data: {},
+      isCritical: false,
+      isRead: false,
+      createdAt: iso(24 * 3600_000),
+    },
+    {
+      id: 'placeholder-4',
+      title: 'Placeholder · Adobe increased $19.99 → $22.99',
+      description: 'Dummy insight while analysis is paused.',
+      insightTypeId: 'placeholder',
+      data: {},
+      isCritical: false,
+      isRead: false,
+      createdAt: iso(2 * 24 * 3600_000),
+    },
+  ];
+}
+
 function toTitleCase(str: string): string {
   return str
     .toLowerCase()
@@ -214,14 +317,9 @@ export default function FinanceBriefPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(true);
-  // Dev-mode (Challenge 1): no brief is generated; we show a placeholder
-  // backed by ingestion status. This state holds the snapshot used by
-  // that placeholder.
-  const [devStatus, setDevStatus] = useState<{
-    totalTransactions: number;
-    connectionCount: number;
-    accountCount: number;
-  } | null>(null);
+  // Dev-mode (Challenge 1): no real brief is generated. We populate a
+  // placeholder brief from agent-status counts so the verdict / cards /
+  // insights panel all render with dummy content.
 
   // Settings modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -282,9 +380,10 @@ export default function FinanceBriefPage() {
   useEffect(() => {
     let cancelled = false;
 
-    // Challenge 1 dev mode: skip the brief pipeline entirely. We just check
-    // ingestion status: if any connection is still pulling, push the user
-    // to the loading screen; otherwise show the dev-mode placeholder.
+    // Challenge 1 dev mode: skip the brief pipeline. We populate a
+    // PLACEHOLDER brief so the verdict heading, bar graph, cards, and
+    // insight panel all render with dummy content. Once categorization +
+    // brief generation get wired back in, this branch goes away.
     (async () => {
       try {
         if (shouldRegen) {
@@ -303,14 +402,12 @@ export default function FinanceBriefPage() {
           router.replace('/finance/loading');
           return;
         }
-        setDevStatus({
-          totalTransactions: status.totalTransactions,
-          connectionCount: status.connections.length,
-          accountCount: status.connections.reduce(
-            (sum, c) => sum + c.accountCount,
-            0,
-          ),
-        });
+        const accountCount = status.connections.reduce(
+          (sum, c) => sum + c.accountCount,
+          0,
+        );
+        // Dummy brief — visual scaffold while categorization is paused.
+        setBrief(buildPlaceholderBrief(accountCount, status.totalTransactions));
       } catch (err) {
         if (cancelled) return;
         setError(
@@ -344,7 +441,8 @@ export default function FinanceBriefPage() {
   const typedVerdict = verdictTarget.slice(0, typedChars);
   const isTyping = typedChars < verdictTarget.length;
 
-  // Fetch insights
+  // Fetch insights. In Challenge 1 dev mode there are none — fall back to
+  // placeholders so the insight panel renders with example content.
   useEffect(() => {
     let cancelled = false;
 
@@ -352,11 +450,14 @@ export default function FinanceBriefPage() {
       try {
         const feed = await api.getInsights({ limit: 20 });
         if (!cancelled) {
-          setInsights(feed.insights);
+          setInsights(feed.insights.length > 0 ? feed.insights : buildPlaceholderInsights());
           setInsightsLoading(false);
         }
       } catch {
-        if (!cancelled) setInsightsLoading(false);
+        if (!cancelled) {
+          setInsights(buildPlaceholderInsights());
+          setInsightsLoading(false);
+        }
       }
     })();
 
@@ -722,62 +823,6 @@ export default function FinanceBriefPage() {
           <p className={styles.verdict}>Regenerating your brief…</p>
         ) : error ? (
           <p className={styles.verdict}>{error}</p>
-        ) : !brief && devStatus ? (
-          <div style={{
-            marginTop: '12px',
-            padding: '24px 28px',
-            border: '1px solid var(--border-light)',
-            borderRadius: '14px',
-            background: 'rgba(255,255,255,0.55)',
-            maxWidth: '720px',
-          }}>
-            <p style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.7rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: 'var(--text-dim)',
-              margin: '0 0 14px',
-            }}>
-              Finance · dev mode
-            </p>
-            <p style={{
-              fontSize: '1.4rem',
-              fontWeight: 500,
-              lineHeight: 1.3,
-              margin: '0 0 12px',
-              color: 'var(--text)',
-            }}>
-              {devStatus.totalTransactions.toLocaleString()} transactions across{' '}
-              {devStatus.accountCount} account{devStatus.accountCount === 1 ? '' : 's'}.
-            </p>
-            <p style={{
-              fontSize: '0.86rem',
-              color: 'var(--text-dim)',
-              margin: '0 0 18px',
-              lineHeight: 1.5,
-              maxWidth: '52ch',
-            }}>
-              Ingestion is complete. Categorization and brief generation are
-              disabled in this phase — we&apos;re focused on getting the consolidated
-              transactions table right first.
-            </p>
-            <Link
-              href="/finance/breakdown"
-              style={{
-                display: 'inline-block',
-                padding: '10px 16px',
-                borderRadius: '8px',
-                background: 'var(--text)',
-                color: 'var(--bg)',
-                fontSize: '0.85rem',
-                fontWeight: 500,
-                textDecoration: 'none',
-              }}
-            >
-              View all transactions →
-            </Link>
-          </div>
         ) : brief ? (
           <>
             <h2 className={styles.verdict}>
