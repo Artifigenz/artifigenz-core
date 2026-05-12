@@ -192,31 +192,13 @@ export default function BreakdownPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((t) => {
-                      // Show the normalized merchant key only when it
-                      // differs meaningfully from what the user already
-                      // sees in the description and merchant columns —
-                      // collapses (whitespace + case) to detect "same".
-                      const collapse = (s: string) =>
-                        s.toLowerCase().replace(/\s+/g, ' ').trim();
-                      const norm = t.merchantNormalized;
-                      const showNorm =
-                        norm
-                          ? norm !== collapse(t.description)
-                            && norm !== collapse(t.merchantName ?? '')
-                          : false;
-                      return (
+                    {filtered.map((t) => (
                       <tr key={t.id} style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}>
                         <td style={tdStyle}>{formatDate(t.date)}</td>
                         <td style={{ ...tdStyle, maxWidth: '360px' }}>
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {t.description}
                           </div>
-                          {showNorm && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                              ↳ {norm}
-                            </div>
-                          )}
                         </td>
                         <td style={tdStyle}>{t.merchantName ?? '—'}</td>
                         <td style={tdStyle}>{accountLabel(t)}</td>
@@ -232,8 +214,7 @@ export default function BreakdownPage() {
                           {t.source}
                         </td>
                       </tr>
-                      );
-                    })}
+                    ))}
                     {filtered.length === 0 && (
                       <tr>
                         <td colSpan={6} style={{ ...tdStyle, textAlign: 'center', padding: '32px', color: 'var(--text-dim)' }}>
