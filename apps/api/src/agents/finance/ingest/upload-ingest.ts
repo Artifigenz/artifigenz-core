@@ -120,21 +120,41 @@ export async function ingestUpload(
 
 /**
  * Ingest all pending uploads for a connection. Used after a batch upload.
+ *
+ * Drives the ingestion state machine on the connection:
+ *   pending → in_progress (while parsing) → complete (all files done) | failed
+ *
+ * Unlike Plaid, uploads are fully synchronous — Claude parses each file in
+ * one call, no async backfill. So we can declare the connection complete as
+ * soon as the loop finishes.
  */
 export async function ingestPendingUploadsForConnection(
   connectionId: string,
 ): Promise<UploadIngestResult[]> {
+  await db
+    .update(dataSourceConnections)
+    .set({
+      ingestionState: "in_progress",
+      ingestionStartedAt: new Date(),
+      ingestionInFlight: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(dataSourceConnections.id, connectionId));
+
   const pending = await db
     .select({ id: fileUploads.id })
     .from(fileUploads)
     .where(eq(fileUploads.dataSourceConnectionId, connectionId));
 
   const results: UploadIngestResult[] = [];
+  let anyFailed = false;
+
   for (const f of pending) {
     try {
       const result = await ingestUpload(f.id);
       results.push(result);
     } catch (err) {
+      anyFailed = true;
       console.error(`[upload-ingest] failed for ${f.id}:`, err);
       await db
         .update(fileUploads)
@@ -147,5 +167,21 @@ export async function ingestPendingUploadsForConnection(
         .where(eq(fileUploads.id, f.id));
     }
   }
+
+  // Connection is complete after all files are parsed. If every file failed
+  // and we have nothing, mark failed; otherwise complete (partial success is
+  // still complete — the user can see the parsed files).
+  const allFailed = anyFailed && results.length === 0;
+  await db
+    .update(dataSourceConnections)
+    .set({
+      ingestionState: allFailed ? "failed" : "complete",
+      ingestionCompletedAt: new Date(),
+      ingestionInFlight: false,
+      lastSyncedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(dataSourceConnections.id, connectionId));
+
   return results;
 }

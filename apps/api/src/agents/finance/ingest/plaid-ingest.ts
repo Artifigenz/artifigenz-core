@@ -1,6 +1,10 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Transaction as PlaidTransaction, AccountBase } from "plaid";
-import { db, dataSourceConnections } from "@artifigenz/db";
+import {
+  db,
+  dataSourceConnections,
+  financeTransactions,
+} from "@artifigenz/db";
 import { getPlaidClient } from "../lib/plaid-client";
 import { upsertAccount } from "./account-matcher";
 import { insertTransactions, prepareTransaction } from "./dedup";
@@ -21,19 +25,80 @@ export interface PlaidIngestResult {
   transactionsSkipped: number;
   transactionsModified: number;
   transactionsRemoved: number;
+  /** Updated ingestion_state after this sync — useful for callers. */
+  ingestionState:
+    | "pending"
+    | "in_progress"
+    | "complete"
+    | "needs_auth"
+    | "failed";
+  /** True when this call did nothing because another ingest is already running. */
+  skippedInFlight: boolean;
 }
 
+// How many consecutive zero-add syncs before we declare Plaid finished.
+// 3 × 30s polling interval = ~90s of stability.
+const COMPLETE_AFTER_EMPTY_SYNCS = 3;
+// Hard cap on how long we keep polling before forcing complete.
+const TIMEOUT_MINUTES = 30;
+// Mark connection failed after this many consecutive errored syncs.
+const FAIL_AFTER_ERRORS = 10;
+
 /**
- * Full ingest path for a Plaid connection:
- *   1. fetch accounts + balances → upsert finance_accounts
- *   2. sync transactions via cursor → dedup + insert finance_transactions
+ * Full ingest path for one Plaid connection.
  *
- * Replaces the old phase1-accounts.ts + plaid.adapter.sync() write logic.
- * Idempotent: re-runs are safe thanks to the dedup index and upsertAccount.
+ * Drives the ingestion state machine on data_source_connections:
+ *   pending → in_progress → complete | needs_auth | failed
+ *
+ * Idempotent and concurrency-safe: the ingestion_in_flight flag prevents
+ * the frontend poll and the Plaid webhook from racing the same /sync call.
+ * The dedup unique index makes any actual race harmless.
  */
 export async function ingestPlaidConnection(
   connectionId: string,
 ): Promise<PlaidIngestResult> {
+  // Try to acquire the in-flight soft lock. If another ingest is already
+  // running for this connection, bail out fast with skippedInFlight=true.
+  const acquired = await db
+    .update(dataSourceConnections)
+    .set({ ingestionInFlight: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(dataSourceConnections.id, connectionId),
+        eq(dataSourceConnections.ingestionInFlight, false),
+      ),
+    )
+    .returning({ id: dataSourceConnections.id });
+
+  if (acquired.length === 0) {
+    const [current] = await db
+      .select({ ingestionState: dataSourceConnections.ingestionState })
+      .from(dataSourceConnections)
+      .where(eq(dataSourceConnections.id, connectionId))
+      .limit(1);
+    return {
+      accountsUpserted: 0,
+      transactionsInserted: 0,
+      transactionsSkipped: 0,
+      transactionsModified: 0,
+      transactionsRemoved: 0,
+      ingestionState: (current?.ingestionState ?? "in_progress") as PlaidIngestResult["ingestionState"],
+      skippedInFlight: true,
+    };
+  }
+
+  try {
+    return await runIngest(connectionId);
+  } finally {
+    // Always release the soft lock, even on error.
+    await db
+      .update(dataSourceConnections)
+      .set({ ingestionInFlight: false, updatedAt: new Date() })
+      .where(eq(dataSourceConnections.id, connectionId));
+  }
+}
+
+async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
   const [conn] = await db
     .select({
       id: dataSourceConnections.id,
@@ -41,12 +106,28 @@ export async function ingestPlaidConnection(
       credentialsEncrypted: dataSourceConnections.credentialsEncrypted,
       metadata: dataSourceConnections.metadata,
       syncCursor: dataSourceConnections.syncCursor,
+      ingestionState: dataSourceConnections.ingestionState,
+      ingestionStartedAt: dataSourceConnections.ingestionStartedAt,
+      consecutiveEmptySyncs: dataSourceConnections.consecutiveEmptySyncs,
+      consecutiveFailures: dataSourceConnections.consecutiveFailures,
     })
     .from(dataSourceConnections)
     .where(eq(dataSourceConnections.id, connectionId))
     .limit(1);
 
   if (!conn) throw new Error(`Connection ${connectionId} not found`);
+
+  // First sync since the connection was created — flip pending → in_progress.
+  if (conn.ingestionState === "pending") {
+    await db
+      .update(dataSourceConnections)
+      .set({
+        ingestionState: "in_progress",
+        ingestionStartedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(dataSourceConnections.id, connectionId));
+  }
 
   const creds = conn.credentialsEncrypted as unknown as PlaidCredentials;
   const meta = (conn.metadata ?? {}) as PlaidMetadata;
@@ -55,46 +136,41 @@ export async function ingestPlaidConnection(
   const plaid = getPlaidClient();
 
   // 1. Accounts + balances
-  const accountsResp = await plaid.accountsGet({ access_token: creds.accessToken });
-  const plaidAccountToId = new Map<string, string>();
-  for (const acc of accountsResp.data.accounts as AccountBase[]) {
-    const last4 = acc.mask ?? "0000";
-    const accountId = await upsertAccount({
-      agentInstanceId: conn.agentInstanceId,
-      institutionName,
-      accountLast4: last4,
-      dataSourceConnectionId: conn.id,
-      plaidAccountId: acc.account_id,
-      name: acc.name,
-      mask: acc.mask,
-      type: acc.type,
-      subtype: acc.subtype,
-      currentBalance: acc.balances?.current?.toString() ?? null,
-      availableBalance: acc.balances?.available?.toString() ?? null,
-      isoCurrencyCode: acc.balances?.iso_currency_code ?? null,
-    });
-    plaidAccountToId.set(acc.account_id, accountId);
+  let plaidAccountToId: Map<string, string>;
+  try {
+    const accountsResp = await plaid.accountsGet({ access_token: creds.accessToken });
+    plaidAccountToId = new Map<string, string>();
+    for (const acc of accountsResp.data.accounts as AccountBase[]) {
+      const last4 = acc.mask ?? "0000";
+      const accountId = await upsertAccount({
+        agentInstanceId: conn.agentInstanceId,
+        institutionName,
+        accountLast4: last4,
+        dataSourceConnectionId: conn.id,
+        plaidAccountId: acc.account_id,
+        name: acc.name,
+        mask: acc.mask,
+        type: acc.type,
+        subtype: acc.subtype,
+        currentBalance: acc.balances?.current?.toString() ?? null,
+        availableBalance: acc.balances?.available?.toString() ?? null,
+        isoCurrencyCode: acc.balances?.iso_currency_code ?? null,
+      });
+      plaidAccountToId.set(acc.account_id, accountId);
+    }
+  } catch (err) {
+    return await handlePlaidError(connectionId, err, conn);
   }
 
-  // 2. Transactions sync
-  // After Plaid Link finishes, the very first /transactions/sync call often
-  // returns added=[] with next_cursor="" because Plaid is still backfilling
-  // history. Production normally signals readiness via a webhook (~30-90s).
-  // To avoid the "TD has 0 txns" experience during onboarding, retry with
-  // backoff if we get an empty initial pull and no stored cursor yet.
-  const isInitialPull = !conn.syncCursor;
+  // 2. Transactions sync (one round of has_more loop; we don't backoff-poll
+  // here — the agent-status endpoint and the webhook drive subsequent calls).
   let cursor = conn.syncCursor ?? undefined;
   const added: PlaidTransaction[] = [];
   const modified: PlaidTransaction[] = [];
   const removed: string[] = [];
   let hasMore = true;
 
-  const initialBackoffsMs = isInitialPull ? [0, 8_000, 15_000, 25_000] : [0];
-  let receivedAnyAdded = false;
-
-  for (const wait of initialBackoffsMs) {
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-
+  try {
     while (hasMore) {
       const resp = await plaid.transactionsSync({
         access_token: creds.accessToken,
@@ -106,23 +182,11 @@ export async function ingestPlaidConnection(
       hasMore = resp.data.has_more;
       cursor = resp.data.next_cursor;
     }
-
-    if (added.length > 0) {
-      receivedAnyAdded = true;
-      break;
-    }
-    if (!isInitialPull) break;
-    // Reset has_more so the next backoff iteration polls again.
-    hasMore = true;
+  } catch (err) {
+    return await handlePlaidError(connectionId, err, conn);
   }
 
-  if (isInitialPull && !receivedAnyAdded) {
-    console.warn(
-      `[plaid-ingest] ${connectionId}: initial pull stayed empty after backoff — ` +
-        `Plaid is still backfilling. The webhook handler will pick up txns when ready.`,
-    );
-  }
-
+  // 3. Apply added
   const prepared = added
     .filter((tx) => !tx.pending)
     .map((tx) => {
@@ -154,7 +218,46 @@ export async function ingestPlaidConnection(
 
   const stats = await insertTransactions(prepared);
 
-  // Update cursor + sync health
+  // 4. Apply modified (Plaid re-issues txns when amount/description/category
+  // change — e.g. pending → posted, merchant rename). Match by plaid_transaction_id.
+  for (const tx of modified) {
+    await db
+      .update(financeTransactions)
+      .set({
+        description: tx.name,
+        merchantName: tx.merchant_name ?? null,
+        amount: tx.amount.toString(),
+        personalFinanceCategoryPrimary:
+          tx.personal_finance_category?.primary ?? null,
+        personalFinanceCategoryDetailed:
+          tx.personal_finance_category?.detailed ?? null,
+      })
+      .where(eq(financeTransactions.plaidTransactionId, tx.transaction_id));
+  }
+
+  // 5. Apply removed (cancelled/voided txns). Match by plaid_transaction_id.
+  for (const txId of removed) {
+    await db
+      .delete(financeTransactions)
+      .where(eq(financeTransactions.plaidTransactionId, txId));
+  }
+
+  // 6. State transitions
+  const newEmptyCount =
+    stats.inserted === 0
+      ? (conn.consecutiveEmptySyncs ?? 0) + 1
+      : 0;
+
+  // Hard timeout: if we've been in_progress for too long, mark complete anyway.
+  const timedOut =
+    conn.ingestionStartedAt !== null &&
+    Date.now() - new Date(conn.ingestionStartedAt).getTime() >
+      TIMEOUT_MINUTES * 60_000;
+
+  const stable = newEmptyCount >= COMPLETE_AFTER_EMPTY_SYNCS;
+  const nextState: PlaidIngestResult["ingestionState"] =
+    stable || timedOut ? "complete" : "in_progress";
+
   await db
     .update(dataSourceConnections)
     .set({
@@ -164,9 +267,14 @@ export async function ingestPlaidConnection(
       lastSyncError: null,
       requiresReauth: false,
       consecutiveFailures: 0,
+      lastSyncAddedCount: stats.inserted,
+      consecutiveEmptySyncs: newEmptyCount,
+      ingestionState: nextState,
+      ingestionCompletedAt:
+        nextState === "complete" ? new Date() : null,
       updatedAt: new Date(),
     })
-    .where(eq(dataSourceConnections.id, conn.id));
+    .where(eq(dataSourceConnections.id, connectionId));
 
   return {
     accountsUpserted: plaidAccountToId.size,
@@ -174,5 +282,60 @@ export async function ingestPlaidConnection(
     transactionsSkipped: stats.skipped,
     transactionsModified: modified.length,
     transactionsRemoved: removed.length,
+    ingestionState: nextState,
+    skippedInFlight: false,
+  };
+}
+
+async function handlePlaidError(
+  connectionId: string,
+  err: unknown,
+  conn: { consecutiveFailures: number | null },
+): Promise<PlaidIngestResult> {
+  const plaidError = (err as { response?: { data?: { error_code?: string; error_message?: string } } })
+    .response?.data;
+  const errorCode = plaidError?.error_code;
+  const errorMessage =
+    plaidError?.error_message ?? (err instanceof Error ? err.message : "Sync failed");
+
+  const needsAuth =
+    errorCode === "ITEM_LOGIN_REQUIRED" ||
+    errorCode === "INVALID_ACCESS_TOKEN" ||
+    errorCode === "ITEM_LOCKED";
+
+  const failures = (conn.consecutiveFailures ?? 0) + 1;
+  const failed = !needsAuth && failures >= FAIL_AFTER_ERRORS;
+  const nextState: PlaidIngestResult["ingestionState"] = needsAuth
+    ? "needs_auth"
+    : failed
+      ? "failed"
+      : "in_progress";
+
+  await db
+    .update(dataSourceConnections)
+    .set({
+      lastSyncStatus: "error",
+      lastSyncError: errorMessage,
+      requiresReauth: needsAuth,
+      consecutiveFailures: failures,
+      ingestionState: nextState,
+      ingestionCompletedAt:
+        nextState === "needs_auth" || nextState === "failed" ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(dataSourceConnections.id, connectionId));
+
+  console.error(
+    `[plaid-ingest] ${connectionId} error (${errorCode ?? "?"}): ${errorMessage}`,
+  );
+
+  return {
+    accountsUpserted: 0,
+    transactionsInserted: 0,
+    transactionsSkipped: 0,
+    transactionsModified: 0,
+    transactionsRemoved: 0,
+    ingestionState: nextState,
+    skippedInFlight: false,
   };
 }

@@ -20,6 +20,11 @@ import {
 } from "../agents/finance/categorize";
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
 
+// How long between successive opportunistic Plaid syncs for a single
+// connection. The frontend polls /agent-status every 3s during onboarding;
+// without this throttle we'd hammer Plaid.
+const SYNC_THROTTLE_MS = 30_000;
+
 const app = new Hono();
 app.use("/*", clerkAuth);
 
@@ -131,6 +136,135 @@ app.get("/transactions", async (c) => {
     transactions: rows.map((r) => ({
       ...r,
       amount: parseFloat(r.amount),
+    })),
+  });
+});
+
+/**
+ * GET /api/finance/agent-status
+ *   The frontend onboarding loader polls this every ~3s to render the
+ *   per-connection ingestion progress. Each call:
+ *     - reads the current state from the DB
+ *     - opportunistically kicks a Plaid sync if a connection is in_progress
+ *       and hasn't been synced in SYNC_THROTTLE_MS (fire-and-forget)
+ *     - returns whatever the truth is right now
+ *
+ *   The fire-and-forget sync is awaited only briefly via a 100ms grace
+ *   period so the caller gets fresh-ish state without waiting for Plaid.
+ */
+app.get("/agent-status", async (c) => {
+  const user = c.get("user");
+
+  const [instance] = await db
+    .select({ id: agentInstances.id, status: agentInstances.status })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+
+  if (!instance) {
+    return c.json({
+      agentExists: false,
+      ingestionComplete: true,
+      totalTransactions: 0,
+      connections: [],
+    });
+  }
+
+  const conns = await db
+    .select({
+      id: dataSourceConnections.id,
+      dataSourceTypeId: dataSourceConnections.dataSourceTypeId,
+      displayName: dataSourceConnections.displayName,
+      ingestionState: dataSourceConnections.ingestionState,
+      ingestionStartedAt: dataSourceConnections.ingestionStartedAt,
+      ingestionCompletedAt: dataSourceConnections.ingestionCompletedAt,
+      lastSyncedAt: dataSourceConnections.lastSyncedAt,
+      lastSyncStatus: dataSourceConnections.lastSyncStatus,
+      lastSyncError: dataSourceConnections.lastSyncError,
+      lastSyncAddedCount: dataSourceConnections.lastSyncAddedCount,
+      consecutiveEmptySyncs: dataSourceConnections.consecutiveEmptySyncs,
+    })
+    .from(dataSourceConnections)
+    .where(eq(dataSourceConnections.agentInstanceId, instance.id));
+
+  // Compute per-connection transaction counts in one query.
+  const counts = await db
+    .select({
+      accountId: financeAccounts.id,
+      dataSourceConnectionId: financeAccounts.dataSourceConnectionId,
+    })
+    .from(financeAccounts)
+    .where(eq(financeAccounts.agentInstanceId, instance.id));
+  const accountToConn = new Map<string, string | null>();
+  for (const a of counts) accountToConn.set(a.accountId, a.dataSourceConnectionId);
+
+  const txRows = await db
+    .select({
+      id: financeTransactions.id,
+      accountId: financeTransactions.accountId,
+    })
+    .from(financeTransactions)
+    .where(eq(financeTransactions.agentInstanceId, instance.id));
+
+  const perConnCount = new Map<string, number>();
+  const perConnAccounts = new Map<string, Set<string>>();
+  for (const tx of txRows) {
+    if (!tx.accountId) continue;
+    const connId = accountToConn.get(tx.accountId);
+    if (!connId) continue;
+    perConnCount.set(connId, (perConnCount.get(connId) ?? 0) + 1);
+    if (!perConnAccounts.has(connId)) perConnAccounts.set(connId, new Set());
+    perConnAccounts.get(connId)!.add(tx.accountId);
+  }
+
+  // Kick throttled Plaid syncs for in_progress connections.
+  const now = Date.now();
+  const triggered: string[] = [];
+  for (const conn of conns) {
+    if (conn.dataSourceTypeId !== "plaid") continue;
+    if (conn.ingestionState !== "in_progress" && conn.ingestionState !== "pending") continue;
+    const lastSyncMs = conn.lastSyncedAt
+      ? new Date(conn.lastSyncedAt).getTime()
+      : 0;
+    if (now - lastSyncMs < SYNC_THROTTLE_MS) continue;
+    triggered.push(conn.id);
+    // Fire-and-forget. ingestPlaidConnection acquires the in-flight lock; if
+    // a webhook-triggered sync is already running we no-op gracefully.
+    void ingestPlaidConnection(conn.id).catch((err) => {
+      console.error(`[agent-status] background sync failed for ${conn.id}:`, err);
+    });
+  }
+
+  const ingestionComplete = conns.every(
+    (c) => c.ingestionState === "complete" || c.ingestionState === "failed" || c.ingestionState === "needs_auth",
+  );
+
+  return c.json({
+    agentExists: true,
+    agentStatus: instance.status,
+    ingestionComplete,
+    totalTransactions: txRows.length,
+    connections: conns.map((c) => ({
+      id: c.id,
+      dataSourceTypeId: c.dataSourceTypeId,
+      displayName: c.displayName,
+      ingestionState: c.ingestionState,
+      ingestionStartedAt: c.ingestionStartedAt,
+      ingestionCompletedAt: c.ingestionCompletedAt,
+      lastSyncedAt: c.lastSyncedAt,
+      lastSyncStatus: c.lastSyncStatus,
+      lastSyncError: c.lastSyncError,
+      lastSyncAddedCount: c.lastSyncAddedCount,
+      consecutiveEmptySyncs: c.consecutiveEmptySyncs,
+      transactionCount: perConnCount.get(c.id) ?? 0,
+      accountCount: (perConnAccounts.get(c.id) ?? new Set()).size,
+      syncTriggered: triggered.includes(c.id),
     })),
   });
 });

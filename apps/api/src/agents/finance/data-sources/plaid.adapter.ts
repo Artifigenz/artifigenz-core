@@ -62,15 +62,16 @@ export const plaidAdapter: DataSourceTypeDefinition = {
 
     const plaid = getPlaidClient();
     // days_requested controls how far back Plaid backfills history on initial
-    // pull. Default is ~30 days, which gives the LLM almost nothing to detect
-    // recurring patterns from. 730 is the Plaid maximum.
+    // pull. Default is ~30 days; we request 365 (one year) which is enough to
+    // detect annual subscriptions and gives the LLM a full year of cadence
+    // signal without dragging out the initial backfill more than needed.
     const response = await plaid.linkTokenCreate({
       user: { client_user_id: user.id },
       client_name: "Artifigenz",
       products: [Products.Transactions],
       country_codes: [CountryCode.Us, CountryCode.Ca],
       language: "en",
-      transactions: { days_requested: 730 },
+      transactions: { days_requested: 365 },
       ...(options?.redirectUri ? { redirect_uri: options.redirectUri } : {}),
       ...(options?.institutionId ? { institution_id: options.institutionId } : {}),
     });
