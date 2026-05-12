@@ -5,23 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import Header from '@/components/layout/Header';
-import ChatInput from '@/components/sections/ChatInput';
 import { useApiClient } from '@/hooks/useApiClient';
-import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { FinanceIcon } from '@/components/sections/AgentIcons';
 import shell from '../../agent/[name]/page.module.css';
 import styles from './page.module.css';
 
 const POLL_INTERVAL_MS = 3000;
-
-const CHECKLIST_LINES: Array<{ label: string; live: boolean }> = [
-  // The only live phase right now is the ingestion phase (Challenge 1).
-  // The rest are placeholders showing the user what's coming next.
-  { label: 'Pulling transaction history', live: true },
-  { label: 'Mapping recurring obligations', live: false },
-  { label: 'Finding patterns in your spending', live: false },
-  { label: 'Preparing your brief', live: false },
-];
+const ACTIVITY_ROTATE_MS = 2800;
 
 type ConnState = 'pending' | 'in_progress' | 'complete' | 'needs_auth' | 'failed';
 
@@ -30,52 +20,68 @@ interface ConnectionStatus {
   dataSourceTypeId: string;
   displayName: string | null;
   ingestionState: ConnState;
-  ingestionStartedAt: string | null;
-  ingestionCompletedAt: string | null;
   lastSyncedAt: string | null;
-  lastSyncStatus: string | null;
   lastSyncError: string | null;
-  lastSyncAddedCount: number | null;
-  consecutiveEmptySyncs: number | null;
   transactionCount: number;
   accountCount: number;
 }
 
-function formatSince(ms: number): string {
-  if (!ms) return '';
-  return new Date(ms).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+function formatElapsed(startIso: string | null): string {
+  if (!startIso) return '';
+  const elapsed = Date.now() - new Date(startIso).getTime();
+  const sec = Math.floor(elapsed / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  return `${min}m ${sec % 60}s`;
 }
 
-function formatRelative(iso: string | null): string {
-  if (!iso) return 'never';
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 5_000) return 'just now';
-  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  return `${Math.floor(diff / 3_600_000)}h ago`;
-}
+/**
+ * Build a rotating list of activity strings driven by the actual connection
+ * state. We don't fake bank names like the design mockup did — these strings
+ * reference real connections that are actively pulling.
+ */
+function buildActivityFrames(
+  connections: ConnectionStatus[],
+  totalTxns: number,
+): string[] {
+  const active = connections.filter((c) => c.ingestionState === 'in_progress');
+  const queued = connections.filter((c) => c.ingestionState === 'pending');
+  const done = connections.filter((c) => c.ingestionState === 'complete');
 
-function stateLabel(s: ConnState): string {
-  switch (s) {
-    case 'pending':
-      return 'queued';
-    case 'in_progress':
-      return 'pulling history…';
-    case 'complete':
-      return 'done';
-    case 'needs_auth':
-      return 'needs re-link';
-    case 'failed':
-      return 'failed';
+  const frames: string[] = [];
+
+  if (active.length === 0 && queued.length === 0 && done.length > 0) {
+    frames.push(`Read <strong>${totalTxns.toLocaleString()}</strong> transactions`);
+    return frames;
   }
+
+  for (const c of active) {
+    const name = c.displayName ?? 'your bank';
+    frames.push(`Pulling transactions from <strong>${name}</strong>`);
+    if (c.transactionCount > 0) {
+      frames.push(`<strong>${c.transactionCount.toLocaleString()}</strong> transactions from ${name} so far`);
+    }
+  }
+
+  for (const c of queued) {
+    const name = c.displayName ?? 'queued source';
+    frames.push(`Up next: <strong>${name}</strong>`);
+  }
+
+  if (totalTxns > 0) {
+    frames.push(`<strong>${totalTxns.toLocaleString()}</strong> transactions ingested so far`);
+  }
+
+  if (frames.length === 0) {
+    frames.push('Connecting…');
+  }
+  return frames;
 }
 
 export default function FinanceLoadingPage() {
   const api = useApiClient();
   const router = useRouter();
   const { user } = useUser();
-  const { getActivation } = useActivatedAgents();
-  const activation = getActivation('finance');
   const firstName =
     user?.firstName ||
     user?.username ||
@@ -84,22 +90,30 @@ export default function FinanceLoadingPage() {
 
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [totalTxns, setTotalTxns] = useState<number>(0);
+  const [agentStartedAt, setAgentStartedAt] = useState<string | null>(null);
   const [ingestionComplete, setIngestionComplete] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [, forceTick] = useState(0);
+  const [activityIdx, setActivityIdx] = useState(0);
+  const [notifyClicked, setNotifyClicked] = useState(false);
   const navigatedRef = useRef(false);
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await api.getAgentStatus();
       if (!res.agentExists) {
-        // No agent — bounce to home so they can onboard.
         router.replace('/app');
         return;
       }
       setConnections(res.connections);
       setTotalTxns(res.totalTransactions);
       setIngestionComplete(res.ingestionComplete);
+      // Find earliest ingestion start across connections for the "started X
+      // seconds ago" meta line.
+      const starts = res.connections
+        .map((c) => c.ingestionStartedAt)
+        .filter((s): s is string => !!s)
+        .sort();
+      if (starts.length > 0) setAgentStartedAt(starts[0]);
       setErrorMessage(null);
     } catch (err) {
       setErrorMessage(
@@ -110,15 +124,22 @@ export default function FinanceLoadingPage() {
     }
   }, [api, router]);
 
-  // Poll every 3s.
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(fetchStatus, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // Tick once a second so the "last update Xs ago" strings update smoothly
-  // between polls without re-fetching.
+  // Rotate activity subtext every ACTIVITY_ROTATE_MS.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActivityIdx((i) => i + 1);
+    }, ACTIVITY_ROTATE_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Force re-render every second so "Started Xs ago" updates.
+  const [, forceTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => forceTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
@@ -132,10 +153,9 @@ export default function FinanceLoadingPage() {
     }
   }, [ingestionComplete, connections.length, router]);
 
-  const since = activation ? formatSince(activation.activatedAt) : '';
-
-  // Typewriter greeting — same 26ms cadence as onboarding.
-  const greetingTarget = `Give me a minute, ${firstName} — I'm pulling your accounts.`;
+  // Typewriter greeting.
+  const greetingTarget = `Setting up Finance, ${firstName}.`;
+  const greetingDimTarget = 'A minute or two — close the tab whenever, I\u2019ll ping you when the brief is ready.';
   const [typedChars, setTypedChars] = useState(0);
   useEffect(() => {
     setTypedChars(0);
@@ -153,11 +173,24 @@ export default function FinanceLoadingPage() {
   const typedGreeting = greetingTarget.slice(0, typedChars);
   const isTyping = typedChars < greetingTarget.length;
 
-  const anyInProgress = connections.some(
-    (c) => c.ingestionState === 'in_progress' || c.ingestionState === 'pending',
-  );
+  const activityFrames = buildActivityFrames(connections, totalTxns);
+  const activityText =
+    activityFrames.length > 0
+      ? activityFrames[activityIdx % activityFrames.length]
+      : '';
+
   const needsAuth = connections.filter((c) => c.ingestionState === 'needs_auth');
   const failed = connections.filter((c) => c.ingestionState === 'failed');
+
+  // Step 1 is "Connected your accounts" — true once we have any connection
+  // row. Step 2 is "Reading your transaction history" — active while any
+  // Plaid/upload pull is in flight, done once ingestionComplete is true.
+  const accountsConnected = connections.length > 0;
+  const accountCount = connections.reduce((sum, c) => sum + c.accountCount, 0);
+
+  const startedMeta = agentStartedAt
+    ? `Started ${formatElapsed(agentStartedAt)} ago`
+    : 'Starting up';
 
   return (
     <div className={shell.page}>
@@ -171,9 +204,7 @@ export default function FinanceLoadingPage() {
               <span className={shell.icon}><FinanceIcon /></span>
               <h1 className={shell.agentName}>Finance</h1>
             </div>
-            <p className={shell.since}>
-              {since ? `Running since ${since} — analyzing now` : 'Analyzing now'}
-            </p>
+            <p className={shell.since}>{startedMeta}</p>
           </div>
           <div className={shell.badges}>
             <span className={shell.activeBadge}><span className={shell.dot} />Active</span>
@@ -183,67 +214,98 @@ export default function FinanceLoadingPage() {
         <h2 className={styles.greeting}>
           {typedGreeting}
           {isTyping && <span className={styles.cursor} />}
+          {!isTyping && (
+            <span className={styles.greetingDim}>{greetingDimTarget}</span>
+          )}
         </h2>
 
-        <div className={styles.eyebrow}>Your agent is ingesting your transactions</div>
+        <ol className={styles.steps}>
+          {/* Step 1: Connected your accounts */}
+          <li
+            className={`${styles.step} ${accountsConnected ? styles.stepDone : ''}`}
+          >
+            <div className={styles.stepRail}>
+              <span className={styles.stepMark}>
+                {accountsConnected && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12l5 5L20 7" />
+                  </svg>
+                )}
+              </span>
+            </div>
+            <div className={styles.stepBody}>
+              <div className={styles.stepRow}>
+                <h3 className={styles.stepTitle}>Connected your accounts</h3>
+                <span className={styles.stepStatus}>
+                  {accountsConnected
+                    ? `${accountCount} account${accountCount === 1 ? '' : 's'}`
+                    : '—'}
+                </span>
+              </div>
+            </div>
+          </li>
 
-        {/* Per-connection ingestion panel */}
-        <div className={styles.connections}>
-          {connections.length === 0 ? (
-            <p className={styles.connectionsEmpty}>
-              No data sources connected yet. Go back to onboarding to link a bank
-              or upload a statement.
-            </p>
-          ) : (
-            connections.map((c) => {
-              const dotClass =
-                c.ingestionState === 'complete'
-                  ? styles.connDotDone
-                  : c.ingestionState === 'needs_auth' || c.ingestionState === 'failed'
-                    ? styles.connDotError
-                    : styles.connDotActive;
-              return (
-                <div key={c.id} className={styles.connection}>
-                  <span className={`${styles.connDot} ${dotClass}`}>
-                    {c.ingestionState === 'complete' && (
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </span>
-                  <div className={styles.connBody}>
-                    <div className={styles.connHeader}>
-                      <span className={styles.connName}>
-                        {c.displayName ?? c.dataSourceTypeId}
-                      </span>
-                      <span className={styles.connState}>{stateLabel(c.ingestionState)}</span>
-                    </div>
-                    <div className={styles.connMeta}>
-                      {c.transactionCount.toLocaleString()} transactions
-                      {c.accountCount > 0 && ` • ${c.accountCount} account${c.accountCount === 1 ? '' : 's'}`}
-                      {c.ingestionState === 'in_progress' && (
-                        <> • last update {formatRelative(c.lastSyncedAt)}</>
-                      )}
-                      {c.lastSyncError && c.ingestionState !== 'complete' && (
-                        <span className={styles.connError}> — {c.lastSyncError}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+          {/* Step 2: Reading your transaction history — the active phase */}
+          <li
+            className={`${styles.step} ${
+              ingestionComplete ? styles.stepDone : styles.stepActive
+            }`}
+          >
+            <div className={styles.stepRail}>
+              <span className={styles.stepMark}>
+                {ingestionComplete && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12l5 5L20 7" />
+                  </svg>
+                )}
+              </span>
+            </div>
+            <div className={styles.stepBody}>
+              <div className={styles.stepRow}>
+                <h3 className={styles.stepTitle}>Reading your transaction history</h3>
+                <span className={styles.stepStatus}>
+                  {totalTxns.toLocaleString()} transactions
+                </span>
+              </div>
+              {!ingestionComplete && activityText && (
+                <p
+                  key={activityIdx}
+                  className={styles.activitySub}
+                  dangerouslySetInnerHTML={{ __html: activityText }}
+                />
+              )}
+            </div>
+          </li>
 
-        {/* Total + helper text */}
-        {connections.length > 0 && (
-          <p className={styles.totalLine}>
-            {totalTxns.toLocaleString()} transactions ingested so far
-            {anyInProgress && ' — Plaid usually finishes within 1-5 minutes per bank.'}
-          </p>
-        )}
+          {/* Step 3: placeholder (next phase) */}
+          <li className={styles.step}>
+            <div className={styles.stepRail}>
+              <span className={styles.stepMark} />
+            </div>
+            <div className={styles.stepBody}>
+              <div className={styles.stepRow}>
+                <h3 className={styles.stepTitle}>
+                  Analyzing patterns &amp; recurring obligations
+                </h3>
+                <span className={styles.stepStatus}>next phase</span>
+              </div>
+            </div>
+          </li>
 
-        {/* needs_auth banner */}
+          {/* Step 4: placeholder (next phase) */}
+          <li className={styles.step}>
+            <div className={styles.stepRail}>
+              <span className={styles.stepMark} />
+            </div>
+            <div className={styles.stepBody}>
+              <div className={styles.stepRow}>
+                <h3 className={styles.stepTitle}>Preparing your brief</h3>
+                <span className={styles.stepStatus}>next phase</span>
+              </div>
+            </div>
+          </li>
+        </ol>
+
         {needsAuth.length > 0 && (
           <div className={styles.banner}>
             <strong>
@@ -253,7 +315,6 @@ export default function FinanceLoadingPage() {
           </div>
         )}
 
-        {/* failure banner */}
         {failed.length > 0 && (
           <div className={`${styles.banner} ${styles.bannerError}`}>
             <strong>
@@ -263,51 +324,39 @@ export default function FinanceLoadingPage() {
           </div>
         )}
 
-        {/* The 4-phase pipeline preview — only the first is live in step 1. */}
-        <div className={styles.eyebrow} style={{ marginTop: 36 }}>
-          Pipeline · only step 1 is live (dev mode)
-        </div>
-        <div className={styles.checklist}>
-          {CHECKLIST_LINES.map((line, i) => {
-            // The "Pulling transaction history" line tracks live ingestion state.
-            // Other lines stay pending — they're placeholders for future phases.
-            let state: 'pending' | 'active' | 'done' = 'pending';
-            if (i === 0) {
-              if (ingestionComplete) state = 'done';
-              else state = 'active';
-            }
-
-            const bulletCls =
-              state === 'done'
-                ? `${styles.bullet} ${styles.bulletDone}`
-                : state === 'active'
-                  ? `${styles.bullet} ${styles.bulletActive}`
-                  : `${styles.bullet} ${styles.bulletPending}`;
-            const textCls =
-              state === 'done'
-                ? styles.textDone
-                : state === 'active'
-                  ? styles.textActive
-                  : styles.textPending;
-            return (
-              <div key={line.label} className={styles.line}>
-                <span className={bulletCls}>
-                  {state === 'done' && (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </span>
-                <span className={textCls}>
-                  {line.label}
-                  {state === 'active' ? '…' : ''}
-                  {!line.live && state === 'pending' && (
-                    <span className={styles.placeholderTag}> · next phase</span>
-                  )}
-                </span>
-              </div>
-            );
-          })}
+        <div className={styles.leaveRow}>
+          <div className={styles.leaveCopy}>
+            Close this whenever you like — I&apos;ll send you a note the moment the brief is ready.
+          </div>
+          <div className={styles.leaveActions}>
+            <button
+              type="button"
+              className={`${styles.btn} ${
+                notifyClicked ? styles.btnPrimaryDone : styles.btnPrimary
+              }`}
+              onClick={() => setNotifyClicked(true)}
+            >
+              {notifyClicked ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12l5 5L20 7" />
+                  </svg>
+                  You&apos;ll get a ping
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.7 21a2 2 0 01-3.4 0" />
+                  </svg>
+                  Notify me when ready
+                </>
+              )}
+            </button>
+            <button type="button" className={`${styles.btn} ${styles.btnGhost}`}>
+              Keep watching
+            </button>
+          </div>
         </div>
 
         {errorMessage && (
@@ -316,7 +365,6 @@ export default function FinanceLoadingPage() {
           </p>
         )}
       </main>
-      <ChatInput agent="Finance" />
     </div>
   );
 }
