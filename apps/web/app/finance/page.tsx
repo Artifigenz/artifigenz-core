@@ -199,7 +199,7 @@ interface DeliveryPrefs {
   whatsapp: { enabled: boolean; number: string | null };
 }
 
-type SettingsTab = 'accounts' | 'upload' | 'delivery' | 'devtools';
+type SettingsTab = 'accounts' | 'upload' | 'delivery';
 
 function formatSince(iso: number): string {
   if (!iso) return '';
@@ -1010,12 +1010,6 @@ export default function FinanceBriefPage() {
                 >
                   Delivery
                 </button>
-                <button
-                  className={`${styles.navItem} ${settingsTab === 'devtools' ? styles.navItemActive : ''}`}
-                  onClick={() => setSettingsTab('devtools')}
-                >
-                  Dev Tools
-                </button>
               </nav>
 
               <div className={styles.modalContent}>
@@ -1253,185 +1247,6 @@ export default function FinanceBriefPage() {
                   </div>
                 )}
 
-                {settingsTab === 'devtools' && (
-                  <div className={styles.devtoolsTab}>
-                    <p className={styles.tabDescription}>
-                      Development tools for testing and debugging.
-                    </p>
-
-                    <div className={styles.devtoolsActions}>
-                      <div className={styles.devtoolsAction}>
-                        <div className={styles.devtoolsInfo}>
-                          <span className={styles.devtoolsLabel}>Regenerate Brief</span>
-                          <span className={styles.devtoolsHint}>
-                            Re-run the brief generation pipeline and refresh insights.
-                          </span>
-                        </div>
-                        <button
-                          className={styles.devtoolsBtn}
-                          onClick={handleRegenerate}
-                          disabled={regenerating}
-                        >
-                          {regenerating ? 'Regenerating...' : 'Regenerate'}
-                        </button>
-                      </div>
-
-                      <div className={styles.devtoolsAction}>
-                        <div className={styles.devtoolsInfo}>
-                          <span className={styles.devtoolsLabel}>Reset Subscription Skill</span>
-                          <span className={styles.devtoolsHint}>
-                            Clear skill state to trigger first-run welcome insights on next generation.
-                          </span>
-                        </div>
-                        <button
-                          className={styles.devtoolsBtn}
-                          onClick={handleResetSkillState}
-                          disabled={resettingSkill}
-                        >
-                          {resettingSkill ? 'Resetting...' : 'Reset State'}
-                        </button>
-                      </div>
-
-                      <div className={styles.devtoolsAction}>
-                        <div className={styles.devtoolsInfo}>
-                          <span className={styles.devtoolsLabel}>Clear All Insights</span>
-                          <span className={styles.devtoolsHint}>
-                            Remove all generated insights from the feed.
-                          </span>
-                        </div>
-                        <button
-                          className={`${styles.devtoolsBtn} ${styles.dangerBtn}`}
-                          onClick={handleClearInsights}
-                          disabled={clearingInsights}
-                        >
-                          {clearingInsights ? 'Clearing...' : 'Clear Insights'}
-                        </button>
-                      </div>
-
-                      <div className={styles.devtoolsAction}>
-                        <div className={styles.devtoolsInfo}>
-                          <span className={styles.devtoolsLabel}>Debug Info</span>
-                          <span className={styles.devtoolsHint}>
-                            Show transaction count, skill state, and sample data.
-                          </span>
-                        </div>
-                        <button
-                          className={styles.devtoolsBtn}
-                          onClick={handleLoadDebug}
-                          disabled={loadingDebug}
-                        >
-                          {loadingDebug ? 'Loading...' : 'Load Debug'}
-                        </button>
-                      </div>
-
-                      <div className={styles.devtoolsAction}>
-                        <div className={styles.devtoolsInfo}>
-                          <span className={styles.devtoolsLabel}>Reset All Categories</span>
-                          <span className={styles.devtoolsHint}>
-                            Clear global merchant cache and all stream categories. Re-categorize fresh on next brief.
-                          </span>
-                        </div>
-                        <button
-                          className={`${styles.devtoolsBtn} ${styles.dangerBtn}`}
-                          onClick={handleResetCategories}
-                          disabled={resettingCategories}
-                        >
-                          {resettingCategories ? 'Resetting...' : 'Reset Categories'}
-                        </button>
-                      </div>
-
-                      <div className={styles.devtoolsAction}>
-                        <div className={styles.devtoolsInfo}>
-                          <span className={styles.devtoolsLabel}>Override Stream Category</span>
-                          <span className={styles.devtoolsHint}>
-                            Manually fix a miscategorized recurring stream. Updates global cache.
-                          </span>
-                        </div>
-                        <button
-                          className={styles.devtoolsBtn}
-                          onClick={handleLoadStreams}
-                          disabled={loadingStreams}
-                        >
-                          {loadingStreams ? 'Loading...' : 'Load Streams'}
-                        </button>
-                      </div>
-
-                      {streams.length > 0 && (
-                        <div className={styles.categoryOverride}>
-                          <div className={styles.overrideRow}>
-                            <select
-                              className={styles.overrideSelect}
-                              value={selectedStreamId}
-                              onChange={(e) => setSelectedStreamId(e.target.value)}
-                            >
-                              <option value="">Select stream...</option>
-                              {streams.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.merchantName} (${s.monthlyAmount.toFixed(2)}/mo) [{s.category}]
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              className={styles.overrideSelect}
-                              value={selectedCategory}
-                              onChange={(e) => setSelectedCategory(e.target.value)}
-                            >
-                              <option value="">New category...</option>
-                              <option value="income">Income</option>
-                              <option value="subscription">Subscription</option>
-                              <option value="loan_emi">Loan / EMI</option>
-                              <option value="fee_interest">Fee / Interest</option>
-                              <option value="variable_recurring">Variable recurring</option>
-                              <option value="internal_transfer">Internal transfer</option>
-                              <option value="miscellaneous">Miscellaneous</option>
-                            </select>
-                            <button
-                              className={styles.devtoolsBtn}
-                              onClick={handleOverrideCategory}
-                              disabled={overriding || !selectedStreamId || !selectedCategory}
-                            >
-                              {overriding ? 'Saving...' : 'Apply'}
-                            </button>
-                          </div>
-                          {overrideResult && (
-                            <p className={styles.overrideResult}>{overrideResult}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {debugInfo && (
-                      <div className={styles.debugOutput}>
-                        <div className={styles.debugStats}>
-                          <strong>Transactions:</strong> {debugInfo.transactionCount} |{' '}
-                          <strong>Insights:</strong> {debugInfo.insightCount} |{' '}
-                          <strong>Skill Record:</strong> {debugInfo.skillRecord.exists ? 'Yes' : 'No'}
-                          {debugInfo.skillRecord.lastRunAt && (
-                            <> | <strong>Last Run:</strong> {new Date(debugInfo.skillRecord.lastRunAt).toLocaleString()}</>
-                          )}
-                        </div>
-                        <div className={styles.debugState}>
-                          <strong>Skill State:</strong>
-                          <pre>{JSON.stringify(debugInfo.skillRecord.state, null, 2)}</pre>
-                        </div>
-                        <div className={styles.debugTx}>
-                          <strong>Sample Transactions:</strong>
-                          {debugInfo.sampleTransactions.length === 0 ? (
-                            <p>No transactions found</p>
-                          ) : (
-                            <ul>
-                              {debugInfo.sampleTransactions.slice(0, 10).map((tx, i) => (
-                                <li key={i}>
-                                  {tx.date} | {tx.merchant || tx.description} | ${tx.amount}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>

@@ -8,31 +8,34 @@ interface DevtoolsModalProps {
   onClose: () => void;
 }
 
+type DebugInfo = {
+  transactionCount: number;
+  insightCount: number;
+  skillRecord: { exists: boolean; lastRunAt?: string };
+};
+
+type ActionResult = { ok: true; text: string } | { ok: false; text: string };
+
 export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
   const api = useApiClient();
-  const [confirming, setConfirming] = useState(false);
-  const [wiping, setWiping] = useState(false);
-  const [result, setResult] = useState<{ removed: Record<string, number> } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const [resyncing, setResyncing] = useState(false);
-  const [resyncResult, setResyncResult] = useState<{
-    perConnection: Array<{ displayName: string | null; inserted: number; skipped: number; accounts: number; error?: string }>;
-    categorize: { clustersAnalyzed: number; clustersSkippedCached: number; txnsBackfilled: number };
-  } | null>(null);
-  const [resyncError, setResyncError] = useState<string | null>(null);
+  const [agentInstanceId, setAgentInstanceId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, ActionResult>>({});
+  const [debug, setDebug] = useState<DebugInfo | null>(null);
+  const [confirmWipe, setConfirmWipe] = useState(false);
 
   useEffect(() => {
     if (!open) {
-      setConfirming(false);
-      setWiping(false);
-      setResult(null);
-      setError(null);
-      setResyncing(false);
-      setResyncResult(null);
-      setResyncError(null);
+      setBusy(null);
+      setResults({});
+      setDebug(null);
+      setConfirmWipe(false);
+      return;
     }
-  }, [open]);
+    api.getAgentStatus()
+      .then((s) => setAgentInstanceId(s.agentInstanceId ?? null))
+      .catch(() => setAgentInstanceId(null));
+  }, [open, api]);
 
   useEffect(() => {
     if (!open) return;
@@ -43,34 +46,22 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const wipe = async () => {
-    setWiping(true);
-    setError(null);
+  const run = async (key: string, fn: () => Promise<string>) => {
+    setBusy(key);
+    setResults((r) => ({ ...r, [key]: { ok: true, text: '' } }));
     try {
-      const res = await api.wipeFinanceAgent();
-      setResult({ removed: res.removed });
-      setConfirming(false);
+      const text = await fn();
+      setResults((r) => ({ ...r, [key]: { ok: true, text } }));
     } catch (err) {
-      setError((err as { message?: string })?.message ?? 'Wipe failed');
+      setResults((r) => ({
+        ...r,
+        [key]: {
+          ok: false,
+          text: (err as { message?: string })?.message ?? 'Failed',
+        },
+      }));
     } finally {
-      setWiping(false);
-    }
-  };
-
-  const resync = async () => {
-    setResyncing(true);
-    setResyncError(null);
-    setResyncResult(null);
-    try {
-      const res = await api.resyncFinance();
-      setResyncResult({
-        perConnection: res.perConnection,
-        categorize: res.categorize,
-      });
-    } catch (err) {
-      setResyncError((err as { message?: string })?.message ?? 'Resync failed');
-    } finally {
-      setResyncing(false);
+      setBusy(null);
     }
   };
 
@@ -87,32 +78,27 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        paddingTop: '120px',
+        paddingTop: '110px',
         zIndex: 1000,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 'min(540px, 92vw)',
+          width: 'min(480px, 92vw)',
           maxHeight: '80vh',
           overflowY: 'auto',
           background: 'var(--bg)',
           border: '1px solid var(--border-light)',
           borderRadius: '14px',
-          padding: '24px 24px 20px',
-          boxShadow: '0 24px 48px rgba(0,0,0,0.18)',
+          padding: '20px 22px 16px',
+          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.18)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
-          <div>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0, color: 'var(--text)' }}>
-              Devtools
-            </h2>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', margin: '4px 0 0' }}>
-              Developer actions. These bypass normal user flows — use carefully.
-            </p>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0, color: 'var(--text)' }}>
+            Devtools
+          </h2>
           <button
             type="button"
             aria-label="Close"
@@ -131,155 +117,151 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
           </button>
         </div>
 
-        <section style={{
-          border: '1px solid var(--border-light)',
-          borderRadius: '10px',
-          padding: '16px',
-          marginBottom: '14px',
+        <ActionRow
+          label="Re-sync banks"
+          busy={busy === 'resync'}
+          result={results.resync}
+          onRun={() =>
+            run('resync', async () => {
+              const r = await api.resyncFinance();
+              const inserted = r.perConnection.reduce((s, p) => s + p.inserted, 0);
+              return `+${inserted} new txns · ${r.categorize.clustersAnalyzed} clusters analyzed`;
+            })
+          }
+        />
+
+        <ActionRow
+          label="Reset categorization"
+          busy={busy === 'reset-cat'}
+          result={results['reset-cat']}
+          onRun={() =>
+            run('reset-cat', async () => {
+              const r = await api.resetAllCategories();
+              return r.message;
+            })
+          }
+        />
+
+        <ActionRow
+          label="Clear insights"
+          busy={busy === 'clear-ins'}
+          result={results['clear-ins']}
+          disabled={!agentInstanceId}
+          onRun={() =>
+            run('clear-ins', async () => {
+              if (!agentInstanceId) throw new Error('No finance agent');
+              await api.clearInsights(agentInstanceId);
+              return 'Cleared';
+            })
+          }
+        />
+
+        <ActionRow
+          label="Show debug info"
+          busy={busy === 'debug'}
+          result={results.debug}
+          disabled={!agentInstanceId}
+          buttonLabel="Show"
+          onRun={() =>
+            run('debug', async () => {
+              if (!agentInstanceId) throw new Error('No finance agent');
+              const info = await api.getDebugInfo(agentInstanceId);
+              setDebug({
+                transactionCount: info.transactionCount,
+                insightCount: info.insightCount,
+                skillRecord: {
+                  exists: info.skillRecord.exists,
+                  lastRunAt: info.skillRecord.lastRunAt,
+                },
+              });
+              return `${info.transactionCount} txns · ${info.insightCount} insights`;
+            })
+          }
+        />
+
+        {debug && (
+          <pre style={{
+            margin: '4px 0 12px 0',
+            padding: '10px 12px',
+            background: 'rgba(0,0,0,0.03)',
+            border: '1px solid var(--border-light)',
+            borderRadius: '6px',
+            fontSize: '0.72rem',
+            fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+            color: 'var(--text-mid)',
+            overflowX: 'auto',
+            whiteSpace: 'pre-wrap',
+          }}>
+{JSON.stringify(debug, null, 2)}
+          </pre>
+        )}
+
+        <div style={{
+          marginTop: '14px',
+          paddingTop: '14px',
+          borderTop: '1px solid var(--border-light)',
         }}>
-          <h3 style={{ fontSize: '0.88rem', fontWeight: 600, margin: '0 0 4px', color: 'var(--text)' }}>
-            Re-sync bank connections
-          </h3>
-          <p style={{ fontSize: '0.76rem', color: 'var(--text-dim)', margin: '0 0 14px', lineHeight: 1.5 }}>
-            Pulls the latest transactions from every active Plaid connection, then
-            re-categorizes new merchants. Use this if Plaid&apos;s historical backfill
-            landed after the initial onboarding sync (you&apos;d see only a few weeks
-            of data when expecting more).
-          </p>
-
-          {resyncResult ? (
-            <div style={{
-              fontSize: '0.76rem',
-              color: 'var(--text)',
-              background: 'color-mix(in srgb, var(--bg), green 6%)',
-              border: '1px solid color-mix(in srgb, var(--border-light), green 30%)',
-              borderRadius: '8px',
-              padding: '12px 14px',
+          {results.wipe?.ok && results.wipe.text ? (
+            <p style={{
+              margin: 0,
+              fontSize: '0.78rem',
+              color: 'var(--text-mid)',
             }}>
-              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Re-sync complete.</p>
-              <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {resyncResult.perConnection.map((p, i) => (
-                  <li key={i}>
-                    {p.displayName ?? '(connection)'}: <strong>+{p.inserted}</strong> new,{' '}
-                    {p.skipped} dedup-skipped, {p.accounts} accounts
-                    {p.error && <span style={{ color: '#dc2626' }}> — {p.error}</span>}
-                  </li>
-                ))}
-              </ul>
-              <p style={{ margin: '10px 0 0', color: 'var(--text-dim)' }}>
-                Categorized {resyncResult.categorize.clustersAnalyzed} new merchant cluster(s);
-                {resyncResult.categorize.txnsBackfilled} transactions updated.
-              </p>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={resyncing}
-              onClick={resync}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-light)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '0.82rem',
-                fontWeight: 500,
-                cursor: resyncing ? 'wait' : 'pointer',
-                opacity: resyncing ? 0.7 : 1,
-              }}
-            >
-              {resyncing ? 'Re-syncing…' : 'Re-sync banks'}
-            </button>
-          )}
-
-          {resyncError && (
-            <p style={{ fontSize: '0.76rem', color: '#dc2626', marginTop: '10px' }}>
-              {resyncError}
+              {results.wipe.text} · refresh to start fresh
             </p>
-          )}
-        </section>
-
-        <section style={{
-          border: '1px solid var(--border-light)',
-          borderRadius: '10px',
-          padding: '16px',
-        }}>
-          <h3 style={{ fontSize: '0.88rem', fontWeight: 600, margin: '0 0 4px', color: 'var(--text)' }}>
-            Reset finance agent
-          </h3>
-          <p style={{ fontSize: '0.76rem', color: 'var(--text-dim)', margin: '0 0 14px', lineHeight: 1.5 }}>
-            Wipes every transaction, account, merchant cluster, brief, insight, file
-            upload, and bank connection for your finance agent — then deletes the
-            agent instance itself. Plaid OAuth tokens are removed; you&apos;ll re-link
-            banks during the next onboarding pass. Cannot be undone.
-          </p>
-
-          {result ? (
-            <div style={{
-              fontSize: '0.76rem',
-              color: 'var(--text)',
-              background: 'color-mix(in srgb, var(--bg), green 6%)',
-              border: '1px solid color-mix(in srgb, var(--border-light), green 30%)',
-              borderRadius: '8px',
-              padding: '12px 14px',
-            }}>
-              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Wipe complete.</p>
-              <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {Object.entries(result.removed).map(([k, v]) => (
-                  <li key={k}>
-                    {k}: <strong>{v}</strong>
-                  </li>
-                ))}
-              </ul>
-              <p style={{ margin: '10px 0 0', color: 'var(--text-dim)' }}>
-                Refresh the app to start onboarding from zero.
-              </p>
-            </div>
-          ) : confirming ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          ) : confirmWipe ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <p style={{
-                fontSize: '0.78rem',
                 margin: 0,
-                padding: '10px 12px',
-                background: 'color-mix(in srgb, var(--bg), #dc2626 6%)',
-                border: '1px solid color-mix(in srgb, var(--border-light), #dc2626 30%)',
-                borderRadius: '8px',
-                color: 'var(--text)',
+                fontSize: '0.76rem',
+                color: 'var(--text-mid)',
+                lineHeight: 1.5,
               }}>
-                Are you sure? This will delete everything in your finance agent.
+                Wipes every transaction, account, cluster, brief, insight, file
+                upload, and bank connection — then deletes the agent itself.
+                Plaid tokens go too. Cannot be undone.
               </p>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   type="button"
-                  disabled={wiping}
-                  onClick={wipe}
+                  disabled={busy === 'wipe'}
+                  onClick={() =>
+                    run('wipe', async () => {
+                      const r = await api.wipeFinanceAgent();
+                      const total = Object.values(r.removed).reduce((s, n) => s + n, 0);
+                      setConfirmWipe(false);
+                      return `Removed ${total} rows across ${Object.keys(r.removed).length} tables`;
+                    })
+                  }
                   style={{
                     flex: 1,
-                    padding: '10px 14px',
-                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
                     border: 'none',
                     background: '#dc2626',
                     color: 'white',
-                    fontSize: '0.82rem',
+                    fontSize: '0.78rem',
                     fontWeight: 600,
-                    cursor: wiping ? 'wait' : 'pointer',
-                    opacity: wiping ? 0.7 : 1,
+                    cursor: busy === 'wipe' ? 'wait' : 'pointer',
+                    opacity: busy === 'wipe' ? 0.7 : 1,
+                    fontFamily: 'inherit',
                   }}
                 >
-                  {wiping ? 'Wiping…' : 'Yes, wipe everything'}
+                  {busy === 'wipe' ? 'Wiping…' : 'Yes, wipe everything'}
                 </button>
                 <button
                   type="button"
-                  disabled={wiping}
-                  onClick={() => setConfirming(false)}
+                  onClick={() => setConfirmWipe(false)}
+                  disabled={busy === 'wipe'}
                   style={{
-                    padding: '10px 14px',
-                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
                     border: '1px solid var(--border-light)',
                     background: 'var(--bg)',
                     color: 'var(--text)',
-                    fontSize: '0.82rem',
+                    fontSize: '0.78rem',
                     cursor: 'pointer',
+                    fontFamily: 'inherit',
                   }}
                 >
                   Cancel
@@ -287,31 +269,85 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                border: '1px solid color-mix(in srgb, var(--border-light), #dc2626 40%)',
-                background: 'color-mix(in srgb, var(--bg), #dc2626 4%)',
-                color: '#dc2626',
-                fontSize: '0.82rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >
-              Wipe finance agent
-            </button>
+            <ActionRow
+              label="Wipe finance agent"
+              danger
+              busy={false}
+              result={results.wipe?.ok === false ? results.wipe : undefined}
+              onRun={() => setConfirmWipe(true)}
+              buttonLabel="Wipe"
+            />
           )}
-
-          {error && (
-            <p style={{ fontSize: '0.76rem', color: '#dc2626', marginTop: '10px' }}>
-              {error}
-            </p>
-          )}
-        </section>
+        </div>
       </div>
+    </div>
+  );
+}
+
+interface ActionRowProps {
+  label: string;
+  buttonLabel?: string;
+  busy: boolean;
+  disabled?: boolean;
+  danger?: boolean;
+  result?: ActionResult;
+  onRun: () => void;
+}
+
+function ActionRow({
+  label,
+  buttonLabel = 'Run',
+  busy,
+  disabled,
+  danger,
+  result,
+  onRun,
+}: ActionRowProps) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '12px',
+      padding: '10px 0',
+      borderBottom: '1px solid var(--border-light)',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.82rem', fontWeight: 500, color: danger ? '#dc2626' : 'var(--text)' }}>
+          {label}
+        </div>
+        {result && result.text && (
+          <div style={{
+            fontSize: '0.72rem',
+            color: result.ok ? 'var(--text-dim)' : '#dc2626',
+            marginTop: '2px',
+          }}>
+            {result.text}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        disabled={busy || disabled}
+        onClick={onRun}
+        style={{
+          padding: '6px 12px',
+          borderRadius: '6px',
+          border: danger
+            ? '1px solid color-mix(in srgb, var(--border-light), #dc2626 40%)'
+            : '1px solid var(--border-light)',
+          background: danger ? 'color-mix(in srgb, var(--bg), #dc2626 4%)' : 'var(--bg)',
+          color: danger ? '#dc2626' : 'var(--text)',
+          fontSize: '0.76rem',
+          fontWeight: 500,
+          cursor: busy ? 'wait' : disabled ? 'not-allowed' : 'pointer',
+          opacity: busy || disabled ? 0.6 : 1,
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {busy ? '…' : buttonLabel}
+      </button>
     </div>
   );
 }

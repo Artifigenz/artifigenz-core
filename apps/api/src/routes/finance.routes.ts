@@ -247,6 +247,7 @@ app.get("/agent-status", async (c) => {
 
   return c.json({
     agentExists: true,
+    agentInstanceId: instance.id,
     agentStatus: instance.status,
     ingestionComplete,
     totalTransactions: txRows.length,

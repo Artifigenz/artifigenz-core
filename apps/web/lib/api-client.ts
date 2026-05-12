@@ -292,6 +292,7 @@ export class ApiClient {
   async getAgentStatus() {
     return this.get<{
       agentExists: boolean;
+      agentInstanceId?: string;
       agentStatus?: string;
       ingestionComplete: boolean;
       totalTransactions: number;
