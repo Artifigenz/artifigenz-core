@@ -42,14 +42,13 @@
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 14px;
   overflow: hidden;
-  max-width: 880px;
 }
 
 .step {
   display: grid;
-  grid-template-columns: 36px 1fr;
-  gap: 14px;
-  padding: 18px 24px;
+  grid-template-columns: 44px 1fr;
+  gap: 18px;
+  padding: 28px 32px;
   position: relative;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
@@ -60,28 +59,13 @@
 
 .stepRail {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: 2px;
   position: relative;
 }
 
-/* Connector line between marks */
-.step:not(:last-child) .stepRail::after {
-  content: "";
-  position: absolute;
-  top: 22px;
-  bottom: -20px;
-  left: 50%;
-  width: 1px;
-  background: rgba(0, 0, 0, 0.08);
-  transform: translateX(-50%);
-}
-
-.stepDone .stepRail::after {
-  background: rgba(0, 0, 0, 0.18);
-}
-
+/* All marks are the same 20×20 circle — empty / filled black / filled
+   green — so the rhythm down the left rail stays even. */
 .stepMark {
   width: 20px;
   height: 20px;
@@ -93,7 +77,8 @@
   border: 1.5px solid rgba(0, 0, 0, 0.18);
   color: var(--text-mid);
   flex: none;
-  transition: all 0.25s ease;
+  position: relative;
+  transition: background 0.25s ease, border-color 0.25s ease;
 }
 
 .stepDone .stepMark {
@@ -104,31 +89,30 @@
 
 .stepActive .stepMark {
   background: #22c55e;
-  border: 0;
-  width: 11px;
-  height: 11px;
-  margin-top: 5px;
-  position: relative;
+  border-color: #22c55e;
 }
 
 .stepActive .stepMark::after {
   content: "";
   position: absolute;
-  inset: -5px;
+  inset: -1.5px;
   border-radius: 50%;
   background: #22c55e;
-  opacity: 0.4;
+  opacity: 0.35;
   animation: stepPing 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
 @keyframes stepPing {
-  0%   { transform: scale(0.6); opacity: 0.55; }
-  70%  { transform: scale(2.4); opacity: 0; }
-  100% { transform: scale(2.4); opacity: 0; }
+  0%   { transform: scale(0.6); opacity: 0.5; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
 }
 
 .stepBody {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .stepRow {
@@ -144,7 +128,7 @@
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--text-mid);
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .stepDone .stepTitle {
@@ -173,27 +157,27 @@
   color: var(--text-dim);
 }
 
-/* The dynamic subtext under the active step — replaces the grey detail
-   box in the original design with a quiet, rotating activity line. */
+/* The dynamic subtext under the active step — quiet, rotating activity
+   line. Lighter color + airier line-height for a terminal-y feel. */
 .activitySub {
-  margin-top: 8px;
+  margin: 0;
   font-size: 13px;
-  color: var(--text-mid);
-  line-height: 1.4;
+  color: var(--text-dim);
+  line-height: 1.65;
+  letter-spacing: 0.005em;
   transition: opacity 0.25s ease;
-  min-height: 1.4em;
+  min-height: 1.65em;
 }
 
 .activitySub strong {
-  color: var(--text);
-  font-weight: 600;
+  color: var(--text-mid);
+  font-weight: 500;
 }
 
 /* ── leave block ────────────────────────────────────────────── */
 
 .leaveRow {
-  margin-top: 24px;
-  max-width: 880px;
+  margin-top: 28px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -261,7 +245,6 @@
 /* ── error banners ──────────────────────────────────────────── */
 
 .banner {
-  max-width: 880px;
   padding: 10px 14px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg), #fbbf24 12%);
