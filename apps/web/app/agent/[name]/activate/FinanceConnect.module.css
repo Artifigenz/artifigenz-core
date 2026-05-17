@@ -163,6 +163,41 @@
 }
 .iconBtn:hover { color: var(--text); }
 
+.editBtn {
+  background: transparent;
+  border: 1px solid var(--border-light);
+  color: var(--text-dim);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+.editBtn:hover {
+  color: var(--text);
+  border-color: var(--text-mid);
+}
+
+.inlineEditInput {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.inlineEditInput:focus {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 /* ── Search panel ───────────────────────────────────────────── */
 
 .searchPanel {

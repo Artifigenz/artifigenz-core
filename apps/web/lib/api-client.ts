@@ -463,6 +463,17 @@ export class ApiClient {
    * Upload a bank statement file. Uses FormData (not JSON), so we bypass
    * the normal request() method and construct the fetch manually.
    */
+  /**
+   * Correct the institution name on an uploaded statement. Used when the
+   * validator misread or returned null and the user knows the right bank.
+   */
+  async renameFileUpload(fileId: string, institutionName: string) {
+    return this.patch<{ success: boolean; institutionName: string }>(
+      `/api/finance/file-uploads/${fileId}`,
+      { institutionName },
+    );
+  }
+
   async uploadFile(formData: FormData): Promise<{
     status: 'validated';
     fileId: string;

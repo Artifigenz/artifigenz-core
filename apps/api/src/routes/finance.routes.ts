@@ -329,6 +329,68 @@ app.get("/agent-status", async (c) => {
 });
 
 /**
+ * PATCH /api/finance/file-uploads/:fileId
+ *   User-correctable metadata on an uploaded statement. Right now we only
+ *   accept institutionName edits — fixes the "wrong bank" case where the
+ *   validator was unsure or wrong. Re-points the linked account to the
+ *   corrected (institution + last4) identity.
+ */
+app.patch("/file-uploads/:fileId", async (c) => {
+  const user = c.get("user");
+  const fileId = c.req.param("fileId");
+  const body = await c.req.json<{ institutionName?: string }>();
+
+  if (typeof body.institutionName !== "string" || !body.institutionName.trim()) {
+    return c.json({ error: "institutionName is required" }, 400);
+  }
+  const newName = body.institutionName.trim();
+
+  // Authorize — file must belong to one of this user's finance connections.
+  const [row] = await db
+    .select({
+      fileId: fileUploads.id,
+      accountId: fileUploads.accountId,
+      accountLast4: fileUploads.accountLast4,
+      connectionId: fileUploads.dataSourceConnectionId,
+      agentInstanceId: dataSourceConnections.agentInstanceId,
+      agentTypeId: agentInstances.agentTypeId,
+      userId: agentInstances.userId,
+    })
+    .from(fileUploads)
+    .leftJoin(
+      dataSourceConnections,
+      eq(dataSourceConnections.id, fileUploads.dataSourceConnectionId),
+    )
+    .leftJoin(
+      agentInstances,
+      eq(agentInstances.id, dataSourceConnections.agentInstanceId),
+    )
+    .where(eq(fileUploads.id, fileId))
+    .limit(1);
+
+  if (!row || row.userId !== user.id || row.agentTypeId !== "finance") {
+    return c.json({ error: "File not found" }, 404);
+  }
+
+  await db
+    .update(fileUploads)
+    .set({ institutionName: newName })
+    .where(eq(fileUploads.id, fileId));
+
+  // Also rename the linked account so the breakdown / accounts page reflect
+  // the correction. We don't try to merge with another account at this
+  // step — keep it simple, no cross-account moves.
+  if (row.accountId) {
+    await db
+      .update(financeAccounts)
+      .set({ institutionName: newName.toLowerCase().replace(/\s+/g, " ").trim() })
+      .where(eq(financeAccounts.id, row.accountId));
+  }
+
+  return c.json({ success: true, institutionName: newName });
+});
+
+/**
  * GET /api/finance/accounts
  *   Lists every finance_account the user has, joined with its source
  *   signals — Plaid connection (if any) and uploaded statements (if any).

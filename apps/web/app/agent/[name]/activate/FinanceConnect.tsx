@@ -32,6 +32,7 @@ interface PlaidConnection {
 }
 
 interface UploadedFile {
+  fileId: string;
   name: string;
   institutionName: string | null;
   accountLast4: string | null;
@@ -203,6 +204,12 @@ export default function FinanceConnect() {
   const [query, setQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Inline edit for the institution name on an uploaded group. Keyed by
+  // the group name so editing "Unknown bank" stays consistent even as
+  // files are added.
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [editingDraft, setEditingDraft] = useState('');
+
   const country = typeof window !== 'undefined' ? detectCountry() : 'US';
 
   // ─── Bootstrap the finance agent instance ──────────────────────
@@ -357,6 +364,7 @@ export default function FinanceConnect() {
       setUploadedFiles((prev) => [
         ...prev,
         {
+          fileId: result.fileId,
           name: file.name,
           institutionName: result.metadata.institutionName,
           accountLast4: result.metadata.accountLast4,
@@ -432,6 +440,43 @@ export default function FinanceConnect() {
     return Array.from(map.entries()).map(([name, files]) => ({ name, files }));
   }, [uploadedFiles]);
 
+  const startEditGroup = (groupName: string) => {
+    setEditingGroup(groupName);
+    setEditingDraft(groupName === 'Unknown bank' ? '' : groupName);
+  };
+
+  const cancelEdit = () => {
+    setEditingGroup(null);
+    setEditingDraft('');
+  };
+
+  const saveEditGroup = async (groupName: string) => {
+    const newName = editingDraft.trim();
+    if (!newName || newName === groupName) {
+      cancelEdit();
+      return;
+    }
+    const filesInGroup = uploadedFiles.filter(
+      (f) => (f.institutionName ?? 'Unknown bank') === groupName,
+    );
+    // Optimistic
+    setUploadedFiles((prev) =>
+      prev.map((f) =>
+        (f.institutionName ?? 'Unknown bank') === groupName
+          ? { ...f, institutionName: newName }
+          : f,
+      ),
+    );
+    cancelEdit();
+    try {
+      await Promise.all(
+        filesInGroup.map((f) => api.renameFileUpload(f.fileId, newName)),
+      );
+    } catch (err) {
+      console.error('[finance-connect] rename failed:', err);
+    }
+  };
+
   useEffect(() => {
     setTimeout(() => searchInputRef.current?.focus(), 200);
   }, []);
@@ -496,34 +541,65 @@ export default function FinanceConnect() {
                   </div>
                 );
               })}
-              {uploadGroups.map((g, gi) => (
-                <div key={`u-${gi}`} className={styles.connectedRow}>
-                  <div className={styles.uploadGlyph}>
-                    <FileIcon />
-                  </div>
-                  <div className={styles.connectedBody}>
-                    <div className={styles.connectedTitle}>
-                      <span>{g.name}</span>
+              {uploadGroups.map((g, gi) => {
+                const isEditing = editingGroup === g.name;
+                const isUnknown = g.name === 'Unknown bank';
+                return (
+                  <div key={`u-${gi}`} className={styles.connectedRow}>
+                    <div className={styles.uploadGlyph}>
+                      <FileIcon />
                     </div>
-                    <div className={styles.connectedMeta}>
-                      {g.files.length} statement{g.files.length !== 1 ? 's' : ''} validated
+                    <div className={styles.connectedBody}>
+                      <div className={styles.connectedTitle}>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editingDraft}
+                            autoFocus
+                            placeholder="Bank name (e.g. RBC Royal Bank)"
+                            onChange={(e) => setEditingDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEditGroup(g.name);
+                              if (e.key === 'Escape') cancelEdit();
+                            }}
+                            onBlur={() => saveEditGroup(g.name)}
+                            className={styles.inlineEditInput}
+                          />
+                        ) : (
+                          <>
+                            <span style={{ color: isUnknown ? 'var(--text-mid)' : undefined }}>
+                              {g.name}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label="Edit bank name"
+                              className={styles.editBtn}
+                              onClick={() => startEditGroup(g.name)}
+                            >
+                              {isUnknown ? 'Set bank' : 'Edit'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <div className={styles.connectedMeta}>
+                        {g.files.length} statement{g.files.length !== 1 ? 's' : ''} validated
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      aria-label="Remove"
+                      className={styles.iconBtn}
+                      onClick={() => {
+                        setUploadedFiles((prev) =>
+                          prev.filter((f) => (f.institutionName ?? 'Unknown bank') !== g.name),
+                        );
+                      }}
+                    >
+                      <CloseIcon />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    aria-label="Remove"
-                    className={styles.iconBtn}
-                    onClick={() => {
-                      // Remove all files in this group
-                      setUploadedFiles((prev) =>
-                        prev.filter((f) => (f.institutionName ?? 'Unknown bank') !== g.name),
-                      );
-                    }}
-                  >
-                    <CloseIcon />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
