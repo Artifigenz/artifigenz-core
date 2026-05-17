@@ -398,9 +398,17 @@ export default function FinanceConnect() {
   };
 
   // ─── Search filtering ───────────────────────────────────────────
-  const connectedInstitutionIds = useMemo(
-    () => new Set(connections.map((c) => c.institutionId).filter(Boolean) as string[]),
+  // Only Plaid-type connections render in the connected list — the
+  // file-upload connection is a hidden plumbing row, not a user-facing
+  // "account". Uploaded statements are surfaced via uploadedFiles instead.
+  const plaidConnections = useMemo(
+    () => connections.filter((c) => c.dataSourceTypeId === 'plaid'),
     [connections],
+  );
+
+  const connectedInstitutionIds = useMemo(
+    () => new Set(plaidConnections.map((c) => c.institutionId).filter(Boolean) as string[]),
+    [plaidConnections],
   );
 
   const filteredInstitutions = useMemo(() => {
@@ -410,7 +418,7 @@ export default function FinanceConnect() {
     return pool.filter((i) => i.name.toLowerCase().includes(q));
   }, [institutions, connectedInstitutionIds, query]);
 
-  const sourceCount = connections.length + uploadedFiles.length;
+  const sourceCount = plaidConnections.length + uploadedFiles.length;
 
   // Group uploaded files by institution for the connected-accounts strip
   const uploadGroups = useMemo(() => {
@@ -457,7 +465,7 @@ export default function FinanceConnect() {
               <span className={styles.connectedCount}>{sourceCount}</span>
             </div>
             <div className={styles.connectedList}>
-              {connections.map((c) => {
+              {plaidConnections.map((c) => {
                 const inst = institutions.find((i) => i.id === c.institutionId);
                 const displayInst = inst ?? {
                   id: c.institutionId ?? c.id,

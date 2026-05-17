@@ -188,6 +188,21 @@ Rules:
 - account_type: one of "depository" (chequing/savings), "credit" (credit card), "loan", "investment", null if unclear.
 - statement_period: dates in YYYY-MM-DD. If only a single date is visible, return null.
 
+DERIVING THE BANK NAME WHEN IT IS NOT EXPLICITLY PRINTED:
+Many statements show a logo only, or print the bank's marketing brand without a bank name visible as text. If you can't read the name directly, derive it from the account-number format. These mappings are deterministic and well-known:
+
+- Canada — a 9-digit transit number breaks down as 5-digit branch + 3-digit institution.
+  Institution codes:  001 BMO, 002 Scotia, 003 RBC, 004 TD, 006 National, 010 CIBC,
+                      016 HSBC, 030 Canadian Western, 039 Laurentian, 219 ATB,
+                      540 Manulife, 614 Tangerine, 614 Simplii (issued by CIBC),
+                      815 Desjardins (caisses populaires), 829 Desjardins.
+- US — the 9-digit ABA routing number identifies the bank. Read the first 4 digits to find the Federal Reserve district + a known routing prefix.
+- India — the IFSC code's first 4 letters are the bank prefix (HDFC = HDFC Bank, ICIC = ICICI, SBIN = SBI, AXIS, KKBK = Kotak, YESB, INDB = Indus, BARB = Bank of Baroda, etc.).
+- UK — 6-digit sort code identifies the bank (Barclays = 20-xx-xx, HSBC = 40-xx-xx, NatWest = 60-xx-xx, etc.).
+- Australia — 6-digit BSB code, first 2 digits identify the bank.
+
+If you derive the bank from the number rather than reading it directly, still return the human-readable institution_name (e.g. "RBC Royal Bank", not "003"). If you cannot derive with confidence, return null — never guess wildly.
+
 Return ONLY valid JSON in this exact shape, no markdown:
 {
   "is_statement": boolean,
