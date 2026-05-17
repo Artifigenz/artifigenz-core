@@ -1,11 +1,5 @@
 .page {
   min-height: 100vh;
-  background:
-    radial-gradient(ellipse at 12% 18%, var(--aura-violet, rgba(180,140,255,.10)), transparent 55%),
-    radial-gradient(ellipse at 88% 22%, var(--aura-blue, rgba(100,200,255,.08)), transparent 55%),
-    radial-gradient(ellipse at 50% 90%, var(--aura-peach, rgba(255,160,120,.07)), transparent 55%),
-    var(--bg);
-  background-attachment: fixed;
   color: var(--text);
 }
 

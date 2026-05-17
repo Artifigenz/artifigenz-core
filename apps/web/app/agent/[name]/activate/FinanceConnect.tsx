@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { usePlaidLink } from 'react-plaid-link';
 import Header from '@/components/layout/Header';
+import { PageMode } from '@/components/layout/PageMode';
 import { useApiClient } from '@/hooks/useApiClient';
 import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { clearPlaidPending, savePlaidPending } from '@/lib/plaid-pending';
@@ -483,6 +484,7 @@ export default function FinanceConnect() {
 
   return (
     <div className={styles.page}>
+      <PageMode mode="subtle" />
       <Header />
       <main className={styles.main}>
         <Link href="/app" className={styles.back}>

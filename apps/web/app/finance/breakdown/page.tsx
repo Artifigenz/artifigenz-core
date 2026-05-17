@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
+import { PageMode } from '@/components/layout/PageMode';
 import { useApiClient } from '@/hooks/useApiClient';
 import { FinanceIcon } from '@/components/sections/AgentIcons';
 import shell from '../../agent/[name]/page.module.css';
@@ -89,6 +90,7 @@ export default function BreakdownPage() {
 
   return (
     <div className={shell.page}>
+      <PageMode mode="subtle" />
       <Header />
       <main className={shell.main}>
         <Link href="/finance" className={shell.back}>← Back to Brief</Link>
