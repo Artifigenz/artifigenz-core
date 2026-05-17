@@ -1,7 +1,6 @@
 'use client';
 
 import Header from '@/components/layout/Header';
-import { PageMode } from '@/components/layout/PageMode';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import {
   IdentitySection,
@@ -23,7 +22,6 @@ export default function SettingsPage() {
 function SettingsContent() {
   return (
     <div className={styles.page}>
-      <PageMode mode="quiet" />
       <Header />
       <main className={styles.main}>
         <div className={styles.hero}>

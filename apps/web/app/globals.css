@@ -109,15 +109,21 @@
   background: var(--bg);
 }
 
+/* Light mode: subtle static gradient, no mouse glow.
+   The mouse-follow glow looked great in dark mode but pulled focus on
+   light surfaces where users are reading or working. Light mode keeps
+   the static wash at ~35% the previous intensity; dark mode keeps the
+   full treatment because dark surfaces absorb the color easily. */
+
 [data-theme="aura"] body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -2;
   background:
-    radial-gradient(ellipse at 15% 20%, rgba(180, 140, 255, 0.1), transparent 50%),
-    radial-gradient(ellipse at 85% 30%, rgba(100, 200, 255, 0.08), transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(255, 160, 120, 0.07), transparent 50%),
+    radial-gradient(ellipse at 15% 20%, rgba(180, 140, 255, 0.035), transparent 50%),
+    radial-gradient(ellipse at 85% 30%, rgba(100, 200, 255, 0.028), transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(255, 160, 120, 0.025), transparent 50%),
     var(--bg);
   pointer-events: none;
 }
@@ -130,32 +136,13 @@
     var(--bg);
 }
 
-/* Mouse gradient glow */
-[data-theme="aura"] body::before {
+/* Mouse-follow glow: dark mode only. */
+[data-theme="aura"].dark body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
-  background:
-    radial-gradient(
-      600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-      rgba(180, 140, 255, 0.15),
-      transparent 55%
-    ),
-    radial-gradient(
-      800px circle at calc(var(--mouse-x, 50%) + 200px) calc(var(--mouse-y, 50%) - 150px),
-      rgba(100, 200, 255, 0.1),
-      transparent 55%
-    ),
-    radial-gradient(
-      500px circle at calc(var(--mouse-x, 50%) - 250px) calc(var(--mouse-y, 50%) + 100px),
-      rgba(255, 160, 120, 0.1),
-      transparent 55%
-    );
   pointer-events: none;
-}
-
-[data-theme="aura"].dark body::before {
   background:
     radial-gradient(
       600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
@@ -172,31 +159,6 @@
       rgba(255, 120, 80, 0.05),
       transparent 55%
     );
-}
-
-/* ── Page-level ambient mode ──────────────────────────────────────
-   data-mode controls how loud the Aura background is.
-     ambient (default) — full violet/blue/peach gradient + mouse glow
-                         Use on home, explore, marketing.
-     subtle            — same gradient at ~30% opacity, mouse glow off
-                         Use on accounts, breakdown, onboarding, settings.
-     quiet             — no gradient layers, flat var(--bg)
-                         Use on chat, loading, anywhere reading-heavy.
-   Set via the <PageMode mode="quiet" /> component or by adding
-   data-mode="..." on the body element directly.
-   ───────────────────────────────────────────────────────────────── */
-
-[data-theme="aura"] body[data-mode="subtle"]::after {
-  opacity: 0.35;
-}
-
-[data-theme="aura"] body[data-mode="subtle"]::before {
-  display: none;
-}
-
-[data-theme="aura"] body[data-mode="quiet"]::after,
-[data-theme="aura"] body[data-mode="quiet"]::before {
-  display: none;
 }
 
 /* ══════════════════════════════════
