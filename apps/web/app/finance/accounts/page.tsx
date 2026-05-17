@@ -50,6 +50,31 @@ function accountTypeLabel(type: string | null, subtype: string | null): string {
   return type ?? 'account';
 }
 
+// Common bank-name abbreviations to preserve in display. Without this list,
+// generic title-casing turns "td canada trust" into "Td Canada Trust" —
+// "TD" should stay all-caps. Add to this set when new ones come up.
+const BANK_ABBREVIATIONS = new Set([
+  'TD', 'RBC', 'BMO', 'CIBC', 'HSBC', 'ATB', 'EQ',
+  'US', 'USA', 'USAA', 'BOA', 'BOFA', 'PNC', 'JPM',
+  'SBI', 'ICICI', 'HDFC', 'AXIS', 'IDBI', 'IDFC',
+  'BPI', 'BDO', 'UBS', 'UK', 'UAE', 'PSE', 'BBVA',
+  'ANZ', 'NAB', 'AMEX',
+]);
+
+function formatInstitution(name: string | null): string {
+  if (!name) return 'Unknown institution';
+  return name
+    .split(/\s+/)
+    .map((word) => {
+      const up = word.toUpperCase();
+      if (BANK_ABBREVIATIONS.has(up)) return up;
+      // Words that already mix case (likely already formatted) — leave as-is.
+      if (word !== word.toLowerCase() && word !== word.toUpperCase()) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
 export default function AccountsPage() {
   const api = useApiClient();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -100,12 +125,7 @@ export default function AccountsPage() {
         ) : (
           <ul className={styles.list}>
             {accounts.map((a) => {
-              const institution = a.institutionName
-                ? a.institutionName
-                    .split(' ')
-                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-                    .join(' ')
-                : 'Unknown institution';
+              const institution = formatInstitution(a.institutionName);
               const last4 = a.accountLast4 ?? '????';
               const typeLabel = accountTypeLabel(a.type, a.subtype);
 

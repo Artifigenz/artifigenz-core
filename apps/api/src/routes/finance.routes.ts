@@ -377,14 +377,53 @@ app.patch("/file-uploads/:fileId", async (c) => {
     .set({ institutionName: newName })
     .where(eq(fileUploads.id, fileId));
 
-  // Also rename the linked account so the breakdown / accounts page reflect
-  // the correction. We don't try to merge with another account at this
-  // step — keep it simple, no cross-account moves.
-  if (row.accountId) {
-    await db
-      .update(financeAccounts)
-      .set({ institutionName: newName.toLowerCase().replace(/\s+/g, " ").trim() })
-      .where(eq(financeAccounts.id, row.accountId));
+  // Rename the linked account so the breakdown + accounts page reflect
+  // the correction. If a different account already exists with the new
+  // (institution, last4) identity, MERGE: re-point all txns and other
+  // file_uploads from the old account onto the existing one, then drop
+  // the old row. Without this, the unique constraint would fire and the
+  // rename silently failed.
+  if (row.accountId && row.agentInstanceId) {
+    const normalized = newName.toLowerCase().replace(/\s+/g, " ").trim();
+    const last4 = row.accountLast4;
+    if (last4) {
+      const [conflict] = await db
+        .select({ id: financeAccounts.id })
+        .from(financeAccounts)
+        .where(
+          and(
+            eq(financeAccounts.agentInstanceId, row.agentInstanceId),
+            eq(financeAccounts.institutionName, normalized),
+            eq(financeAccounts.accountLast4, last4),
+          ),
+        )
+        .limit(1);
+
+      if (conflict && conflict.id !== row.accountId) {
+        // Merge: move children, drop the orphan.
+        await db
+          .update(financeTransactions)
+          .set({ accountId: conflict.id })
+          .where(eq(financeTransactions.accountId, row.accountId));
+        await db
+          .update(fileUploads)
+          .set({ accountId: conflict.id })
+          .where(eq(fileUploads.accountId, row.accountId));
+        await db
+          .delete(financeAccounts)
+          .where(eq(financeAccounts.id, row.accountId));
+      } else {
+        await db
+          .update(financeAccounts)
+          .set({ institutionName: normalized })
+          .where(eq(financeAccounts.id, row.accountId));
+      }
+    } else {
+      await db
+        .update(financeAccounts)
+        .set({ institutionName: normalized })
+        .where(eq(financeAccounts.id, row.accountId));
+    }
   }
 
   return c.json({ success: true, institutionName: newName });
