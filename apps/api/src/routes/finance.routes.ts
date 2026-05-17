@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   db,
   agentInstances,
@@ -709,6 +712,20 @@ app.post("/wipe", async (c) => {
     .where(inArray(agentInstances.id, instanceIds))
     .returning({ id: agentInstances.id });
 
+  // Also remove the user's upload directory on disk. Statement PDFs/CSVs
+  // are stored under tmpdir()/artifigenz-uploads/<userId>/ during validate
+  // + parse — we don't need them after the rows are gone.
+  let diskCleared = false;
+  try {
+    await rm(join(tmpdir(), "artifigenz-uploads", user.id), {
+      recursive: true,
+      force: true,
+    });
+    diskCleared = true;
+  } catch (err) {
+    console.warn(`[finance/wipe] disk cleanup failed for ${user.id}:`, err);
+  }
+
   console.log(
     `[finance/wipe] user ${user.id}: removed instance(s) ${instanceIds.join(", ")}`,
   );
@@ -727,6 +744,7 @@ app.post("/wipe", async (c) => {
       platformInsights: platformInsightsDel.length,
       fileUploads: uploadsDel.length,
       agentInstanceSkills: skillsDel.length,
+      uploadFilesOnDisk: diskCleared ? 1 : 0,
     },
   });
 });
