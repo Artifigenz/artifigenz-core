@@ -12,6 +12,7 @@ import { useApiClient } from '@/hooks/useApiClient';
 import { clearPlaidPending, savePlaidPending } from '@/lib/plaid-pending';
 import * as Icons from '@/components/sections/AgentIcons';
 import * as CapIcons from '@/components/sections/CapabilityIcons';
+import FinanceConnect from './FinanceConnect';
 import styles from './page.module.css';
 
 interface PlaidConnection {
@@ -386,6 +387,12 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   const agent = AGENTS.find((a) => a.name.toLowerCase().replace(/\s+/g, '-') === slug);
   const data = ACTIVATION_DATA[slug];
   const IconComponent = agent ? ICON_MAP[agent.name] : undefined;
+
+  // Finance has its own dedicated, design-led onboarding page (Solo variant
+  // from the Connect Banks design). Skip the multi-step marketing flow.
+  if (slug === 'finance') {
+    return <FinanceConnect />;
+  }
 
   const [step, setStep] = useState(0);
   // Backend-backed state: agent instance + real Plaid connections
