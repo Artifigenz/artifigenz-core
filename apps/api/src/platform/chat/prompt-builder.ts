@@ -157,16 +157,57 @@ export async function loadPromptContext(params: {
   };
 }
 
+interface BuildPromptOptions {
+  /** Web search tool is registered for this provider. */
+  hasWebSearch: boolean;
+  /** Platform data tools (finance/health) are registered. Anthropic-only today. */
+  hasDataTools: boolean;
+  /** Human-facing model label, e.g. "Sonnet 4.6", "GPT-4o". */
+  modelLabel: string;
+  /** Provider family, e.g. "Claude", "OpenAI". */
+  modelFamily: string;
+}
+
 /**
  * Assembles the 5-layer system prompt from live context.
  */
-export function buildSystemPrompt(ctx: ChatPromptContext): string {
+export function buildSystemPrompt(
+  ctx: ChatPromptContext,
+  opts: BuildPromptOptions,
+): string {
   const layers: string[] = [];
 
-  // Layer 1: Identity
-  layers.push(
-    `You are Artifigenz — an AI assistant that knows the user personally through their connected agents. You can help with anything (questions, writing, code, analysis), but you have special depth in domains where the user has active agents. Be concise, direct, and helpful. Use markdown for formatting when appropriate.`,
-  );
+  // Today's date in the user's timezone — anchors Claude in real time so it
+  // doesn't default to its training cutoff when asked about "today",
+  // "recent", "this week", etc.
+  const tz = ctx.user.timezone ?? "UTC";
+  let today: string;
+  try {
+    today = new Date().toLocaleDateString("en-US", {
+      timeZone: tz,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    today = new Date().toISOString().slice(0, 10);
+  }
+
+  // Layer 1: Identity + capabilities. The capability paragraph differs by
+  // provider — Claude (Anthropic) has web search + data tools wired in;
+  // OpenAI models route through chat.completions without tools right now,
+  // so we tell them honestly to refuse anything they can't answer from
+  // training data + provided context.
+  const identity = `You are Artifigenz — an AI assistant that knows the user personally through their connected agents. You're running on ${opts.modelFamily} (${opts.modelLabel}). If the user asks which model you are, tell them honestly. Be concise, direct, and helpful. Use markdown for formatting when appropriate.
+
+Today is ${today}.`;
+
+  const capability = opts.hasWebSearch
+    ? `For anything time-sensitive — current events, prices, weather, news, sports scores, recently released software — call the web_search tool rather than relying on your training data, which is months out of date.`
+    : `You do **not** have web search in this conversation. For anything time-sensitive, say plainly that you can't look it up live. Never claim to be searching, fetching, or "checking" anything.`;
+
+  layers.push(`${identity}\n\n${capability}`);
 
   // Layer 2: User profile
   const userLayer = `## User
@@ -240,11 +281,22 @@ The user is asking about this specific insight:
     );
   }
 
-  // Tool usage guidance
-  layers.push(
-    `## Tool Usage
+  // Data-tool guidance — only relevant when finance/health tools are loaded.
+  if (opts.hasDataTools) {
+    layers.push(
+      `## Tool Usage
 You have tools available to query the user's real data. Use them when the conversation calls for specific data — never guess. For example, if the user asks "which subscriptions charge this week?", call getUpcomingCharges. If they ask about spending, call getSpendingSummary or getTransactions. If they ask about sleep, steps, or heart rate, use the health tools (getSleepHistory, getActivityHistory, getHeartRateHistory, getWorkoutHistory, getHealthSummary, getHealthTrends).`,
-  );
+    );
+  } else if (
+    ctx.activeAgents.length > 0 ||
+    ctx.financeSnapshot ||
+    ctx.healthSnapshot
+  ) {
+    layers.push(
+      `## Live Data
+You don't have direct access to the user's underlying data in this conversation. The snapshots above are everything you know. If the user asks for specifics that aren't in the snapshot (e.g. "which subscriptions charge this week"), say you can't pull that here and suggest switching to a Claude model.`,
+    );
+  }
 
   return layers.join("\n\n");
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ALTER COLUMN "agent_instance_id" DROP NOT NULL;

@@ -54,6 +54,81 @@
   border-color: var(--menu-border);
 }
 
+/* ── Attachment chips (above textarea) ── */
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.attachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--card-hover);
+  font-size: 0.78rem;
+  color: var(--text);
+  max-width: 260px;
+}
+
+.attachmentThumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.attachmentIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.attachmentName {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+}
+
+.attachmentStatus {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.attachmentStatusError {
+  color: #d9534f;
+  font-size: 0.72rem;
+}
+
+.attachmentRemove {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0 6px;
+  transition: color 0.15s ease;
+}
+
+.attachmentRemove:hover {
+  color: var(--text);
+}
+
 .selectedChip {
   display: inline-flex;
   align-items: center;
@@ -116,6 +191,12 @@
   gap: 8px;
 }
 
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ── Add button + menu ── */
 
 .addWrap {
@@ -137,6 +218,29 @@
 }
 
 .addBtn:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+/* Inline toolbar pill (e.g. History) — matches .addBtn height/border. */
+.toolBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.toolBtn:hover {
   color: var(--text);
   border-color: var(--text);
 }
@@ -274,8 +378,17 @@
   transition: opacity 0.15s ease;
 }
 
-.sendBtn:hover {
+.sendBtn:hover:not(:disabled) {
   opacity: 0.8;
+}
+
+.sendBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.input:disabled {
+  opacity: 0.6;
 }
 
 /* ── Compact (agent-scoped) ── */
