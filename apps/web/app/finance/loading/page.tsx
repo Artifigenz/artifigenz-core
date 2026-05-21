@@ -128,7 +128,6 @@ export default function FinanceLoadingPage() {
   const [ingestionComplete, setIngestionComplete] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activityIdx, setActivityIdx] = useState(0);
-  const [notifyClicked, setNotifyClicked] = useState(false);
   const navigatedRef = useRef(false);
 
   const fetchStatus = useCallback(async () => {
@@ -189,7 +188,6 @@ export default function FinanceLoadingPage() {
 
   // Typewriter greeting.
   const greetingTarget = `Setting up Finance, ${firstName}.`;
-  const greetingDimTarget = 'A minute or two — close the tab whenever, I\u2019ll ping you when the brief is ready.';
   const [typedChars, setTypedChars] = useState(0);
   useEffect(() => {
     setTypedChars(0);
@@ -248,9 +246,6 @@ export default function FinanceLoadingPage() {
         <h2 className={styles.greeting}>
           {typedGreeting}
           {isTyping && <span className={styles.cursor} />}
-          {!isTyping && (
-            <span className={styles.greetingDim}>{greetingDimTarget}</span>
-          )}
         </h2>
 
         <ol className={styles.steps}>
@@ -357,41 +352,6 @@ export default function FinanceLoadingPage() {
             could not be ingested. Open Devtools → Re-sync banks to retry.
           </div>
         )}
-
-        <div className={styles.leaveRow}>
-          <div className={styles.leaveCopy}>
-            Close this whenever you like — I&apos;ll send you a note the moment the brief is ready.
-          </div>
-          <div className={styles.leaveActions}>
-            <button
-              type="button"
-              className={`${styles.btn} ${
-                notifyClicked ? styles.btnPrimaryDone : styles.btnPrimary
-              }`}
-              onClick={() => setNotifyClicked(true)}
-            >
-              {notifyClicked ? (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12l5 5L20 7" />
-                  </svg>
-                  You&apos;ll get a ping
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                    <path d="M13.7 21a2 2 0 01-3.4 0" />
-                  </svg>
-                  Notify me when ready
-                </>
-              )}
-            </button>
-            <button type="button" className={`${styles.btn} ${styles.btnGhost}`}>
-              Keep watching
-            </button>
-          </div>
-        </div>
 
         {errorMessage && (
           <p className={`${styles.note} ${styles.errorNote}`}>

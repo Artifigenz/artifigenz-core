@@ -217,14 +217,22 @@ app.get("/agent-status", async (c) => {
     .where(eq(financeTransactions.agentInstanceId, instance.id));
 
   const perConnCount = new Map<string, number>();
-  const perConnAccounts = new Map<string, Set<string>>();
   for (const tx of txRows) {
     if (!tx.accountId) continue;
     const connId = accountToConn.get(tx.accountId);
     if (!connId) continue;
     perConnCount.set(connId, (perConnCount.get(connId) ?? 0) + 1);
-    if (!perConnAccounts.has(connId)) perConnAccounts.set(connId, new Set());
-    perConnAccounts.get(connId)!.add(tx.accountId);
+  }
+
+  // Account count: derived from finance_accounts rows (which exist as soon
+  // as Plaid Link metadata is finalized), NOT from transactions. Using txn
+  // rows used to show "0 accounts" during the initial pull because txns
+  // arrive after accounts are created.
+  const perConnAccountsTotal = new Map<string, number>();
+  for (const a of counts) {
+    const connId = a.dataSourceConnectionId;
+    if (!connId) continue;
+    perConnAccountsTotal.set(connId, (perConnAccountsTotal.get(connId) ?? 0) + 1);
   }
 
   // Pull per-connection file_upload state so we can show parsing progress.
@@ -315,7 +323,7 @@ app.get("/agent-status", async (c) => {
         lastSyncAddedCount: c.lastSyncAddedCount,
         consecutiveEmptySyncs: c.consecutiveEmptySyncs,
         transactionCount: perConnCount.get(c.id) ?? 0,
-        accountCount: (perConnAccounts.get(c.id) ?? new Set()).size,
+        accountCount: perConnAccountsTotal.get(c.id) ?? 0,
         syncTriggered: triggered.includes(c.id),
         files: files.map((f) => ({
           id: f.id,
