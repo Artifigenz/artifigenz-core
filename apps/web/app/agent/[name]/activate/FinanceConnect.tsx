@@ -711,13 +711,15 @@ export default function FinanceConnect() {
         {/* Bottom nav */}
         <div className={styles.bottomNav}>
           <span className={styles.bottomNote}>
-            {sourceCount > 0
-              ? `${sourceCount} source${sourceCount !== 1 ? 's' : ''} ready — let's analyze.`
-              : 'Connect at least one source to continue.'}
+            {uploadBusy
+              ? 'Validating your upload…'
+              : sourceCount > 0
+                ? `${sourceCount} source${sourceCount !== 1 ? 's' : ''} ready — let's analyze.`
+                : 'Connect at least one source to continue.'}
           </span>
           <button
             type="button"
-            disabled={sourceCount === 0 || activating}
+            disabled={sourceCount === 0 || activating || uploadBusy}
             onClick={onActivate}
             className={styles.activateBtn}
           >

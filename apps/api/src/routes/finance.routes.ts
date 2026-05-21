@@ -29,6 +29,13 @@ import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ing
 // without this throttle we'd hammer Plaid.
 const SYNC_THROTTLE_MS = 30_000;
 
+// Watchdog: if a connection has been in_progress for this long, force it to
+// "complete" regardless of consecutive-empty-sync count. This protects users
+// from getting stuck on the loading page if the sync state machine fails to
+// converge (e.g., persistent /sync errors that don't trip the failed path,
+// or new transactions arriving every poll forever).
+const INGEST_HARD_TIMEOUT_MS = 8 * 60_000;
+
 const app = new Hono();
 app.use("/*", clerkAuth);
 
@@ -259,6 +266,31 @@ app.get("/agent-status", async (c) => {
     const arr = filesByConn.get(f.dataSourceConnectionId) ?? [];
     arr.push(f);
     filesByConn.set(f.dataSourceConnectionId, arr);
+  }
+
+  // Watchdog: force-complete any connection that's been in_progress longer
+  // than INGEST_HARD_TIMEOUT_MS. This is the safety net for the loading
+  // page UX — without it, a stuck sync can pin the user indefinitely.
+  const watchdogNow = Date.now();
+  for (const conn of conns) {
+    if (conn.ingestionState !== "in_progress") continue;
+    if (!conn.ingestionStartedAt) continue;
+    const ageMs =
+      watchdogNow - new Date(conn.ingestionStartedAt).getTime();
+    if (ageMs <= INGEST_HARD_TIMEOUT_MS) continue;
+    await db
+      .update(dataSourceConnections)
+      .set({
+        ingestionState: "complete",
+        ingestionCompletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(dataSourceConnections.id, conn.id));
+    conn.ingestionState = "complete";
+    conn.ingestionCompletedAt = new Date();
+    console.log(
+      `[agent-status] watchdog: forced ${conn.id} to complete after ${Math.round(ageMs / 1000)}s`,
+    );
   }
 
   // Kick throttled Plaid syncs + file parses for in_progress connections.
