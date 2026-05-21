@@ -135,7 +135,7 @@ function BankLogo({
         borderRadius: radius,
         background: institution.primaryColor
           ? `${institution.primaryColor}1a`
-          : 'rgba(0,0,0,0.06)',
+          : 'var(--card-hover)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

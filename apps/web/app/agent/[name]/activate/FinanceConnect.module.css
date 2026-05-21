@@ -107,7 +107,7 @@
   align-items: center;
   gap: 14px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--card-bg);
   border: 1px solid var(--border-light);
   border-radius: 14px;
 }
@@ -136,7 +136,7 @@
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--card-hover);
   border: 1px solid var(--border-light);
   display: flex;
   align-items: center;
@@ -180,7 +180,7 @@
   flex: 1;
   border: 0;
   outline: none;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--card-hover);
   border-radius: 6px;
   padding: 4px 8px;
   font: inherit;
@@ -189,13 +189,13 @@
   color: var(--text);
 }
 .inlineEditInput:focus {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--input-bg);
 }
 
 /* ── Search panel ───────────────────────────────────────────── */
 
 .searchPanel {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--card-bg);
   border: 1px solid var(--border-light);
   border-radius: 24px;
   padding: 6px;
@@ -250,7 +250,7 @@
   transition: background 0.18s;
 }
 .resultRow:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--card-hover);
 }
 .resultRow:disabled {
   cursor: wait;
@@ -308,8 +308,8 @@
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px dashed rgba(0, 0, 0, 0.18);
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
   border-radius: 18px;
   cursor: pointer;
   font-family: inherit;
@@ -317,8 +317,8 @@
   transition: background 0.22s, border-color 0.22s;
 }
 .uploadCard:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(0, 0, 0, 0.35);
+  background: var(--card-hover);
+  border-color: var(--text-mid);
 }
 .uploadCard:disabled {
   cursor: wait;

@@ -86,7 +86,7 @@ function BankLogo({
   }
   const bg = institution.primaryColor
     ? `${institution.primaryColor}1a`
-    : 'rgba(0,0,0,0.06)';
+    : 'var(--card-hover)';
   return (
     <div
       style={{

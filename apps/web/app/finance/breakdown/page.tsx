@@ -118,19 +118,19 @@ export default function BreakdownPage() {
                   <span className={styles.summaryLabel}>Transactions</span>
                   <span className={styles.summaryValue}>{data.count}</span>
                 </div>
-                <span style={{ width: '1px', height: '32px', background: 'rgba(0,0,0,0.08)' }} />
+                <span style={{ width: '1px', height: '32px', background: 'var(--border-light)' }} />
                 <div className={styles.summaryItem}>
                   <span className={styles.summaryLabel}>Money in</span>
                   <span className={styles.summaryValue} style={{ color: '#16a34a' }}>
                     {formatMoney(data.totals.income)}
                   </span>
                 </div>
-                <span style={{ width: '1px', height: '32px', background: 'rgba(0,0,0,0.08)' }} />
+                <span style={{ width: '1px', height: '32px', background: 'var(--border-light)' }} />
                 <div className={styles.summaryItem}>
                   <span className={styles.summaryLabel}>Money out</span>
                   <span className={styles.summaryValue}>{formatMoney(data.totals.expenses)}</span>
                 </div>
-                <span style={{ width: '1px', height: '32px', background: 'rgba(0,0,0,0.08)' }} />
+                <span style={{ width: '1px', height: '32px', background: 'var(--border-light)' }} />
                 <div className={styles.summaryItem}>
                   <span className={styles.summaryLabel}>Net</span>
                   <span
@@ -146,7 +146,7 @@ export default function BreakdownPage() {
                 display: 'flex',
                 gap: '12px',
                 padding: '16px 24px',
-                borderTop: '1px solid rgba(0,0,0,0.06)',
+                borderTop: '1px solid var(--border-light)',
                 flexWrap: 'wrap',
                 alignItems: 'center',
               }}>
@@ -160,8 +160,8 @@ export default function BreakdownPage() {
                     minWidth: 0,
                     padding: '8px 12px',
                     borderRadius: '8px',
-                    border: '1px solid rgba(0,0,0,0.1)',
-                    background: 'rgba(255,255,255,0.7)',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--input-bg)',
                     fontSize: '0.85rem',
                     fontFamily: 'inherit',
                     color: 'var(--text)',
@@ -180,8 +180,8 @@ export default function BreakdownPage() {
                 }}>
                   <thead>
                     <tr style={{
-                      background: 'rgba(0,0,0,0.02)',
-                      borderTop: '1px solid rgba(0,0,0,0.06)',
+                      background: 'var(--card-hover)',
+                      borderTop: '1px solid var(--border-light)',
                     }}>
                       <th style={thStyle}>Date</th>
                       <th style={thStyle}>Description</th>
@@ -193,7 +193,7 @@ export default function BreakdownPage() {
                   </thead>
                   <tbody>
                     {filtered.map((t) => (
-                      <tr key={t.id} style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                      <tr key={t.id} style={{ borderTop: '1px solid var(--border-light)' }}>
                         <td style={tdStyle}>{formatDate(t.date)}</td>
                         <td style={{ ...tdStyle, maxWidth: '360px' }}>
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

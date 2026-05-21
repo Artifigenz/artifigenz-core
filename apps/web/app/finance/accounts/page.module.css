@@ -60,7 +60,7 @@
 }
 
 .bankCard {
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--card-bg);
   border: 1px solid var(--border-light);
   border-radius: 18px;
   overflow: hidden;
@@ -160,7 +160,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 20px;
-  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  border-top: 1px solid var(--border-light);
 }
 .accountRow:first-child {
   border-top: 0;
@@ -217,7 +217,7 @@
   margin: 0;
   padding: 8px 20px 14px;
   border-top: 1px solid var(--border-light);
-  background: rgba(0, 0, 0, 0.015);
+  background: var(--card-hover);
 }
 
 .statementRow {
@@ -271,7 +271,7 @@
 /* ── Search panel ───────────────────────────────────────────── */
 
 .searchPanel {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--card-bg);
   border: 1px solid var(--border-light);
   border-radius: 24px;
   padding: 6px;
@@ -343,7 +343,7 @@
   transition: background 0.18s;
 }
 .resultRow:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--card-hover);
 }
 .resultRow:disabled {
   cursor: wait;
@@ -401,8 +401,8 @@
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px dashed rgba(0, 0, 0, 0.18);
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
   border-radius: 18px;
   cursor: pointer;
   font-family: inherit;
@@ -411,8 +411,8 @@
   transition: background 0.22s, border-color 0.22s;
 }
 .uploadCard:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(0, 0, 0, 0.35);
+  background: var(--card-hover);
+  border-color: var(--text-mid);
 }
 .uploadCard:disabled {
   cursor: wait;
