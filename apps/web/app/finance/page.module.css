@@ -3,6 +3,36 @@
    shell (max-width: 1280px, same as onboarding) — we only adjust the
    Brief's internal typography and rhythm here. */
 
+/* Syncing pill — shown in the agent header when a newly added bank
+   is still pulling transactions in the background. */
+.syncingPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: var(--card-hover);
+  border: 1px solid var(--border-light);
+  font-size: 0.72rem;
+  color: var(--text-mid);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.syncingDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  animation: syncPulse 1.4s ease-in-out infinite;
+}
+@keyframes syncPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
 /* Verdict — standard greeting typography (see globals.css). */
 .verdict {
   font-size: var(--greeting-size);

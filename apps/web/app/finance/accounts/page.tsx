@@ -233,6 +233,25 @@ export default function AccountsPage() {
     };
   }, [refreshAccounts]);
 
+  // Poll while any Plaid connection is still ingesting, so the per-bank
+  // "Syncing transactions…" pill clears itself once the bank lands.
+  const anySyncing = useMemo(
+    () =>
+      accounts.some(
+        (a) =>
+          a.plaid?.ingestionState === 'in_progress' ||
+          a.plaid?.ingestionState === 'pending',
+      ),
+    [accounts],
+  );
+  useEffect(() => {
+    if (!anySyncing) return;
+    const interval = setInterval(() => {
+      refreshAccounts();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [anySyncing, refreshAccounts]);
+
   useEffect(() => {
     if (institutions.length > 0) return;
     let cancelled = false;
@@ -365,6 +384,7 @@ export default function AccountsPage() {
     plaidStatus: string | null;
     plaidLastSyncedAt: string | null;
     plaidRequiresReauth: boolean;
+    plaidIngestionState: string | null;
     institutionMeta: PopularInstitution | null;
     accounts: Account[];
     // For upload-only banks: aggregate statement info
@@ -395,6 +415,7 @@ export default function AccountsPage() {
           plaidStatus: a.plaid?.status ?? null,
           plaidLastSyncedAt: a.plaid?.lastSyncedAt ?? null,
           plaidRequiresReauth: a.plaid?.requiresReauth ?? false,
+          plaidIngestionState: a.plaid?.ingestionState ?? null,
           institutionMeta: meta
             ? {
                 id: meta.id,
@@ -523,9 +544,20 @@ export default function AccountsPage() {
                     <div className={styles.bankHeadBody}>
                       <div className={styles.bankTitleRow}>
                         <span className={styles.bankName}>{inst}</span>
-                        {isPlaid && !g.plaidRequiresReauth && (
-                          <span className={styles.liveDot} />
-                        )}
+                        {isPlaid &&
+                          !g.plaidRequiresReauth &&
+                          g.plaidIngestionState !== 'in_progress' &&
+                          g.plaidIngestionState !== 'pending' && (
+                            <span className={styles.liveDot} />
+                          )}
+                        {isPlaid &&
+                          (g.plaidIngestionState === 'in_progress' ||
+                            g.plaidIngestionState === 'pending') && (
+                            <span className={styles.syncingPill}>
+                              <span className={styles.syncingDot} />
+                              Syncing transactions…
+                            </span>
+                          )}
                         {g.plaidRequiresReauth && (
                           <span className={styles.warnPill}>needs re-link</span>
                         )}
