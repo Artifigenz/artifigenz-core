@@ -20,6 +20,15 @@ export interface ChatAttachmentDraft {
   error?: string;
 }
 
+export interface PasteSnippetDraft {
+  id: string;
+  content: string;
+  firstLine?: string;
+}
+
+/** Pastes larger than this become "snippet" chips instead of inline text. */
+export const PASTE_SNIPPET_THRESHOLD = 1500;
+
 interface ChatInputProps {
   agent?: string;
   value?: string;
@@ -32,6 +41,9 @@ interface ChatInputProps {
   attachments?: ChatAttachmentDraft[];
   onAddFiles?: (files: File[]) => void;
   onRemoveAttachment?: (fileId: string) => void;
+  pasteSnippets?: PasteSnippetDraft[];
+  onAddPasteSnippet?: (text: string) => void;
+  onRemovePasteSnippet?: (id: string) => void;
   /** Chat-mode helpers. Shown in the toolbar / + menu when present. */
   onNewChat?: () => void;
   onShowHistory?: () => void;
@@ -40,7 +52,7 @@ interface ChatInputProps {
   onModelChange?: (id: string) => void;
 }
 
-export default function ChatInput({ agent, value, onChange, onSend, onStop, disabled, streaming, attachments, onAddFiles, onRemoveAttachment, onNewChat, onShowHistory, modelId, onModelChange }: ChatInputProps) {
+export default function ChatInput({ agent, value, onChange, onSend, onStop, disabled, streaming, attachments, onAddFiles, onRemoveAttachment, pasteSnippets, onAddPasteSnippet, onRemovePasteSnippet, onNewChat, onShowHistory, modelId, onModelChange }: ChatInputProps) {
   const { slugs } = useActivatedAgents();
   const activeAgents = AGENTS.filter((a) => slugs.includes(agentSlug(a.name)));
   const [menuOpen, setMenuOpen] = useState(false);
@@ -48,11 +60,21 @@ export default function ChatInput({ agent, value, onChange, onSend, onStop, disa
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0 || !onAddFiles) return;
     onAddFiles(Array.from(files));
   };
+
+  // Auto-grow the textarea to fit its content. CSS `max-height` caps it at
+  // ~10 lines and switches to scroll when content exceeds that.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [value]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -126,6 +148,36 @@ export default function ChatInput({ agent, value, onChange, onSend, onStop, disa
               e.target.value = '';
             }}
           />
+          {pasteSnippets && pasteSnippets.length > 0 && (
+            <div className={styles.attachments}>
+              {pasteSnippets.map((s) => (
+                <div key={s.id} className={styles.attachmentChip}>
+                  <span className={styles.attachmentIcon} aria-hidden>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="9" y1="13" x2="15" y2="13" />
+                      <line x1="9" y1="17" x2="15" y2="17" />
+                    </svg>
+                  </span>
+                  <span
+                    className={styles.attachmentName}
+                    title={s.firstLine ?? `${s.content.length} chars`}
+                  >
+                    Pasted text · {formatChars(s.content.length)}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.attachmentRemove}
+                    aria-label="Remove pasted text"
+                    onClick={() => onRemovePasteSnippet?.(s.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {attachments && attachments.length > 0 && (
             <div className={styles.attachments}>
               {attachments.map((a) => (
@@ -168,11 +220,20 @@ export default function ChatInput({ agent, value, onChange, onSend, onStop, disa
             </div>
           )}
           <textarea
+            ref={textareaRef}
             className={styles.input}
             placeholder={selectedAgent ? `Ask ${selectedAgent}...` : 'Ask anything or give a task...'}
             rows={1}
             value={value ?? ''}
             onChange={(e) => onChange?.(e.target.value)}
+            onPaste={(e) => {
+              if (!onAddPasteSnippet) return;
+              const text = e.clipboardData.getData('text');
+              if (text.length >= PASTE_SNIPPET_THRESHOLD) {
+                e.preventDefault();
+                onAddPasteSnippet(text);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -328,4 +389,9 @@ export default function ChatInput({ agent, value, onChange, onSend, onStop, disa
       </div>
     </div>
   );
+}
+
+function formatChars(n: number): string {
+  if (n < 1000) return `${n} chars`;
+  return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k chars`;
 }

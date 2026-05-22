@@ -6,7 +6,7 @@ import { DEFAULT_MODEL_ID } from '@artifigenz/shared';
 import Header from '@/components/layout/Header';
 import Hero from '@/components/sections/Hero';
 import AgentGrid from '@/components/sections/AgentGrid';
-import ChatInput, { type ChatAttachmentDraft } from '@/components/sections/ChatInput';
+import ChatInput, { type ChatAttachmentDraft, type PasteSnippetDraft } from '@/components/sections/ChatInput';
 import HomeChatMessages, { type ChatMessage } from '@/components/sections/HomeChatMessages';
 import ChatHistoryModal from '@/components/sections/ChatHistoryModal';
 import styles from './page.module.css';
@@ -27,6 +27,7 @@ export default function AppHome() {
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
+  const [pasteSnippets, setPasteSnippets] = useState<PasteSnippetDraft[]>([]);
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
 
   // Restore last selected model from localStorage on mount.
@@ -83,7 +84,6 @@ export default function AppHome() {
       rafRef.current = requestAnimationFrame(tick);
     } else {
       rafRef.current = null;
-      setStreaming(false);
     }
   }, []);
 
@@ -169,6 +169,16 @@ export default function AppHome() {
     [getToken],
   );
 
+  const addPasteSnippet = useCallback((text: string) => {
+    const id = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const firstLine = text.split('\n', 1)[0]?.slice(0, 80) ?? '';
+    setPasteSnippets((prev) => [...prev, { id, content: text, firstLine }]);
+  }, []);
+
+  const removePasteSnippet = useCallback((id: string) => {
+    setPasteSnippets((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
   const removeAttachment = useCallback((fileId: string) => {
     setAttachments((prev) => {
       const target = prev.find((a) => a.fileId === fileId);
@@ -185,16 +195,23 @@ export default function AppHome() {
       opts?: {
         truncateFromMessageId?: string;
         attachments?: ChatAttachmentDraft[];
+        pasteSnippets?: PasteSnippetDraft[];
         model?: string;
+        /** Regenerate the assistant turn — keep the existing user message. */
+        regenerate?: boolean;
       },
     ) => {
-      if ((!text && (!opts?.attachments || opts.attachments.length === 0)) || streaming) return;
+      const hasAttachments = (opts?.attachments?.length ?? 0) > 0;
+      const hasSnippets = (opts?.pasteSnippets?.length ?? 0) > 0;
+      const isRegenerate = Boolean(opts?.regenerate);
+      if (!isRegenerate && !text && !hasAttachments && !hasSnippets) return;
 
       const localUserId = `u-${Date.now()}`;
       const localAssistantId = `a-${Date.now()}`;
       const sendAtts = (opts?.attachments ?? []).filter(
         (a) => a.status === 'ready',
       );
+      const sendSnippets = opts?.pasteSnippets ?? [];
       const userMsg: ChatMessage = {
         id: localUserId,
         role: 'user',
@@ -204,6 +221,11 @@ export default function AppHome() {
           filename: a.filename,
           mimeType: a.mimeType,
           sizeBytes: a.sizeBytes,
+        })),
+        pasteSnippets: sendSnippets.map((s) => ({
+          id: s.id,
+          content: s.content,
+          firstLine: s.firstLine,
         })),
       };
 
@@ -218,7 +240,9 @@ export default function AppHome() {
         }
         return [
           ...truncated,
-          userMsg,
+          // In regenerate mode the previous user message is preserved in the
+          // truncated array — don't duplicate it.
+          ...(isRegenerate ? [] : [userMsg]),
           { id: localAssistantId, role: 'assistant', content: '' },
         ];
       });
@@ -242,12 +266,18 @@ export default function AppHome() {
             model: opts?.model ?? modelId,
             conversationId: conversationId || undefined,
             truncateFromMessageId: opts?.truncateFromMessageId,
+            regenerate: isRegenerate,
             attachments: sendAtts.map((a) => ({
               fileId: a.fileId,
               filename: a.filename,
               mimeType: a.mimeType,
               sizeBytes: a.sizeBytes,
               extension: a.extension,
+            })),
+            pasteSnippets: sendSnippets.map((s) => ({
+              id: s.id,
+              content: s.content,
+              firstLine: s.firstLine,
             })),
           }),
           signal: controller.signal,
@@ -266,31 +296,28 @@ export default function AppHome() {
         // We track the current event type as we walk lines.
         let currentEvent = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop() ?? '';
+        const processLine = (line: string) => {
+          if (line === '') {
+            currentEvent = '';
+            return;
+          }
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+            return;
+          }
+          if (!line.startsWith('data: ')) return;
+          let data: Record<string, unknown>;
+          try {
+            data = JSON.parse(line.slice(6));
+          } catch {
+            return;
+          }
+          console.log(
+            `[chat] SSE ${currentEvent}:`,
+            JSON.stringify(data).slice(0, 200),
+          );
 
-          for (const line of lines) {
-            if (line === '') {
-              currentEvent = '';
-              continue;
-            }
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-              continue;
-            }
-            if (!line.startsWith('data: ')) continue;
-            let data: Record<string, unknown>;
-            try {
-              data = JSON.parse(line.slice(6));
-            } catch {
-              continue;
-            }
-
-            switch (currentEvent) {
+          switch (currentEvent) {
               case 'conversation':
                 if (typeof data.conversationId === 'string') {
                   setConversationId(data.conversationId);
@@ -364,21 +391,43 @@ export default function AppHome() {
                 );
                 break;
             }
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            // Server may close before flushing the trailing newline, leaving
+            // the last `data:` line stuck in buf. Process it before bailing.
+            if (buf.length > 0) {
+              processLine(buf);
+              buf = '';
+            }
+            break;
           }
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) processLine(line);
         }
 
         streamDoneRef.current.add(localAssistantId);
         startTicker();
+        // Network is done. Unlock the input + past regenerate buttons even
+        // if the typewriter is still draining — the buffer will continue to
+        // reveal text in parallel.
+        setStreaming(false);
       } catch (err) {
         const isAbort =
           err instanceof DOMException && err.name === 'AbortError';
         if (isAbort) {
           // User clicked stop — flush whatever's already in the buffer so it
-          // stays visible, then let the ticker drain.
+          // stays visible, then let the ticker drain. Network is over, so
+          // unlock the input immediately.
           const entry = bufferRef.current.get(localAssistantId);
           if (entry) entry.displayed = entry.pending;
           streamDoneRef.current.add(localAssistantId);
           startTicker();
+          setStreaming(false);
         } else {
           bufferRef.current.delete(localAssistantId);
           streamDoneRef.current.delete(localAssistantId);
@@ -400,17 +449,22 @@ export default function AppHome() {
         setToolStatus(null);
       }
     },
-    [streaming, conversationId, getToken, startTicker, modelId],
+    [conversationId, getToken, startTicker, modelId],
   );
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     const ready = attachments.filter((a) => a.status === 'ready');
-    if (!text && ready.length === 0) return;
+    if (!text && ready.length === 0 && pasteSnippets.length === 0) return;
     setInput('');
     setAttachments([]);
-    await runSend(text, { attachments: ready });
-  }, [input, attachments, runSend]);
+    const snapshotSnippets = pasteSnippets;
+    setPasteSnippets([]);
+    await runSend(text, {
+      attachments: ready,
+      pasteSnippets: snapshotSnippets,
+    });
+  }, [input, attachments, pasteSnippets, runSend]);
 
   const stopGenerating = useCallback(() => {
     abortRef.current?.abort();
@@ -460,6 +514,7 @@ export default function AppHome() {
             metadata?: {
               citations?: ChatMessage['citations'];
               attachments?: ChatMessage['attachments'];
+              pasteSnippets?: ChatMessage['pasteSnippets'];
             } | null;
           }>;
         };
@@ -472,6 +527,7 @@ export default function AppHome() {
             content: m.content,
             citations: m.metadata?.citations,
             attachments: m.metadata?.attachments,
+            pasteSnippets: m.metadata?.pasteSnippets,
           })),
         );
         // Scroll to bottom on next paint
@@ -509,6 +565,7 @@ export default function AppHome() {
       await runSend(prevUser.content, {
         truncateFromMessageId: assistant.serverId,
         model: overrideModelId,
+        regenerate: true,
       });
     },
     [messages, runSend, modelId, changeModel],
@@ -516,7 +573,7 @@ export default function AppHome() {
 
   return (
     <div className={styles.page}>
-      <Header />
+      <Header onLogoClick={inChat ? newChat : undefined} />
       <ChatHistoryModal
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -551,6 +608,9 @@ export default function AppHome() {
           attachments={attachments}
           onAddFiles={addAttachmentFiles}
           onRemoveAttachment={removeAttachment}
+          pasteSnippets={pasteSnippets}
+          onAddPasteSnippet={addPasteSnippet}
+          onRemovePasteSnippet={removePasteSnippet}
           onNewChat={inChat ? newChat : undefined}
           onShowHistory={() => setHistoryOpen(true)}
           modelId={modelId}

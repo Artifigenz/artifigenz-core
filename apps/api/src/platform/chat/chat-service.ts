@@ -9,9 +9,27 @@ import { getClaudeClient } from "../../agents/finance/lib/claude-client";
 import { getOpenAIClient } from "./openai-client";
 import { toolExecutor } from "./tool-executor";
 import { loadPromptContext, buildSystemPrompt } from "./prompt-builder";
-import type { SendMessageParams, SSEEvent, ChatAttachmentRef } from "./types";
+import type { SendMessageParams, SSEEvent, ChatAttachmentRef, PasteSnippet } from "./types";
 
 const ATTACHMENT_DIR = join(tmpdir(), "artifigenz-chat-attachments");
+
+/** Compose a user's typed text + their pasted snippets into one text block.
+ *  Empty inputs are skipped; snippets are framed so the model can tell they
+ *  came from the user's clipboard rather than the prompt itself. */
+function composeUserText(
+  typed: string,
+  snippets: PasteSnippet[] | undefined,
+): string {
+  const parts: string[] = [];
+  if (typed && typed.trim().length > 0) parts.push(typed);
+  for (const s of snippets ?? []) {
+    if (!s.content) continue;
+    parts.push(
+      `[Pasted content — ${s.content.length} chars]\n\n${s.content}`,
+    );
+  }
+  return parts.join("\n\n");
+}
 
 async function loadAttachmentAsContentBlock(
   userId: string,
@@ -133,20 +151,33 @@ export class ChatService {
     }
 
     // ─── 3. Persist user message ─────────────────────────────────
-    const userAttachments = params.attachments ?? [];
-    const [userMsg] = await db
-      .insert(messages)
-      .values({
-        conversationId,
-        role: "user",
-        content: message,
-        metadata:
-          userAttachments.length > 0
-            ? ({ attachments: userAttachments } as unknown as Record<string, unknown>)
-            : null,
-      })
-      .returning();
-    onEvent({ type: "user_message", data: { messageId: userMsg.id } });
+    // In regenerate mode the user's prior turn is still in DB after the
+    // truncate above — we just skip inserting a new one and reuse history.
+    if (!params.regenerate) {
+      const userAttachments = params.attachments ?? [];
+      const pasteSnippets = (params.pasteSnippets ?? []).filter(
+        (s) => typeof s.content === "string" && s.content.length > 0,
+      );
+      const userMetadata: Record<string, unknown> | null =
+        userAttachments.length > 0 || pasteSnippets.length > 0
+          ? {
+              ...(userAttachments.length > 0
+                ? { attachments: userAttachments }
+                : {}),
+              ...(pasteSnippets.length > 0 ? { pasteSnippets } : {}),
+            }
+          : null;
+      const [userMsg] = await db
+        .insert(messages)
+        .values({
+          conversationId,
+          role: "user",
+          content: message,
+          metadata: userMetadata,
+        })
+        .returning();
+      onEvent({ type: "user_message", data: { messageId: userMsg.id } });
+    }
 
     // ─── 4. Load conversation history ────────────────────────────
     const history = await db
@@ -172,17 +203,22 @@ export class ChatService {
 
     // ─── 6. Convert history to Claude message format ─────────────
     // User messages with attachments become multimodal content blocks (text
-    // + image/document). Assistant messages stay plain text.
+    // + image/document). Pasted snippets ride in the same text block as the
+    // typed prompt, framed so the model can tell them apart.
     const claudeMessages: Anthropic.MessageParam[] = [];
     for (const m of history) {
       if (m.role === "assistant") {
         claudeMessages.push({ role: "assistant", content: m.content });
         continue;
       }
-      const meta = m.metadata as { attachments?: ChatAttachmentRef[] } | null;
+      const meta = m.metadata as {
+        attachments?: ChatAttachmentRef[];
+        pasteSnippets?: PasteSnippet[];
+      } | null;
       const atts = meta?.attachments;
+      const combinedText = composeUserText(m.content, meta?.pasteSnippets);
       if (!atts || atts.length === 0) {
-        claudeMessages.push({ role: "user", content: m.content });
+        claudeMessages.push({ role: "user", content: combinedText });
         continue;
       }
       const blocks: Anthropic.ContentBlockParam[] = [];
@@ -190,11 +226,11 @@ export class ChatService {
         const b = await loadAttachmentAsContentBlock(userId, att);
         if (b) blocks.push(b);
       }
-      if (m.content) blocks.push({ type: "text", text: m.content });
+      if (combinedText) blocks.push({ type: "text", text: combinedText });
       // Fallback to plain text if every file failed to load (e.g. tmp wiped).
       claudeMessages.push({
         role: "user",
-        content: blocks.length > 0 ? blocks : m.content,
+        content: blocks.length > 0 ? blocks : combinedText,
       });
     }
 
@@ -405,6 +441,15 @@ export class ChatService {
       onEvent({ type: "citations", data: { citations } });
     }
 
+    // Emit `done` FIRST so the client gets the server-side messageId without
+    // waiting on follow-up DB work. The conversation-row bookkeeping can
+    // happen after — if it errors, the message itself is already persisted.
+    console.log("[chat] emitting done for message", assistantMsg.id);
+    onEvent({
+      type: "done",
+      data: { messageId: assistantMsg.id },
+    });
+
     // Update conversation message count + updated_at
     await db
       .update(conversations)
@@ -413,11 +458,6 @@ export class ChatService {
         updatedAt: new Date(),
       })
       .where(eq(conversations.id, conversationId));
-
-    onEvent({
-      type: "done",
-      data: { messageId: assistantMsg.id },
-    });
   }
 
   /**
@@ -519,7 +559,10 @@ async function rowToResponsesInput(
   }
   if (m.role !== "user") return null;
 
-  const meta = m.metadata as { attachments?: ChatAttachmentRef[] } | null;
+  const meta = m.metadata as {
+    attachments?: ChatAttachmentRef[];
+    pasteSnippets?: PasteSnippet[];
+  } | null;
   const atts = meta?.attachments ?? [];
   const parts: ResponsesInputItem["content"] = [];
 
@@ -547,8 +590,9 @@ async function rowToResponsesInput(
     }
   }
 
-  if (m.content) {
-    parts.push({ type: "input_text", text: m.content });
+  const combinedText = composeUserText(m.content, meta?.pasteSnippets);
+  if (combinedText) {
+    parts.push({ type: "input_text", text: combinedText });
   }
 
   return parts.length > 0 ? { role: "user", content: parts } : null;

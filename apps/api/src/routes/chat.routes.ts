@@ -116,11 +116,32 @@ app.post("/", async (c) => {
   const user = c.get("user");
   const body = await c.req.json();
 
-  if (!body.message || typeof body.message !== "string") {
-    return c.json({ error: "message is required" }, 400);
+  if (typeof body.message !== "string") {
+    return c.json({ error: "message must be a string" }, 400);
   }
-  if (body.message.length > 10_000) {
-    return c.json({ error: "message too long (max 10000 chars)" }, 400);
+  const snippetsRaw = Array.isArray(body.pasteSnippets)
+    ? (body.pasteSnippets as unknown[])
+    : [];
+  if (!body.message.trim() && snippetsRaw.length === 0 && !body.regenerate) {
+    return c.json({ error: "message or pasted content is required" }, 400);
+  }
+  // ~200k chars matches Claude Sonnet 4.6's context window. Snippets are
+  // counted toward the same cap so a single request can't blow context.
+  const totalChars =
+    body.message.length +
+    snippetsRaw.reduce<number>(
+      (sum, s) =>
+        sum +
+        (typeof (s as { content?: unknown }).content === "string"
+          ? (s as { content: string }).content.length
+          : 0),
+      0,
+    );
+  if (totalChars > 200_000) {
+    return c.json(
+      { error: `Message too long (max 200,000 chars, got ${totalChars}).` },
+      400,
+    );
   }
 
   return streamSSE(c, async (stream) => {
@@ -131,7 +152,9 @@ app.post("/", async (c) => {
         anchoredInsightId: body.anchoredInsightId ?? null,
         conversationId: body.conversationId ?? null,
         truncateFromMessageId: body.truncateFromMessageId ?? null,
+        regenerate: Boolean(body.regenerate),
         attachments: Array.isArray(body.attachments) ? body.attachments : [],
+        pasteSnippets: snippetsRaw as unknown as Parameters<typeof chatService.sendMessage>[0]["pasteSnippets"],
         model: typeof body.model === "string" ? body.model : null,
         message: body.message,
         onEvent: async (event) => {

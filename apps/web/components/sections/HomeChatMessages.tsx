@@ -19,6 +19,12 @@ export interface ChatAttachment {
   sizeBytes?: number;
 }
 
+export interface PasteSnippet {
+  id: string;
+  content: string;
+  firstLine?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -27,6 +33,7 @@ export interface ChatMessage {
   serverId?: string;
   citations?: ChatCitation[];
   attachments?: ChatAttachment[];
+  pasteSnippets?: PasteSnippet[];
 }
 
 interface Props {
@@ -116,6 +123,9 @@ export default function HomeChatMessages({
                       {msg.attachments && msg.attachments.length > 0 && (
                         <AttachmentList attachments={msg.attachments} />
                       )}
+                      {msg.pasteSnippets && msg.pasteSnippets.length > 0 && (
+                        <SnippetList snippets={msg.pasteSnippets} />
+                      )}
                       {msg.content && (
                         <div className={styles.text}>{msg.content}</div>
                       )}
@@ -128,9 +138,10 @@ export default function HomeChatMessages({
                     content={msg.content}
                     canEdit={msg.role === 'user' && Boolean(msg.serverId)}
                     canRegenerate={
-                      msg.role === 'assistant' &&
-                      Boolean(msg.serverId) &&
-                      !streaming
+                      // Any past completed assistant message with a server-side
+                      // id is regen-able. We don't gate on the global streaming
+                      // flag — overlapping streams are fine.
+                      msg.role === 'assistant' && Boolean(msg.serverId)
                     }
                     alwaysVisible={isLast && msg.role === 'assistant'}
                     onCopy={() => copyToClipboard(msg.content)}
@@ -399,6 +410,88 @@ function AttachmentList({ attachments }: { attachments: ChatAttachment[] }) {
       })}
     </div>
   );
+}
+
+// ── Pasted snippets (collapsed chips in user bubbles) ────────────
+
+function SnippetList({ snippets }: { snippets: PasteSnippet[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const active = snippets.find((s) => s.id === open) ?? null;
+  return (
+    <>
+      <div className={styles.bubbleSnippets}>
+        {snippets.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={styles.snippetChip}
+            onClick={() => setOpen(s.id)}
+            title={s.firstLine ?? `${s.content.length} chars`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="9" y1="13" x2="15" y2="13" />
+              <line x1="9" y1="17" x2="15" y2="17" />
+            </svg>
+            <span className={styles.snippetChipLabel}>
+              Pasted text · {formatSnippetSize(s.content.length)}
+            </span>
+          </button>
+        ))}
+      </div>
+      {active && (
+        <SnippetModal snippet={active} onClose={() => setOpen(null)} />
+      )}
+    </>
+  );
+}
+
+function SnippetModal({
+  snippet,
+  onClose,
+}: {
+  snippet: PasteSnippet;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handle = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handle);
+    return () => window.removeEventListener('keydown', handle);
+  }, [onClose]);
+  return (
+    <div className={styles.snippetBackdrop} onClick={onClose}>
+      <div
+        className={styles.snippetModal}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={styles.snippetHeader}>
+          <span className={styles.snippetTitle}>
+            Pasted text · {formatSnippetSize(snippet.content.length)}
+          </span>
+          <button
+            type="button"
+            className={styles.snippetClose}
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <pre className={styles.snippetBody}>{snippet.content}</pre>
+      </div>
+    </div>
+  );
+}
+
+function formatSnippetSize(n: number): string {
+  if (n < 1000) return `${n} chars`;
+  return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k chars`;
 }
 
 // ── Citations ────────────────────────────────────────────────────
