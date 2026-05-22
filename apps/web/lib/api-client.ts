@@ -409,6 +409,24 @@ export class ApiClient {
     }>('/api/finance/transactions');
   }
 
+  async getFinanceClusters() {
+    return this.get<{
+      count: number;
+      clusters: Array<{
+        merchantNormalized: string;
+        displayName: string;
+        txnCount: number;
+        totalAmount: number;
+        inflowAmount: number;
+        outflowAmount: number;
+        firstSeen: string;
+        lastSeen: string;
+        category: string | null;
+        isRecurring: boolean | null;
+      }>;
+    }>('/api/finance/clusters');
+  }
+
   async getInsights(options?: {
     unreadOnly?: boolean;
     agentTypeId?: string;

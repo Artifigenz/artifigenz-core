@@ -7,6 +7,7 @@ import { useApiClient } from '@/hooks/useApiClient';
 import { FinanceIcon } from '@/components/sections/AgentIcons';
 import shell from '../../agent/[name]/page.module.css';
 import styles from './page.module.css';
+import tabStyles from './clusters/page.module.css';
 
 interface Txn {
   id: string;
@@ -104,6 +105,15 @@ export default function BreakdownPage() {
               from Plaid syncs and uploaded statements.
             </p>
           </div>
+        </div>
+
+        <div className={tabStyles.tabs}>
+          <Link href="/finance/breakdown" className={`${tabStyles.tab} ${tabStyles.tabActive}`}>
+            All Transactions
+          </Link>
+          <Link href="/finance/breakdown/clusters" className={tabStyles.tab}>
+            Merchant Clusters
+          </Link>
         </div>
 
         {loading ? (

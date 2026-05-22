@@ -152,6 +152,110 @@ app.get("/transactions", async (c) => {
 });
 
 /**
+ * GET /api/finance/clusters
+ *   Returns merchant clusters built from the user's transactions. Pure
+ *   grouping over `merchant_normalized` — no LLM categorization yet. Used
+ *   by the breakdown clusters view so the user can see how transactions
+ *   collapse into distinct merchants before we layer categories on top.
+ */
+app.get("/clusters", async (c) => {
+  const user = c.get("user");
+
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+
+  if (!instance) return c.json({ error: "No finance agent found" }, 404);
+
+  const rows = await db
+    .select({
+      id: financeTransactions.id,
+      date: financeTransactions.transactionDate,
+      description: financeTransactions.description,
+      merchantName: financeTransactions.merchantName,
+      merchantNormalized: financeTransactions.merchantNormalized,
+      amount: financeTransactions.amount,
+      category: financeTransactions.category,
+      isRecurring: financeTransactions.isRecurring,
+    })
+    .from(financeTransactions)
+    .where(eq(financeTransactions.agentInstanceId, instance.id));
+
+  interface ClusterAgg {
+    merchantNormalized: string;
+    displayName: string;
+    txnCount: number;
+    totalAmount: number;
+    inflowAmount: number;
+    outflowAmount: number;
+    firstSeen: string;
+    lastSeen: string;
+    category: string | null;
+    isRecurring: boolean | null;
+  }
+
+  const map = new Map<string, ClusterAgg>();
+  for (const r of rows) {
+    const key = r.merchantNormalized ?? "unknown";
+    const amt = parseFloat(r.amount);
+    const display =
+      (r.merchantName && r.merchantName.trim()) ||
+      r.description.slice(0, 60).trim();
+
+    let agg = map.get(key);
+    if (!agg) {
+      agg = {
+        merchantNormalized: key,
+        displayName: display,
+        txnCount: 0,
+        totalAmount: 0,
+        inflowAmount: 0,
+        outflowAmount: 0,
+        firstSeen: r.date,
+        lastSeen: r.date,
+        category: r.category,
+        isRecurring: r.isRecurring,
+      };
+      map.set(key, agg);
+    }
+    agg.txnCount += 1;
+    agg.totalAmount += amt;
+    if (amt < 0) agg.inflowAmount += -amt;
+    else agg.outflowAmount += amt;
+    if (r.date < agg.firstSeen) agg.firstSeen = r.date;
+    if (r.date > agg.lastSeen) agg.lastSeen = r.date;
+  }
+
+  const clusters = Array.from(map.values())
+    .map((c) => ({
+      merchantNormalized: c.merchantNormalized,
+      displayName: c.displayName,
+      txnCount: c.txnCount,
+      totalAmount: Math.round(c.totalAmount * 100) / 100,
+      inflowAmount: Math.round(c.inflowAmount * 100) / 100,
+      outflowAmount: Math.round(c.outflowAmount * 100) / 100,
+      firstSeen: c.firstSeen,
+      lastSeen: c.lastSeen,
+      category: c.category,
+      isRecurring: c.isRecurring,
+    }))
+    .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
+
+  return c.json({
+    count: clusters.length,
+    clusters,
+  });
+});
+
+/**
  * GET /api/finance/agent-status
  *   The frontend onboarding loader polls this every ~3s to render the
  *   per-connection ingestion progress. Each call:
