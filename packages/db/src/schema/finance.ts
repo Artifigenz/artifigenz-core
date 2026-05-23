@@ -25,23 +25,54 @@ export const financeTransactions = pgTable(
     agentInstanceId: uuid("agent_instance_id")
       .notNull()
       .references(() => agentInstances.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     accountId: uuid("account_id").references(() => financeAccounts.id, {
       onDelete: "cascade",
     }),
+    // Stage 0 spec: institutionId (denormalized from accounts/connections)
+    institutionId: varchar("institution_id", { length: 100 }),
+    // Spec: "plaid" | "statement" | "manual". Existing "upload" rows are
+    // backfilled to "statement" in migration 0008.
+    source: varchar("source", { length: 20 }).notNull(),
+    // Generic source-tx-id. For Plaid rows, mirrors plaidTransactionId.
+    sourceTransactionId: varchar("source_transaction_id", { length: 255 }),
+
     transactionDate: date("transaction_date").notNull(),
+    postedDate: date("posted_date"),
+    authorizedDate: date("authorized_date"),
+
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    // "in" (negative amount, money entering) or "out" (positive, money
+    // leaving). Derived from sign at write time but persisted so consumers
+    // don't have to re-derive.
+    direction: varchar("direction", { length: 3 }),
+
     description: text("description").notNull(),
+    normalizedDescription: text("normalized_description"),
     merchantName: varchar("merchant_name", { length: 255 }),
     merchantNormalized: varchar("merchant_normalized", { length: 255 }),
     descriptionHash: varchar("description_hash", { length: 64 }),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+
+    // Denormalized snapshots from finance_accounts (Stage 0 spec carries
+    // these on the txn so downstream consumers don't have to join).
+    accountType: varchar("account_type", { length: 20 }),
+    accountMask: varchar("account_mask", { length: 10 }),
+    currency: varchar("currency", { length: 3 }),
+    accountName: varchar("account_name", { length: 100 }),
+
     category: varchar("category", { length: 30 }),
     isRecurring: boolean("is_recurring").default(false),
     merchantClusterId: uuid("merchant_cluster_id").references(
       () => merchantClusters.id,
       { onDelete: "set null" },
     ),
-    accountName: varchar("account_name", { length: 100 }),
-    source: varchar("source", { length: 20 }).notNull(),
+    // Per-txn categorization metadata (the cluster has its own; these let
+    // the user override one txn without affecting the cluster).
+    confidence: decimal("confidence", { precision: 3, scale: 2 }),
+    categorizationSource: varchar("categorization_source", { length: 10 }),
+    reasoning: text("reasoning"),
+    needsReview: boolean("needs_review").default(false),
+
     plaidTransactionId: varchar("plaid_transaction_id", { length: 255 }).unique(),
     plaidAccountId: varchar("plaid_account_id", { length: 255 }),
     pending: integer("pending").default(0),

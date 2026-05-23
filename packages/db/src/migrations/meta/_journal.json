@@ -64,6 +64,13 @@
       "when": 1779032811742,
       "tag": "0008_chat_general_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779565318264,
+      "tag": "0009_canonical_transaction_model",
+      "breakpoints": true
     }
   ]
 }

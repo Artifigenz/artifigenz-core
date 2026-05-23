@@ -1,13 +1,26 @@
 import { db, financeTransactions } from "@artifigenz/db";
 import { descriptionHash, normalizeMerchant } from "./normalize-merchant";
 
+export type TxSource = "plaid" | "statement" | "manual";
+
 export interface RawTransaction {
   transactionDate: string;
+  postedDate?: string | null;
+  authorizedDate?: string | null;
   description: string;
   merchantName: string | null;
   amount: string;
-  source: "plaid" | "upload";
+  source: TxSource;
+  /** Generic source-tx-id. For plaid rows, callers can leave this and let
+   *  prepareTransaction mirror plaidTransactionId into it. */
+  sourceTransactionId?: string | null;
   accountName?: string | null;
+  /** Denormalized snapshot from finance_accounts so each txn carries enough
+   *  context to be interpreted without a join. */
+  accountType?: string | null;
+  accountMask?: string | null;
+  currency?: string | null;
+  institutionId?: string | null;
   plaidTransactionId?: string | null;
   plaidAccountId?: string | null;
   pending?: number | null;
@@ -18,31 +31,55 @@ export interface RawTransaction {
 
 export interface InsertableTransaction extends RawTransaction {
   agentInstanceId: string;
+  userId: string | null;
   accountId: string;
   dataSourceConnectionId: string | null;
   merchantNormalized: string;
   descriptionHash: string;
+  normalizedDescription: string;
+  direction: "in" | "out" | null;
+}
+
+/**
+ * Cheap description normalization — lowercase, collapse whitespace, trim.
+ * Distinct from `normalizeMerchant` which strips a lot more (store numbers,
+ * phone fragments, etc.). This one keeps the full description content so
+ * downstream search / dedup can still rely on uniqueness.
+ */
+function normalizeDescription(raw: string): string {
+  return raw.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /**
  * Convert a raw transaction into the shape that goes into finance_transactions.
- * Populates merchant_normalized and description_hash so the unique dedup index
- * can do its job.
+ * Populates merchant_normalized, description_hash, normalized_description, and
+ * direction so the canonical model fields are set going forward.
  */
 export function prepareTransaction(args: {
   raw: RawTransaction;
   agentInstanceId: string;
+  userId: string | null;
   accountId: string;
   dataSourceConnectionId: string | null;
 }): InsertableTransaction {
-  const { raw, agentInstanceId, accountId, dataSourceConnectionId } = args;
+  const { raw, agentInstanceId, userId, accountId, dataSourceConnectionId } =
+    args;
+  const amt = parseFloat(raw.amount);
+  const direction: "in" | "out" | null =
+    amt > 0 ? "out" : amt < 0 ? "in" : null;
   return {
     ...raw,
     agentInstanceId,
+    userId,
     accountId,
     dataSourceConnectionId,
     merchantNormalized: normalizeMerchant(raw.merchantName ?? raw.description),
     descriptionHash: descriptionHash(raw.description),
+    normalizedDescription: normalizeDescription(raw.description),
+    direction,
+    sourceTransactionId:
+      raw.sourceTransactionId ??
+      (raw.source === "plaid" ? raw.plaidTransactionId ?? null : null),
   };
 }
 
@@ -68,16 +105,26 @@ export async function insertTransactions(
       .insert(financeTransactions)
       .values({
         agentInstanceId: tx.agentInstanceId,
+        userId: tx.userId,
         accountId: tx.accountId,
         dataSourceConnectionId: tx.dataSourceConnectionId,
+        institutionId: tx.institutionId ?? null,
+        source: tx.source,
+        sourceTransactionId: tx.sourceTransactionId ?? null,
         transactionDate: tx.transactionDate,
+        postedDate: tx.postedDate ?? null,
+        authorizedDate: tx.authorizedDate ?? null,
+        amount: tx.amount,
+        direction: tx.direction,
         description: tx.description,
+        normalizedDescription: tx.normalizedDescription,
         merchantName: tx.merchantName,
         merchantNormalized: tx.merchantNormalized,
         descriptionHash: tx.descriptionHash,
-        amount: tx.amount,
+        accountType: tx.accountType ?? null,
+        accountMask: tx.accountMask ?? null,
+        currency: tx.currency ?? null,
         accountName: tx.accountName ?? null,
-        source: tx.source,
         plaidTransactionId: tx.plaidTransactionId ?? null,
         plaidAccountId: tx.plaidAccountId ?? null,
         pending: tx.pending ?? 0,

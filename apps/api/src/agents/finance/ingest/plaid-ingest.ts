@@ -4,6 +4,7 @@ import {
   db,
   dataSourceConnections,
   financeTransactions,
+  agentInstances,
 } from "@artifigenz/db";
 import { getPlaidClient } from "../lib/plaid-client";
 import { upsertAccount } from "./account-matcher";
@@ -117,6 +118,14 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
 
   if (!conn) throw new Error(`Connection ${connectionId} not found`);
 
+  // userId — needed for the denormalized user_id column on finance_transactions.
+  const [ai] = await db
+    .select({ userId: agentInstances.userId })
+    .from(agentInstances)
+    .where(eq(agentInstances.id, conn.agentInstanceId))
+    .limit(1);
+  const userId = ai?.userId ?? null;
+
   // First sync since the connection was created — flip pending → in_progress.
   if (conn.ingestionState === "pending") {
     await db
@@ -130,16 +139,25 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
   }
 
   const creds = conn.credentialsEncrypted as unknown as PlaidCredentials;
-  const meta = (conn.metadata ?? {}) as PlaidMetadata;
+  const meta = (conn.metadata ?? {}) as PlaidMetadata & { institutionId?: string };
   const institutionName = meta.institutionName ?? "Unknown Bank";
+  const institutionId = meta.institutionId ?? null;
 
   const plaid = getPlaidClient();
 
   // 1. Accounts + balances
+  interface AccountSnapshot {
+    id: string;
+    type: string | null;
+    mask: string | null;
+    currency: string | null;
+  }
   let plaidAccountToId: Map<string, string>;
+  let plaidAccountSnapshots: Map<string, AccountSnapshot>;
   try {
     const accountsResp = await plaid.accountsGet({ access_token: creds.accessToken });
     plaidAccountToId = new Map<string, string>();
+    plaidAccountSnapshots = new Map<string, AccountSnapshot>();
     for (const acc of accountsResp.data.accounts as AccountBase[]) {
       const last4 = acc.mask ?? "0000";
       const accountId = await upsertAccount({
@@ -157,6 +175,12 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
         isoCurrencyCode: acc.balances?.iso_currency_code ?? null,
       });
       plaidAccountToId.set(acc.account_id, accountId);
+      plaidAccountSnapshots.set(acc.account_id, {
+        id: accountId,
+        type: acc.type ?? null,
+        mask: acc.mask ?? null,
+        currency: acc.balances?.iso_currency_code ?? null,
+      });
     }
   } catch (err) {
     return await handlePlaidError(connectionId, err, conn);
@@ -192,14 +216,21 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
     .map((tx) => {
       const accountId = plaidAccountToId.get(tx.account_id);
       if (!accountId) return null;
+      const snap = plaidAccountSnapshots.get(tx.account_id);
       return prepareTransaction({
         raw: {
           transactionDate: tx.date,
+          postedDate: tx.date,
+          authorizedDate: tx.authorized_date ?? null,
           description: tx.name,
           merchantName: tx.merchant_name ?? null,
           amount: tx.amount.toString(),
           source: "plaid",
           accountName: null,
+          accountType: snap?.type ?? null,
+          accountMask: snap?.mask ?? null,
+          currency: snap?.currency ?? tx.iso_currency_code ?? null,
+          institutionId,
           plaidTransactionId: tx.transaction_id,
           plaidAccountId: tx.account_id,
           pending: tx.pending ? 1 : 0,
@@ -210,6 +241,7 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
           rawData: tx as unknown as Record<string, unknown>,
         },
         agentInstanceId: conn.agentInstanceId,
+        userId,
         accountId,
         dataSourceConnectionId: conn.id,
       });

@@ -1,6 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
-import { db, fileUploads, dataSourceConnections } from "@artifigenz/db";
+import {
+  db,
+  fileUploads,
+  dataSourceConnections,
+  agentInstances,
+  financeAccounts,
+} from "@artifigenz/db";
 import {
   parseStatement,
   validateStatement,
@@ -185,6 +191,25 @@ export async function parseUploadFull(
       throw new Error(`File ${fileUploadId} has no account_id — validation skipped?`);
     }
 
+    // Pull userId + account snapshot so the txn rows carry the canonical
+    // user_id / account_type / account_mask / currency columns.
+    const [ai] = await db
+      .select({ userId: agentInstances.userId })
+      .from(agentInstances)
+      .where(eq(agentInstances.id, conn.agentInstanceId))
+      .limit(1);
+    const userId = ai?.userId ?? null;
+
+    const [acct] = await db
+      .select({
+        type: financeAccounts.type,
+        last4: financeAccounts.accountLast4,
+        currency: financeAccounts.isoCurrencyCode,
+      })
+      .from(financeAccounts)
+      .where(eq(financeAccounts.id, accountId))
+      .limit(1);
+
     const fileType = inferFileType(file.originalFilename);
     const fileContent = await readFile(file.storagePath);
 
@@ -201,12 +226,16 @@ export async function parseUploadFull(
           description: tx.description,
           merchantName: tx.merchantName,
           amount: tx.amount.toString(),
-          source: "upload",
+          source: "statement",
           accountName: tx.accountName ?? parsed.accountName,
+          accountType: acct?.type ?? null,
+          accountMask: acct?.last4 ?? null,
+          currency: acct?.currency ?? null,
           personalFinanceCategoryPrimary: tx.category,
           rawData: tx as unknown as Record<string, unknown>,
         },
         agentInstanceId: conn.agentInstanceId,
+        userId,
         accountId,
         dataSourceConnectionId: conn.id,
       }),
