@@ -313,6 +313,7 @@ export default function FinanceBriefPage() {
   const activation = getActivation('finance');
 
   const [brief, setBrief] = useState<Brief | null>(null);
+  const [syncingBanks, setSyncingBanks] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -398,10 +399,26 @@ export default function FinanceBriefPage() {
           router.replace('/app');
           return;
         }
-        if (!status.ingestionComplete) {
+        // First-time setup: no connection has completed yet → loading page.
+        // After the first one completes, ANY subsequent in_progress connection
+        // (e.g., a freshly added bank) should NOT kick the user back to setup
+        // — we stay on the brief and surface a "Syncing…" indicator instead.
+        const hasCompletedConnection = status.connections.some(
+          (c) => c.ingestionState === 'complete',
+        );
+        if (!hasCompletedConnection) {
           router.replace('/finance/loading');
           return;
         }
+        setSyncingBanks(
+          status.connections
+            .filter(
+              (c) =>
+                c.ingestionState === 'in_progress' ||
+                c.ingestionState === 'pending',
+            )
+            .map((c) => c.displayName ?? 'a new bank'),
+        );
         const accountCount = status.connections.reduce(
           (sum, c) => sum + c.accountCount,
           0,
@@ -420,6 +437,35 @@ export default function FinanceBriefPage() {
       cancelled = true;
     };
   }, [api, router, shouldRegen]);
+
+  // While any bank is still syncing, re-poll status every 5s so the
+  // "Syncing N bank(s)…" indicator clears itself when ingestion completes.
+  // This is light — same endpoint the loading page uses.
+  useEffect(() => {
+    if (syncingBanks.length === 0) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const status = await api.getAgentStatus();
+        if (cancelled) return;
+        setSyncingBanks(
+          status.connections
+            .filter(
+              (c) =>
+                c.ingestionState === 'in_progress' ||
+                c.ingestionState === 'pending',
+            )
+            .map((c) => c.displayName ?? 'a new bank'),
+        );
+      } catch {
+        // swallow; the indicator will just stay until the next poll succeeds
+      }
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [api, syncingBanks.length]);
 
   // Typewriter reveal for the verdict — matches onboarding's 26ms cadence.
   const verdictTarget = brief?.verdict ?? '';
@@ -805,6 +851,12 @@ export default function FinanceBriefPage() {
             </p>
           </div>
           <div className={shell.badges}>
+            {syncingBanks.length > 0 && (
+              <span className={styles.syncingPill} title={syncingBanks.join(', ')}>
+                <span className={styles.syncingDot} />
+                Syncing {syncingBanks.length === 1 ? syncingBanks[0] : `${syncingBanks.length} banks`}…
+              </span>
+            )}
             <button
               className={shell.headerBtn}
               type="button"

@@ -188,6 +188,25 @@ Rules:
 - account_type: one of "depository" (chequing/savings), "credit" (credit card), "loan", "investment", null if unclear.
 - statement_period: dates in YYYY-MM-DD. If only a single date is visible, return null.
 
+DERIVING THE BANK NAME WHEN IT IS NOT EXPLICITLY PRINTED:
+First, look hard for the bank name in any form — logos, watermarks, footer addresses, customer service phone numbers, URLs (e.g. "td.com" in the footer), branding language ("MyTD App", "RBC Mobile"). The bank usually identifies itself somewhere.
+
+ONLY if no bank name is anywhere visible, you may derive it from a fully-visible bank identifier — but ONLY when the full identifier is actually printed on the page, not just inferred:
+
+- Canada: ONLY if you can read the 5-digit transit number AND the 3-digit institution number (typically printed as "TRANSIT XXXXX-XXX" or "ROUTING NUMBER" or shown on a cheque image). Institution codes:
+  001 BMO · 002 Scotia · 003 RBC · 004 TD · 006 National Bank ·
+  010 CIBC · 016 HSBC · 614 Tangerine · 829 Desjardins.
+- US: ONLY if the full 9-digit ABA routing number is printed.
+- India: ONLY if the full IFSC code (e.g. "HDFC0001234") is printed.
+- UK: ONLY if the 6-digit sort code is printed.
+- Australia: ONLY if the 6-digit BSB is printed.
+
+**DO NOT derive the bank from a masked last-4 account number alone.** A 4-digit number like "8794" tells you nothing about which institution it belongs to — many banks use overlapping account-number patterns. If the only number you see is a 4-digit mask, return institution_name = null.
+
+**DO NOT lean on context** (the user's other connected banks, the language of the page, the file name). Each statement must be classified on its own evidence.
+
+**Be conservative.** If you're not certain — return null. We surface "Unknown bank" to the user and they can correct it. Confidently labelling the wrong bank is worse than admitting uncertainty.
+
 Return ONLY valid JSON in this exact shape, no markdown:
 {
   "is_statement": boolean,

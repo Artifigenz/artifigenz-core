@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   db,
   agentInstances,
@@ -25,6 +28,13 @@ import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ing
 // connection. The frontend polls /agent-status every 3s during onboarding;
 // without this throttle we'd hammer Plaid.
 const SYNC_THROTTLE_MS = 30_000;
+
+// Watchdog: if a connection has been in_progress for this long, force it to
+// "complete" regardless of consecutive-empty-sync count. This protects users
+// from getting stuck on the loading page if the sync state machine fails to
+// converge (e.g., persistent /sync errors that don't trip the failed path,
+// or new transactions arriving every poll forever).
+const INGEST_HARD_TIMEOUT_MS = 8 * 60_000;
 
 const app = new Hono();
 app.use("/*", clerkAuth);
@@ -142,6 +152,110 @@ app.get("/transactions", async (c) => {
 });
 
 /**
+ * GET /api/finance/clusters
+ *   Returns merchant clusters built from the user's transactions. Pure
+ *   grouping over `merchant_normalized` — no LLM categorization yet. Used
+ *   by the breakdown clusters view so the user can see how transactions
+ *   collapse into distinct merchants before we layer categories on top.
+ */
+app.get("/clusters", async (c) => {
+  const user = c.get("user");
+
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+
+  if (!instance) return c.json({ error: "No finance agent found" }, 404);
+
+  const rows = await db
+    .select({
+      id: financeTransactions.id,
+      date: financeTransactions.transactionDate,
+      description: financeTransactions.description,
+      merchantName: financeTransactions.merchantName,
+      merchantNormalized: financeTransactions.merchantNormalized,
+      amount: financeTransactions.amount,
+      category: financeTransactions.category,
+      isRecurring: financeTransactions.isRecurring,
+    })
+    .from(financeTransactions)
+    .where(eq(financeTransactions.agentInstanceId, instance.id));
+
+  interface ClusterAgg {
+    merchantNormalized: string;
+    displayName: string;
+    txnCount: number;
+    totalAmount: number;
+    inflowAmount: number;
+    outflowAmount: number;
+    firstSeen: string;
+    lastSeen: string;
+    category: string | null;
+    isRecurring: boolean | null;
+  }
+
+  const map = new Map<string, ClusterAgg>();
+  for (const r of rows) {
+    const key = r.merchantNormalized ?? "unknown";
+    const amt = parseFloat(r.amount);
+    const display =
+      (r.merchantName && r.merchantName.trim()) ||
+      r.description.slice(0, 60).trim();
+
+    let agg = map.get(key);
+    if (!agg) {
+      agg = {
+        merchantNormalized: key,
+        displayName: display,
+        txnCount: 0,
+        totalAmount: 0,
+        inflowAmount: 0,
+        outflowAmount: 0,
+        firstSeen: r.date,
+        lastSeen: r.date,
+        category: r.category,
+        isRecurring: r.isRecurring,
+      };
+      map.set(key, agg);
+    }
+    agg.txnCount += 1;
+    agg.totalAmount += amt;
+    if (amt < 0) agg.inflowAmount += -amt;
+    else agg.outflowAmount += amt;
+    if (r.date < agg.firstSeen) agg.firstSeen = r.date;
+    if (r.date > agg.lastSeen) agg.lastSeen = r.date;
+  }
+
+  const clusters = Array.from(map.values())
+    .map((c) => ({
+      merchantNormalized: c.merchantNormalized,
+      displayName: c.displayName,
+      txnCount: c.txnCount,
+      totalAmount: Math.round(c.totalAmount * 100) / 100,
+      inflowAmount: Math.round(c.inflowAmount * 100) / 100,
+      outflowAmount: Math.round(c.outflowAmount * 100) / 100,
+      firstSeen: c.firstSeen,
+      lastSeen: c.lastSeen,
+      category: c.category,
+      isRecurring: c.isRecurring,
+    }))
+    .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
+
+  return c.json({
+    count: clusters.length,
+    clusters,
+  });
+});
+
+/**
  * GET /api/finance/agent-status
  *   The frontend onboarding loader polls this every ~3s to render the
  *   per-connection ingestion progress. Each call:
@@ -214,14 +328,22 @@ app.get("/agent-status", async (c) => {
     .where(eq(financeTransactions.agentInstanceId, instance.id));
 
   const perConnCount = new Map<string, number>();
-  const perConnAccounts = new Map<string, Set<string>>();
   for (const tx of txRows) {
     if (!tx.accountId) continue;
     const connId = accountToConn.get(tx.accountId);
     if (!connId) continue;
     perConnCount.set(connId, (perConnCount.get(connId) ?? 0) + 1);
-    if (!perConnAccounts.has(connId)) perConnAccounts.set(connId, new Set());
-    perConnAccounts.get(connId)!.add(tx.accountId);
+  }
+
+  // Account count: derived from finance_accounts rows (which exist as soon
+  // as Plaid Link metadata is finalized), NOT from transactions. Using txn
+  // rows used to show "0 accounts" during the initial pull because txns
+  // arrive after accounts are created.
+  const perConnAccountsTotal = new Map<string, number>();
+  for (const a of counts) {
+    const connId = a.dataSourceConnectionId;
+    if (!connId) continue;
+    perConnAccountsTotal.set(connId, (perConnAccountsTotal.get(connId) ?? 0) + 1);
   }
 
   // Pull per-connection file_upload state so we can show parsing progress.
@@ -248,6 +370,31 @@ app.get("/agent-status", async (c) => {
     const arr = filesByConn.get(f.dataSourceConnectionId) ?? [];
     arr.push(f);
     filesByConn.set(f.dataSourceConnectionId, arr);
+  }
+
+  // Watchdog: force-complete any connection that's been in_progress longer
+  // than INGEST_HARD_TIMEOUT_MS. This is the safety net for the loading
+  // page UX — without it, a stuck sync can pin the user indefinitely.
+  const watchdogNow = Date.now();
+  for (const conn of conns) {
+    if (conn.ingestionState !== "in_progress") continue;
+    if (!conn.ingestionStartedAt) continue;
+    const ageMs =
+      watchdogNow - new Date(conn.ingestionStartedAt).getTime();
+    if (ageMs <= INGEST_HARD_TIMEOUT_MS) continue;
+    await db
+      .update(dataSourceConnections)
+      .set({
+        ingestionState: "complete",
+        ingestionCompletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(dataSourceConnections.id, conn.id));
+    conn.ingestionState = "complete";
+    conn.ingestionCompletedAt = new Date();
+    console.log(
+      `[agent-status] watchdog: forced ${conn.id} to complete after ${Math.round(ageMs / 1000)}s`,
+    );
   }
 
   // Kick throttled Plaid syncs + file parses for in_progress connections.
@@ -312,7 +459,7 @@ app.get("/agent-status", async (c) => {
         lastSyncAddedCount: c.lastSyncAddedCount,
         consecutiveEmptySyncs: c.consecutiveEmptySyncs,
         transactionCount: perConnCount.get(c.id) ?? 0,
-        accountCount: (perConnAccounts.get(c.id) ?? new Set()).size,
+        accountCount: perConnAccountsTotal.get(c.id) ?? 0,
         syncTriggered: triggered.includes(c.id),
         files: files.map((f) => ({
           id: f.id,
@@ -326,6 +473,107 @@ app.get("/agent-status", async (c) => {
       };
     }),
   });
+});
+
+/**
+ * PATCH /api/finance/file-uploads/:fileId
+ *   User-correctable metadata on an uploaded statement. Right now we only
+ *   accept institutionName edits — fixes the "wrong bank" case where the
+ *   validator was unsure or wrong. Re-points the linked account to the
+ *   corrected (institution + last4) identity.
+ */
+app.patch("/file-uploads/:fileId", async (c) => {
+  const user = c.get("user");
+  const fileId = c.req.param("fileId");
+  const body = await c.req.json<{ institutionName?: string }>();
+
+  if (typeof body.institutionName !== "string" || !body.institutionName.trim()) {
+    return c.json({ error: "institutionName is required" }, 400);
+  }
+  const newName = body.institutionName.trim();
+
+  // Authorize — file must belong to one of this user's finance connections.
+  const [row] = await db
+    .select({
+      fileId: fileUploads.id,
+      accountId: fileUploads.accountId,
+      accountLast4: fileUploads.accountLast4,
+      connectionId: fileUploads.dataSourceConnectionId,
+      agentInstanceId: dataSourceConnections.agentInstanceId,
+      agentTypeId: agentInstances.agentTypeId,
+      userId: agentInstances.userId,
+    })
+    .from(fileUploads)
+    .leftJoin(
+      dataSourceConnections,
+      eq(dataSourceConnections.id, fileUploads.dataSourceConnectionId),
+    )
+    .leftJoin(
+      agentInstances,
+      eq(agentInstances.id, dataSourceConnections.agentInstanceId),
+    )
+    .where(eq(fileUploads.id, fileId))
+    .limit(1);
+
+  if (!row || row.userId !== user.id || row.agentTypeId !== "finance") {
+    return c.json({ error: "File not found" }, 404);
+  }
+
+  await db
+    .update(fileUploads)
+    .set({ institutionName: newName })
+    .where(eq(fileUploads.id, fileId));
+
+  // Rename the linked account so the breakdown + accounts page reflect
+  // the correction. If a different account already exists with the new
+  // (institution, last4) identity, MERGE: re-point all txns and other
+  // file_uploads from the old account onto the existing one, then drop
+  // the old row. Without this, the unique constraint would fire and the
+  // rename silently failed.
+  if (row.accountId && row.agentInstanceId) {
+    const normalized = newName.toLowerCase().replace(/\s+/g, " ").trim();
+    const last4 = row.accountLast4;
+    if (last4) {
+      const [conflict] = await db
+        .select({ id: financeAccounts.id })
+        .from(financeAccounts)
+        .where(
+          and(
+            eq(financeAccounts.agentInstanceId, row.agentInstanceId),
+            eq(financeAccounts.institutionName, normalized),
+            eq(financeAccounts.accountLast4, last4),
+          ),
+        )
+        .limit(1);
+
+      if (conflict && conflict.id !== row.accountId) {
+        // Merge: move children, drop the orphan.
+        await db
+          .update(financeTransactions)
+          .set({ accountId: conflict.id })
+          .where(eq(financeTransactions.accountId, row.accountId));
+        await db
+          .update(fileUploads)
+          .set({ accountId: conflict.id })
+          .where(eq(fileUploads.accountId, row.accountId));
+        await db
+          .delete(financeAccounts)
+          .where(eq(financeAccounts.id, row.accountId));
+      } else {
+        await db
+          .update(financeAccounts)
+          .set({ institutionName: normalized })
+          .where(eq(financeAccounts.id, row.accountId));
+      }
+    } else {
+      await db
+        .update(financeAccounts)
+        .set({ institutionName: normalized })
+        .where(eq(financeAccounts.id, row.accountId));
+    }
+  }
+
+  return c.json({ success: true, institutionName: newName });
 });
 
 /**
@@ -608,6 +856,20 @@ app.post("/wipe", async (c) => {
     .where(inArray(agentInstances.id, instanceIds))
     .returning({ id: agentInstances.id });
 
+  // Also remove the user's upload directory on disk. Statement PDFs/CSVs
+  // are stored under tmpdir()/artifigenz-uploads/<userId>/ during validate
+  // + parse — we don't need them after the rows are gone.
+  let diskCleared = false;
+  try {
+    await rm(join(tmpdir(), "artifigenz-uploads", user.id), {
+      recursive: true,
+      force: true,
+    });
+    diskCleared = true;
+  } catch (err) {
+    console.warn(`[finance/wipe] disk cleanup failed for ${user.id}:`, err);
+  }
+
   console.log(
     `[finance/wipe] user ${user.id}: removed instance(s) ${instanceIds.join(", ")}`,
   );
@@ -626,6 +888,7 @@ app.post("/wipe", async (c) => {
       platformInsights: platformInsightsDel.length,
       fileUploads: uploadsDel.length,
       agentInstanceSkills: skillsDel.length,
+      uploadFilesOnDisk: diskCleared ? 1 : 0,
     },
   });
 });

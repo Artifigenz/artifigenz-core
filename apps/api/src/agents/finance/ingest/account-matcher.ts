@@ -53,6 +53,49 @@ export async function upsertAccount(
     )
     .limit(1);
 
+  // No exact match — see if there's an "unknown" account with the same
+  // last4 we can upgrade. This catches: first upload was Unknown ••X,
+  // second upload now identifies as TD ••X — link to the existing row
+  // and rename, instead of creating a parallel orphan.
+  if (!existing && institution !== "unknown") {
+    const [orphan] = await db
+      .select({ id: financeAccounts.id })
+      .from(financeAccounts)
+      .where(
+        and(
+          eq(financeAccounts.agentInstanceId, input.agentInstanceId),
+          eq(financeAccounts.institutionName, "unknown"),
+          eq(financeAccounts.accountLast4, last4),
+        ),
+      )
+      .limit(1);
+    if (orphan) {
+      await db
+        .update(financeAccounts)
+        .set({
+          institutionName: institution,
+          ...(input.dataSourceConnectionId !== undefined && {
+            dataSourceConnectionId: input.dataSourceConnectionId,
+          }),
+          ...(input.plaidAccountId && { plaidAccountId: input.plaidAccountId }),
+          ...(input.name && { name: input.name }),
+          ...(input.mask && { mask: input.mask }),
+          ...(input.type && { type: input.type }),
+          ...(input.subtype && { subtype: input.subtype }),
+          ...(input.currentBalance !== undefined && {
+            currentBalance: input.currentBalance,
+          }),
+          ...(input.availableBalance !== undefined && {
+            availableBalance: input.availableBalance,
+          }),
+          ...(input.isoCurrencyCode && { isoCurrencyCode: input.isoCurrencyCode }),
+          lastSyncedAt: new Date(),
+        })
+        .where(eq(financeAccounts.id, orphan.id));
+      return orphan.id;
+    }
+  }
+
   if (existing) {
     await db
       .update(financeAccounts)
