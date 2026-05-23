@@ -132,6 +132,7 @@ async function upsertClusterAndBackfill(
       merchantNormalized: cluster.merchantNormalized,
       displayName: cluster.displayName,
       category: result.category,
+      systemCategory: result.systemCategory,
       isRecurring: result.isRecurring,
       cadence: result.cadence,
       monthlyAmount: result.monthlyAmount.toFixed(2),
@@ -153,6 +154,7 @@ async function upsertClusterAndBackfill(
       set: {
         displayName: cluster.displayName,
         category: result.category,
+        systemCategory: result.systemCategory,
         isRecurring: result.isRecurring,
         cadence: result.cadence,
         monthlyAmount: result.monthlyAmount.toFixed(2),
@@ -177,8 +179,13 @@ async function upsertClusterAndBackfill(
     .update(financeTransactions)
     .set({
       category: result.category,
+      systemCategory: result.systemCategory,
       isRecurring: result.isRecurring,
       merchantClusterId: clusterId,
+      confidence: result.confidence.toFixed(2),
+      categorizationSource: "ai",
+      reasoning: result.reasoning,
+      needsReview: result.systemCategory === "uncategorized_needs_review",
     })
     .where(
       and(

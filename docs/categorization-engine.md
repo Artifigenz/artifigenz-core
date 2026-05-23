@@ -237,6 +237,110 @@ are actually populating.
 
 ---
 
+## 2026-05-23 · Stage 0.5 — Hidden system labels
+
+Followed up on the FinalCategory + SystemCategory design call from
+earlier today. Decision was to keep our 7 visible categories and
+layer a separate `system_category` column on top.
+
+### What landed
+
+Migration `0010_system_category.sql`:
+
+```sql
+ALTER TABLE "finance_transactions" ADD COLUMN "system_category" varchar(40);
+ALTER TABLE "merchant_clusters"    ADD COLUMN "system_category" varchar(40);
+```
+
+Both columns are nullable. Most rows will leave them null — only attach
+when the visible category alone loses meaningful context.
+
+### Enum (in code, not the DB)
+
+`apps/api/src/agents/finance/categorize/llm-classify.ts`:
+
+```ts
+export const SYSTEM_CATEGORIES = [
+  "refund_or_reversal",
+  "possible_internal_transfer",
+  "credit_card_payment",
+  "investment_transfer",
+  "cash_withdrawal",
+  "uncategorized_needs_review",
+] as const;
+```
+
+Deliberately NOT a check constraint on the DB column — keeping the list
+in app code means adding a new label later is a code change, not a
+migration.
+
+### Classifier prompt
+
+Added a `system_category` section to `SYSTEM_PROMPT` describing each
+label and when to attach it. Updated the response JSON schema to include
+`"system_category": "<one of the 6, or null>"`. Most clusters should
+leave it null; the prompt asks the model to attach one only when the
+visible category alone would lose context.
+
+Updated `ClassificationResult` to carry `systemCategory: SystemCategory | null`.
+
+### Post-check additions (engine, not LLM)
+
+The sanity-check that follows every classification now ALSO sets
+`systemCategory` in a couple of unambiguous cases the model might miss:
+
+1. **One-off credit at an expense-shaped merchant** → `refund_or_reversal`.
+   When sign-correction promotes a cluster from an expense category to
+   `internal_transfer` (because all amounts are negative and the cadence
+   isn't recurring), it's almost certainly a refund. We tag it so the
+   brief doesn't miscount it as money in.
+2. **Confidence < 0.5 with no other system tag** → `uncategorized_needs_review`.
+   The LLM occasionally returns low confidence without flagging the
+   cluster itself; this catches those.
+
+### Per-txn metadata is now populated
+
+The cluster upsert + txn backfill in `categorize/index.ts` writes
+`confidence`, `reasoning`, `categorization_source = 'ai'`, and
+`needs_review = true` when `systemCategory === 'uncategorized_needs_review'`
+onto every transaction in the cluster. The Stage 0 columns finally have
+something writing to them.
+
+### API surface
+
+`GET /api/finance/clusters` now includes `systemCategory` per cluster.
+The web `getFinanceClusters()` type was updated to match.
+
+### What we deferred (still)
+
+- **Brief aggregator updates** — `credit_card_payment` should be excluded
+  from spend totals, `refund_or_reversal` from income. Not wired yet
+  because the brief is still placeholder. When we wake the brief, the
+  aggregator will be the place to read system_category.
+- **Breakdown UI** — `cash_withdrawal` and `investment_transfer` could
+  surface as their own tiles. Holding until we have real classified
+  data to show.
+- **Review queue UI** — `needs_review` flag is now populated but there's
+  no UI surface for it yet.
+
+### How to verify
+
+Run the classifier on the existing data:
+
+```bash
+curl -X POST http://localhost:8787/api/finance/categorize \
+  -H "Authorization: Bearer <clerk-token>"
+```
+
+Then inspect:
+
+```sql
+SELECT category, system_category, COUNT(*) FROM merchant_clusters
+GROUP BY category, system_category ORDER BY 1, 2;
+```
+
+---
+
 ## How to read this file going forward
 
 Every time we ship a new stage of the categorization engine, append

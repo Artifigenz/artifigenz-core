@@ -12,6 +12,26 @@ export const CATEGORIES = [
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/**
+ * Hidden engine-only labels. They sit alongside `category` (never replace
+ * it) and give downstream aggregators extra context. Most clusters end up
+ * with `system_category = null` — only attach one when the visible
+ * category alone loses meaningful information.
+ *
+ * See docs/categorization-engine.md for the mapping and the reasons each
+ * exists. The full set is intentionally small; resist the urge to add
+ * more without a downstream consumer that needs the distinction.
+ */
+export const SYSTEM_CATEGORIES = [
+  "refund_or_reversal",
+  "possible_internal_transfer",
+  "credit_card_payment",
+  "investment_transfer",
+  "cash_withdrawal",
+  "uncategorized_needs_review",
+] as const;
+export type SystemCategory = (typeof SYSTEM_CATEGORIES)[number];
+
 export const CADENCES = [
   "monthly",
   "weekly",
@@ -25,6 +45,7 @@ export type Cadence = (typeof CADENCES)[number];
 
 export interface ClassificationResult {
   category: Category;
+  systemCategory: SystemCategory | null;
   isRecurring: boolean;
   cadence: Cadence;
   monthlyAmount: number;
@@ -85,9 +106,29 @@ monthly_amount estimation:
 - For one_time / miscellaneous: the average per-charge amount divided by months observed (or 0 if you can't estimate)
 - Always positive in your response, regardless of sign convention above
 
+System category (engine-only, hidden from user). Most clusters should leave this null.
+Only attach one when the visible category alone would lose meaningful context:
+- refund_or_reversal: a credit that's a refund of an earlier purchase, NOT income.
+    Use when the cluster is all-negative but the merchant looks like a retailer / service
+    you'd normally pay (Amazon, Netflix, etc.) and the cadence is irregular / one-off.
+- credit_card_payment: a payment FROM a chequing/savings account TO a credit card
+    account, or vice versa. Use this when description includes "PAYMENT", "PMT", "CC PAY",
+    "CREDIT CARD PAYMENT", or when one of the user's accounts is type=credit and the
+    transfer is between the user's own accounts.
+- investment_transfer: money moving to a brokerage / investment platform that isn't
+    one of the user's own accounts (Wealthsimple, Questrade, Vanguard, etc.) — or to
+    one of their own accounts of type=investment. Distinguish from generic
+    internal_transfer because it's saving, not moving operating money.
+- cash_withdrawal: ATM withdrawals, "WITHDRAWAL", "ATM W/D", "NON-TD ATM W/D", etc.
+- possible_internal_transfer: low-confidence soft flag. Use when you classified as
+    internal_transfer but the signal is weak (no clear self-name, no own-account
+    pair). Lets the UI prompt the user to confirm.
+- uncategorized_needs_review: cluster is genuinely ambiguous. Pair with confidence < 0.5.
+
 Return ONLY valid JSON matching this schema, no markdown, no explanation:
 {
-  "category": "<one of the 7>",
+  "category": "<one of the 7 visible categories>",
+  "system_category": "<one of the 6 system labels, or null>",
   "is_recurring": <boolean>,
   "cadence": "<one of the 7 cadences>",
   "monthly_amount": <number, always positive>,
@@ -152,6 +193,13 @@ function isCategory(s: unknown): s is Category {
   return typeof s === "string" && (CATEGORIES as readonly string[]).includes(s);
 }
 
+function isSystemCategory(s: unknown): s is SystemCategory {
+  return (
+    typeof s === "string" &&
+    (SYSTEM_CATEGORIES as readonly string[]).includes(s)
+  );
+}
+
 function isCadence(s: unknown): s is Cadence {
   return typeof s === "string" && (CADENCES as readonly string[]).includes(s);
 }
@@ -203,6 +251,11 @@ export async function classifyCluster(
   let category: Category = isCategory(parsed.category)
     ? parsed.category
     : "miscellaneous";
+  let systemCategory: SystemCategory | null = isSystemCategory(
+    parsed.system_category,
+  )
+    ? parsed.system_category
+    : null;
   let cadence: Cadence = isCadence(parsed.cadence) ? parsed.cadence : "irregular";
   let isRecurring = parsed.is_recurring === true;
   let reasoning =
@@ -232,6 +285,9 @@ export async function classifyCluster(
     } else {
       category = "internal_transfer";
       isRecurring = false;
+      // A one-off credit from an expense-shaped merchant is almost always a
+      // refund. Tag it so the brief doesn't count it as income.
+      if (!systemCategory) systemCategory = "refund_or_reversal";
       reasoning = `[sign-corrected: all amounts negative, one-off] ${reasoning}`;
     }
   } else if (allPositive && category === "income") {
@@ -240,12 +296,21 @@ export async function classifyCluster(
     reasoning = `[sign-corrected: all amounts positive, can't be income] ${reasoning}`;
   }
 
+  // Final sanity: if confidence is low and nothing else flagged it, hint to
+  // the review queue. Lets the UI surface "we need your help here" without
+  // a separate signal.
+  const conf = clampNumber(parsed.confidence, 0, 1, 0.5);
+  if (conf < 0.5 && !systemCategory) {
+    systemCategory = "uncategorized_needs_review";
+  }
+
   return {
     category,
+    systemCategory,
     isRecurring,
     cadence,
     monthlyAmount: Math.abs(clampNumber(parsed.monthly_amount, 0, 1_000_000, 0)),
-    confidence: clampNumber(parsed.confidence, 0, 1, 0.5),
+    confidence: conf,
     reasoning,
   };
 }

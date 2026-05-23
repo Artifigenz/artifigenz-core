@@ -61,6 +61,12 @@ export const financeTransactions = pgTable(
     accountName: varchar("account_name", { length: 100 }),
 
     category: varchar("category", { length: 30 }),
+    // Hidden engine-only label that gives downstream aggregators extra
+    // context the visible category alone can't carry — e.g.
+    // 'credit_card_payment' so we don't double-count a card-pay transfer
+    // as spend, or 'refund_or_reversal' so a refund doesn't inflate
+    // income. Most rows leave this null.
+    systemCategory: varchar("system_category", { length: 40 }),
     isRecurring: boolean("is_recurring").default(false),
     merchantClusterId: uuid("merchant_cluster_id").references(
       () => merchantClusters.id,
@@ -155,6 +161,11 @@ export const merchantClusters = pgTable(
     // One of: income, subscription, loan_emi, fee_interest, variable_recurring,
     // internal_transfer, miscellaneous
     category: varchar("category", { length: 30 }).notNull(),
+    // Hidden engine-only label (refund_or_reversal, credit_card_payment,
+    // investment_transfer, cash_withdrawal, possible_internal_transfer,
+    // uncategorized_needs_review). Null when the visible category alone
+    // is enough context. See docs/categorization-engine.md.
+    systemCategory: varchar("system_category", { length: 40 }),
     isRecurring: boolean("is_recurring").default(false).notNull(),
     cadence: varchar("cadence", { length: 20 }), // monthly | weekly | quarterly | annual | irregular | one_time
     monthlyAmount: decimal("monthly_amount", { precision: 14, scale: 2 }),

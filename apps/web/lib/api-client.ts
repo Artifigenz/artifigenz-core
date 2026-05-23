@@ -422,6 +422,7 @@ export class ApiClient {
         firstSeen: string;
         lastSeen: string;
         category: string | null;
+        systemCategory: string | null;
         isRecurring: boolean | null;
       }>;
     }>('/api/finance/clusters');

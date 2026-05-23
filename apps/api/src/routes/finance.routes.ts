@@ -184,6 +184,7 @@ app.get("/clusters", async (c) => {
       merchantNormalized: financeTransactions.merchantNormalized,
       amount: financeTransactions.amount,
       category: financeTransactions.category,
+      systemCategory: financeTransactions.systemCategory,
       isRecurring: financeTransactions.isRecurring,
     })
     .from(financeTransactions)
@@ -199,6 +200,7 @@ app.get("/clusters", async (c) => {
     firstSeen: string;
     lastSeen: string;
     category: string | null;
+    systemCategory: string | null;
     isRecurring: boolean | null;
   }
 
@@ -222,6 +224,7 @@ app.get("/clusters", async (c) => {
         firstSeen: r.date,
         lastSeen: r.date,
         category: r.category,
+        systemCategory: r.systemCategory,
         isRecurring: r.isRecurring,
       };
       map.set(key, agg);
@@ -245,6 +248,7 @@ app.get("/clusters", async (c) => {
       firstSeen: c.firstSeen,
       lastSeen: c.lastSeen,
       category: c.category,
+      systemCategory: c.systemCategory,
       isRecurring: c.isRecurring,
     }))
     .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));

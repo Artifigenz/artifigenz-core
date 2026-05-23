@@ -71,6 +71,13 @@
       "when": 1779565318264,
       "tag": "0009_canonical_transaction_model",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779566703915,
+      "tag": "0010_system_category",
+      "breakpoints": true
     }
   ]
 }
