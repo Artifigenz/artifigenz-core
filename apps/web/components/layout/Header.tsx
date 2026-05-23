@@ -2,22 +2,32 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import ProfileMenu from '@/components/layout/ProfileMenu';
 import MobileMenu from '@/components/layout/MobileMenu';
-import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import styles from './Header.module.css';
 
-export default function Header() {
-  const pathname = usePathname();
-  const { slugs, hydrated } = useActivatedAgents();
-  const isHome = pathname === '/app';
-  const isExplore = pathname === '/explore';
-  const hasActivations = hydrated && slugs.length > 0;
+interface HeaderProps {
+  /**
+   * If provided, intercepts the logo click instead of navigating. Useful on
+   * the home page itself, where clicking the logo should reset the chat
+   * back to the intro state rather than no-op-navigate to /app.
+   */
+  onLogoClick?: () => void;
+}
 
+export default function Header({ onLogoClick }: HeaderProps = {}) {
   return (
     <header className={styles.header}>
-      <Link href="/app" className={styles.logoMark}>
+      <Link
+        href="/app"
+        className={styles.logoMark}
+        onClick={(e) => {
+          if (onLogoClick) {
+            e.preventDefault();
+            onLogoClick();
+          }
+        }}
+      >
         <Image
           className={styles.logoIcon}
           src="/logo_transparent.png"
@@ -28,31 +38,12 @@ export default function Header() {
         />
         <span className={styles.logoText}>Artifigenz</span>
       </Link>
-      {hasActivations ? (
-        <nav className={styles.nav}>
-          <Link href="/app" className={`${styles.navLink} ${isHome ? styles.navLinkActive : ''}`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-            Home
-          </Link>
-          <Link href="/explore" className={`${styles.navLink} ${isExplore ? styles.navLinkActive : ''}`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-            </svg>
-            Explore
-          </Link>
-        </nav>
-      ) : (
-        <div aria-hidden="true" />
-      )}
+      <div aria-hidden="true" />
       <div className={styles.actions}>
         <ProfileMenu />
       </div>
       <div className={styles.mobileActions}>
-        <MobileMenu hasActivations={hasActivations} />
+        <MobileMenu />
       </div>
     </header>
   );

@@ -389,9 +389,10 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    agentInstanceId: uuid("agent_instance_id")
-      .notNull()
-      .references(() => agentInstances.id, { onDelete: "cascade" }),
+    agentInstanceId: uuid("agent_instance_id").references(
+      () => agentInstances.id,
+      { onDelete: "cascade" },
+    ),
     anchoredInsightId: uuid("anchored_insight_id").references(
       () => insights.id,
       { onDelete: "set null" },
@@ -422,6 +423,8 @@ export const messages = pgTable(
     role: varchar("role", { length: 20 }).notNull(),
     content: text("content").notNull(),
     toolCalls: jsonb("tool_calls"),
+    /** Free-form jsonb for things like web search citations + attachment refs. */
+    metadata: jsonb("metadata"),
     tokenCount: integer("token_count"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },

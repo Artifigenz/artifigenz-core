@@ -53,11 +53,19 @@ export interface ChatPromptContext {
 /**
  * SSE event types sent from server → client during a chat stream.
  */
+export interface ChatCitation {
+  url: string;
+  title: string;
+  citedText?: string;
+}
+
 export type SSEEvent =
   | { type: "conversation"; data: { conversationId: string; title?: string } }
+  | { type: "user_message"; data: { messageId: string } }
   | { type: "delta"; data: { content: string } }
   | { type: "tool_use"; data: { tool: string; input: Record<string, unknown> } }
   | { type: "tool_result"; data: { tool: string; result: unknown } }
+  | { type: "citations"; data: { citations: ChatCitation[] } }
   | {
       type: "done";
       data: {
@@ -67,11 +75,44 @@ export type SSEEvent =
     }
   | { type: "error"; data: { code: string; message: string } };
 
+export interface ChatAttachmentRef {
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes?: number;
+  /** File extension as stored on disk (e.g. ".png"). */
+  extension?: string;
+}
+
+export interface PasteSnippet {
+  /** Client-generated id for chip dedup + React keys. */
+  id: string;
+  /** Full pasted text — appended into the model prompt at send time. */
+  content: string;
+  /** Optional first-line preview for the chip; computed client-side. */
+  firstLine?: string;
+}
+
 export interface SendMessageParams {
   userId: string;
   agentInstanceId?: string | null;
   anchoredInsightId?: string | null;
   conversationId?: string | null;
   message: string;
+  attachments?: ChatAttachmentRef[];
+  pasteSnippets?: PasteSnippet[];
+  /** Model id (e.g. "claude-sonnet-4-6", "gpt-4o"). Defaults to DEFAULT_MODEL_ID. */
+  model?: string | null;
+  /**
+   * If set, delete this message and everything newer in the same
+   * conversation before appending. Used for edit + regenerate.
+   */
+  truncateFromMessageId?: string | null;
+  /**
+   * When true, this is a "regenerate" — the user's prior message is reused
+   * from history, so the server skips inserting a new one and just
+   * regenerates the assistant turn.
+   */
+  regenerate?: boolean;
   onEvent: (event: SSEEvent) => void;
 }
