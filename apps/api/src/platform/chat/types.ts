@@ -48,6 +48,7 @@ export interface ChatPromptContext {
     daysWithData: number;
   } | null;
   anchoredInsight: InsightRow | null;
+  memories: Array<{ type: string; text: string; source: string }>;
 }
 
 /**
@@ -66,6 +67,7 @@ export type SSEEvent =
   | { type: "tool_use"; data: { tool: string; input: Record<string, unknown> } }
   | { type: "tool_result"; data: { tool: string; result: unknown } }
   | { type: "citations"; data: { citations: ChatCitation[] } }
+  | { type: "followups"; data: { followUps: string[] } }
   | {
       type: "done";
       data: {

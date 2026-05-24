@@ -6,6 +6,7 @@ import {
   IdentitySection,
   ChannelsSection,
   ChatSection,
+  MemoriesSection,
   AppearanceSection,
   PrivacySection,
 } from './sections';
@@ -32,6 +33,7 @@ function SettingsContent() {
           <IdentitySection />
           <ChannelsSection />
           <ChatSection />
+          <MemoriesSection />
           <AppearanceSection />
           <PrivacySection />
         </div>

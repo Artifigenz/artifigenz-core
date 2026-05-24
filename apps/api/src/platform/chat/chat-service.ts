@@ -3,7 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { db, conversations, messages, users } from "@artifigenz/db";
+import { db, conversations, messages, users, contextStated } from "@artifigenz/db";
+import { extractMemoriesFromTurn } from "../memories/extractor";
 import { findModel, DEFAULT_MODEL_ID } from "@artifigenz/shared";
 import { getClaudeClient } from "../../agents/finance/lib/claude-client";
 import { getOpenAIClient } from "./openai-client";
@@ -420,8 +421,12 @@ export class ChatService {
     } // end Anthropic provider branch
 
     // ─── 8. Persist the assistant response ──────────────────────
-    const assistantMetadata =
-      citations.length > 0 ? { citations } : null;
+    // Record which model generated this turn — the footer in the UI shows
+    // it next to each response so the user can tell what answered what.
+    const assistantMetadata: Record<string, unknown> = { modelId: model.id };
+    if (citations.length > 0) {
+      assistantMetadata.citations = citations;
+    }
 
     const [assistantMsg] = await db
       .insert(messages)
@@ -433,7 +438,7 @@ export class ChatService {
           toolCallHistory.length > 0
             ? (toolCallHistory as unknown as Record<string, unknown>)
             : null,
-        metadata: assistantMetadata as Record<string, unknown> | null,
+        metadata: assistantMetadata,
       })
       .returning();
 
@@ -441,9 +446,23 @@ export class ChatService {
       onEvent({ type: "citations", data: { citations } });
     }
 
-    // Emit `done` FIRST so the client gets the server-side messageId without
-    // waiting on follow-up DB work. The conversation-row bookkeeping can
-    // happen after — if it errors, the message itself is already persisted.
+    // ── Generate follow-up suggestions (best-effort, Haiku) ──
+    // Quick second call to suggest 3 questions the user might ask next.
+    // Failure is silent so the main reply isn't blocked.
+    const lastUserText = message; // user's prompt for THIS turn
+    const followUps = await generateFollowUps(lastUserText, assistantContent);
+    if (followUps.length > 0) {
+      onEvent({ type: "followups", data: { followUps } });
+      // Persist alongside the other metadata fields.
+      await db
+        .update(messages)
+        .set({ metadata: { ...assistantMetadata, followUps } })
+        .where(eq(messages.id, assistantMsg.id));
+    }
+
+    // Emit `done` after follow-ups so the client has everything when it
+    // unlocks the input. The conversation-row bookkeeping below is just
+    // for sidebar ordering and can lag without affecting UX.
     console.log("[chat] emitting done for message", assistantMsg.id);
     onEvent({
       type: "done",
@@ -458,6 +477,15 @@ export class ChatService {
         updatedAt: new Date(),
       })
       .where(eq(conversations.id, conversationId));
+
+    // ── Self-grow memory (best-effort, fire-and-forget) ───────────
+    // Runs Haiku over the just-completed turn to extract durable facts
+    // about the user. Failures are silent — they never affect the chat.
+    void extractAndStoreMemories({
+      userId,
+      userText: message,
+      assistantText: assistantContent,
+    });
   }
 
   /**
@@ -513,6 +541,82 @@ export class ChatService {
 }
 
 export const chatService = new ChatService();
+
+// ── Self-grow memories from a chat turn (best-effort) ─────────────
+// Cheap dedupe: skip insert if the same text already exists for this user.
+async function extractAndStoreMemories(opts: {
+  userId: string;
+  userText: string;
+  assistantText: string;
+}): Promise<void> {
+  try {
+    const items = await extractMemoriesFromTurn({
+      userText: opts.userText,
+      assistantText: opts.assistantText,
+    });
+    if (items.length === 0) return;
+
+    const existing = await db
+      .select({ text: contextStated.text })
+      .from(contextStated)
+      .where(eq(contextStated.userId, opts.userId));
+    const seen = new Set(existing.map((r) => r.text.toLowerCase().trim()));
+
+    const fresh = items.filter((it) => !seen.has(it.text.toLowerCase().trim()));
+    if (fresh.length === 0) return;
+
+    await db.insert(contextStated).values(
+      fresh.map((it) => ({
+        userId: opts.userId,
+        type: it.type,
+        text: it.text,
+        source: "artifigenz_chat" as const,
+        active: true,
+      })),
+    );
+  } catch (err) {
+    console.warn("[memories] self-grow failed:", (err as Error).message);
+  }
+}
+
+// ── Follow-up suggestions (small, fast, best-effort) ──────────────
+
+const FOLLOWUP_MODEL = "claude-haiku-4-5-20251001";
+
+async function generateFollowUps(
+  userPrompt: string,
+  assistantReply: string,
+): Promise<string[]> {
+  if (!userPrompt && !assistantReply) return [];
+  try {
+    const client = getClaudeClient();
+    const res = await client.messages.create({
+      model: FOLLOWUP_MODEL,
+      max_tokens: 240,
+      system:
+        "You generate exactly 3 short, distinct follow-up questions a user might ask next, based on a Q&A turn. Return ONLY a JSON array of 3 strings, no preamble, no trailing prose. Each question stands on its own (no 'and', no follow-on context required), max 80 characters.",
+      messages: [
+        {
+          role: "user",
+          content: `User asked: ${userPrompt}\n\nAssistant answered:\n${assistantReply.slice(0, 4000)}\n\nReturn 3 follow-up questions as a JSON array of strings.`,
+        },
+      ],
+    });
+    const text = (
+      res.content.find((b) => b.type === "text") as { text?: string } | undefined
+    )?.text;
+    if (!text) return [];
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+    const arr = JSON.parse(match[0]);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((s): s is string => typeof s === "string" && s.length > 0)
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
 
 // ── OpenAI streaming path (Responses API) ───────────────────────────
 // Uses the Responses API rather than chat.completions so we can attach

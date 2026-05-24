@@ -13,16 +13,25 @@ import styles from './page.module.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-// Typewriter pacing — chars revealed per animation frame.
-const REVEAL_BASE = 3;
-const REVEAL_CATCHUP = 12;
-const CATCHUP_THRESHOLD = 240;
+// Typewriter pacing — word-by-word reveal.
+// Each tick advances the displayed text to the next whitespace boundary,
+// but only after the per-word interval has elapsed. This gives the
+// "deliberate typist" feel: words appear as whole units, fade in softly,
+// and never crawl mid-word like a char-by-char reveal does.
+const WORD_INTERVAL_MS = 130;       // ~7.7 wps — calm reading cadence
+const WORD_INTERVAL_FAST_MS = 45;   // ~22 wps — used when far behind
+const CATCHUP_WORDS_THRESHOLD = 60; // words buffered before speed-up
 
 export default function AppHome() {
   const { getToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  // Id of the assistant message currently revealing via the typewriter.
+  // Cleared the instant the client-side buffer fully drains — used to gate
+  // the footer toolbar + follow-up pills so they don't appear while text is
+  // still being typed out.
+  const [drainingId, setDrainingId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -48,27 +57,64 @@ export default function AppHome() {
   const bufferRef = useRef<Map<string, { pending: string; displayed: string }>>(new Map());
   const rafRef = useRef<number | null>(null);
   const streamDoneRef = useRef<Set<string>>(new Set());
+  const lastWordTimeRef = useRef<Map<string, number>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
   const inChat = messages.length > 0;
 
-  const tick = useCallback(() => {
+  const tick = useCallback((now: number) => {
     let dirty = false;
     let stillAnimating = false;
 
+    const drained: string[] = [];
     bufferRef.current.forEach((entry, id) => {
-      const remaining = entry.pending.length - entry.displayed.length;
-      if (remaining <= 0) {
+      if (entry.displayed.length >= entry.pending.length) {
         if (streamDoneRef.current.has(id)) {
           bufferRef.current.delete(id);
           streamDoneRef.current.delete(id);
+          lastWordTimeRef.current.delete(id);
+          drained.push(id);
         }
         return;
       }
-      const step =
-        remaining > CATCHUP_THRESHOLD ? REVEAL_CATCHUP : REVEAL_BASE;
-      entry.displayed = entry.pending.slice(0, entry.displayed.length + step);
-      dirty = true;
+
+      // Count words still buffered to decide cadence.
+      const ahead = entry.pending.slice(entry.displayed.length);
+      const wordsAhead = ahead.split(/\s+/).filter(Boolean).length;
+      const interval =
+        wordsAhead > CATCHUP_WORDS_THRESHOLD
+          ? WORD_INTERVAL_FAST_MS
+          : WORD_INTERVAL_MS;
+
+      const last = lastWordTimeRef.current.get(id) ?? 0;
+      if (now - last < interval) {
+        stillAnimating = true;
+        return;
+      }
+
+      // Advance to the end of the next whitespace block (so the trailing
+      // space comes in with the word — keeps wrapping natural).
+      let i = entry.displayed.length;
+      // skip any leading whitespace at the boundary
+      while (i < entry.pending.length && /\s/.test(entry.pending[i])) i++;
+      // consume the word
+      while (i < entry.pending.length && !/\s/.test(entry.pending[i])) i++;
+      // include trailing space(s) on the same line (but not a newline)
+      while (
+        i < entry.pending.length &&
+        entry.pending[i] === ' '
+      ) {
+        i++;
+      }
+      // If a newline is next, include it too — paragraph breaks shouldn't
+      // wait for an extra tick.
+      if (i < entry.pending.length && entry.pending[i] === '\n') i++;
+
+      if (i > entry.displayed.length) {
+        entry.displayed = entry.pending.slice(0, i);
+        lastWordTimeRef.current.set(id, now);
+        dirty = true;
+      }
       stillAnimating = true;
     });
 
@@ -78,6 +124,10 @@ export default function AppHome() {
       setMessages((prev) =>
         prev.map((m) => (snap.has(m.id) ? { ...m, content: snap.get(m.id)! } : m)),
       );
+    }
+
+    if (drained.length > 0) {
+      setDrainingId((prev) => (prev !== null && drained.includes(prev) ? null : prev));
     }
 
     if (stillAnimating || bufferRef.current.size > 0) {
@@ -117,6 +167,7 @@ export default function AppHome() {
             sizeBytes: file.size,
             previewUrl,
             status: 'uploading',
+            createdAt: Date.now(),
           },
         ]);
         try {
@@ -172,7 +223,10 @@ export default function AppHome() {
   const addPasteSnippet = useCallback((text: string) => {
     const id = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const firstLine = text.split('\n', 1)[0]?.slice(0, 80) ?? '';
-    setPasteSnippets((prev) => [...prev, { id, content: text, firstLine }]);
+    setPasteSnippets((prev) => [
+      ...prev,
+      { id, content: text, firstLine, createdAt: Date.now() },
+    ]);
   }, []);
 
   const removePasteSnippet = useCallback((id: string) => {
@@ -230,6 +284,7 @@ export default function AppHome() {
       };
 
       bufferRef.current.set(localAssistantId, { pending: '', displayed: '' });
+      setDrainingId(localAssistantId);
       setMessages((prev) => {
         let truncated = prev;
         if (opts?.truncateFromMessageId) {
@@ -243,7 +298,12 @@ export default function AppHome() {
           // In regenerate mode the previous user message is preserved in the
           // truncated array — don't duplicate it.
           ...(isRegenerate ? [] : [userMsg]),
-          { id: localAssistantId, role: 'assistant', content: '' },
+          {
+            id: localAssistantId,
+            role: 'assistant',
+            content: '',
+            modelId: opts?.model ?? modelId,
+          },
         ];
       });
       setStreaming(true);
@@ -369,6 +429,16 @@ export default function AppHome() {
                   );
                 }
                 break;
+              case 'followups':
+                if (Array.isArray(data.followUps)) {
+                  const followUps = data.followUps as string[];
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === localAssistantId ? { ...m, followUps } : m,
+                    ),
+                  );
+                }
+                break;
               case 'done':
                 if (typeof data.messageId === 'string') {
                   const serverId = data.messageId;
@@ -382,6 +452,7 @@ export default function AppHome() {
                 break;
               case 'error':
                 bufferRef.current.delete(localAssistantId);
+                lastWordTimeRef.current.delete(localAssistantId);
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === localAssistantId
@@ -431,6 +502,7 @@ export default function AppHome() {
         } else {
           bufferRef.current.delete(localAssistantId);
           streamDoneRef.current.delete(localAssistantId);
+          lastWordTimeRef.current.delete(localAssistantId);
           setMessages((prev) =>
             prev.map((m) =>
               m.id === localAssistantId
@@ -442,6 +514,7 @@ export default function AppHome() {
             ),
           );
           setStreaming(false);
+          setDrainingId((prev) => (prev === localAssistantId ? null : prev));
         }
         setToolStatus(null);
       } finally {
@@ -474,6 +547,8 @@ export default function AppHome() {
     abortRef.current?.abort();
     bufferRef.current.clear();
     streamDoneRef.current.clear();
+    setDrainingId(null);
+    lastWordTimeRef.current.clear();
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -496,6 +571,7 @@ export default function AppHome() {
         rafRef.current = null;
       }
       setStreaming(false);
+      setDrainingId(null);
       setToolStatus(null);
 
       try {
@@ -515,6 +591,8 @@ export default function AppHome() {
               citations?: ChatMessage['citations'];
               attachments?: ChatMessage['attachments'];
               pasteSnippets?: ChatMessage['pasteSnippets'];
+              followUps?: ChatMessage['followUps'];
+              modelId?: string;
             } | null;
           }>;
         };
@@ -528,6 +606,8 @@ export default function AppHome() {
             citations: m.metadata?.citations,
             attachments: m.metadata?.attachments,
             pasteSnippets: m.metadata?.pasteSnippets,
+            followUps: m.metadata?.followUps,
+            modelId: m.metadata?.modelId,
           })),
         );
         // Scroll to bottom on next paint
@@ -594,9 +674,11 @@ export default function AppHome() {
           <HomeChatMessages
             messages={messages}
             streaming={streaming}
+            drainingId={drainingId}
             toolStatus={toolStatus}
             onEdit={onEditSubmit}
             onRegenerate={onRegenerate}
+            onFollowUp={(text) => runSend(text)}
           />
         )}
         <ChatInput

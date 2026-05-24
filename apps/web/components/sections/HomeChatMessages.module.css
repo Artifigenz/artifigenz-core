@@ -1,81 +1,104 @@
+/* HomeChatMessages — styles ported from the Aura/Terminal design bundle.
+   See: research/aura/chat-ui/project/styles.css */
+
 .section {
-  /* Bottom padding must clear the fixed ChatInput (≈ box height + outer
-     padding + the 40px gradient mask above it). */
   padding: 32px 0 240px;
   animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .sentinel {
-  /* When scrollIntoView({block:'end'}) fires on this sentinel, the browser
-     leaves this much space below it before the viewport edge. That keeps
-     the latest streaming line visible *above* the input bar instead of
-     sliding under it. */
   scroll-margin-bottom: 200px;
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 36px;            /* design spec */
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 16px;
+  /* Lets the browser pin the viewport to whatever the user is reading even
+     when content grows above/below — reduces stream-time jumpiness. */
+  overflow-anchor: auto;
 }
 
-.row {
-  display: flex;
-}
+/* ── Row ─────────────────────────────────────────────────────── */
 
-.user {
-  justify-content: flex-end;
-}
+.row { display: flex; position: relative; }
+.user { justify-content: flex-end; }
+.assistant { justify-content: flex-start; }
 
-.assistant {
-  justify-content: flex-start;
-}
+/* ── Bubble wrap ─────────────────────────────────────────────── */
 
 .bubbleWrap {
   display: flex;
   flex-direction: column;
-  max-width: 85%;
+}
+
+.user .bubbleWrap {
+  max-width: 72%;
+  align-items: flex-end;
 }
 
 .assistant .bubbleWrap {
   max-width: 100%;
   width: 100%;
-}
-
-.user .bubbleWrap {
-  align-items: flex-end;
-}
-
-.assistant .bubbleWrap {
   align-items: flex-start;
 }
 
-.bubble {
-  padding: 12px 16px;
-  border-radius: 16px;
+/* ── User bubble (accent fill) ───────────────────────────────── */
+
+.user .bubble {
+  padding: 12px 18px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-radius: var(--radius-xl, 28px);
   font-size: 0.95rem;
-  line-height: 1.6;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  box-shadow: var(--shadow);
+  border: 1px solid transparent;
+  word-wrap: break-word;
+  animation: bubblePop 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+:global([data-theme="terminal"]) .user .bubble {
+  border-radius: 0;
+  padding: 10px 16px;
+  letter-spacing: 0;
+  border: 1px solid var(--text);
+  font-size: 0.875rem;
+  box-shadow: none;
+}
+
+/* Dark mode: keep the user bubble dark (an elevated surface) instead of
+   inverting to the near-white --accent fill, which glares against the bg. */
+:global(.dark) .user .bubble {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid var(--border-light);
+  box-shadow: none;
+}
+
+@keyframes bubblePop {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* ── Assistant message — no bubble, just text ────────────────── */
 
 .assistant .bubble {
   width: 100%;
-}
-
-.user .bubble {
-  background: var(--accent);
-  color: var(--accent-text);
-  border-bottom-right-radius: 6px;
-}
-
-.assistant .bubble {
-  background: var(--card-hover);
-  color: var(--text);
-  border-bottom-left-radius: 6px;
+  background: transparent;
+  padding: 4px 0;
+  border-radius: 0;
+  box-shadow: none;
+  border: 0;
 }
 
 .text {
@@ -83,175 +106,220 @@
   word-break: break-word;
 }
 
-/* ── Markdown typography (assistant messages) ── */
+/* ── Markdown body (assistant) ───────────────────────────────── */
 
 .md {
+  /* Reading-optimised: full text color, slightly bigger size, generous
+     leading, opentype features for clean numerals + ligatures. */
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.7;
+  letter-spacing: -0.003em;
   word-break: break-word;
+  font-feature-settings: "ss01", "cv11", "kern";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.md > :first-child {
-  margin-top: 0;
-}
+.md > * + * { margin-top: 16px; }
 
-.md > :last-child {
-  margin-bottom: 0;
-}
+.md > :first-child { margin-top: 0; }
+.md > :last-child  { margin-bottom: 0; }
 
 .md p {
-  margin: 0 0 12px;
+  margin: 0;
+  color: var(--text);
+  text-wrap: pretty;
 }
 
-.md p:last-child {
+.md strong { color: var(--text); font-weight: 600; }
+.md em     { font-style: italic; }
+
+.md h1, .md h2, .md h3, .md h4 {
+  margin-top: 28px;
   margin-bottom: 0;
-}
-
-.md strong {
-  font-weight: 600;
-}
-
-.md em {
-  font-style: italic;
-}
-
-.md h1,
-.md h2,
-.md h3,
-.md h4 {
-  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
   line-height: 1.3;
-  margin: 18px 0 8px;
+  font-family: inherit;
+  font-weight: 600;
 }
+.md h1 { font-size: 1.2rem; }
+.md h2 { font-size: 1.05rem; }
+.md h3 { font-size: 0.95rem; }
+.md h4 { font-size: 0.9rem; }
 
-.md h1 { font-size: 1.4rem; }
-.md h2 { font-size: 1.2rem; }
-.md h3 { font-size: 1.05rem; }
-.md h4 { font-size: 1rem; }
+:global([data-theme="terminal"]) .md h1,
+:global([data-theme="terminal"]) .md h2,
+:global([data-theme="terminal"]) .md h3,
+:global([data-theme="terminal"]) .md h4 { letter-spacing: 0; }
+
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--border-light);
+  margin: 24px 0;
+}
 
 .md ul,
 .md ol {
-  margin: 4px 0 12px;
+  margin: 12px 0 0;
   padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-
-.md ul {
-  list-style: disc;
-}
-
-.md ol {
-  list-style: decimal;
-}
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
 
 .md li {
-  margin: 4px 0;
+  color: var(--text);
+  line-height: 1.65;
+}
+.md li::marker { color: var(--text-dim); }
+.md li > p { margin: 0; }
+.md li > ul, .md li > ol { margin-top: 6px; }
+
+.md code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--card-hover);
+  padding: 1px 6px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.85em;
+  color: var(--text);
+  border: 1px solid var(--border-light);
 }
 
-.md li > p {
-  margin: 0;
+:global([data-theme="terminal"]) .md code {
+  border-radius: 0;
+  background: transparent;
 }
 
 .md a {
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.md code {
-  font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
-  font-size: 0.88em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--border-light);
   color: var(--text);
+  border-bottom: 1px solid var(--border-light);
+  text-decoration: none;
+  transition: border-color 0.25s ease;
 }
+.md a:hover { border-bottom-color: var(--text); }
 
 .md pre {
-  margin: 10px 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--border-light);
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-md, 10px);
+  background: var(--card-hover);
+  border: 1px solid var(--border-light);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
   overflow-x: auto;
-  font-size: 0.85rem;
-  line-height: 1.55;
+  color: var(--text);
 }
-
 .md pre code {
   padding: 0;
   background: transparent;
+  border: 0;
   font-size: inherit;
 }
 
+:global([data-theme="terminal"]) .md pre {
+  border-radius: 0;
+  background: transparent;
+}
+
 .md blockquote {
-  margin: 8px 0;
-  padding: 4px 12px;
+  margin: 8px 0 0;
+  padding: 4px 14px;
   border-left: 3px solid var(--border-light);
   color: var(--text-dim);
 }
 
 .md table {
   border-collapse: collapse;
-  margin: 10px 0;
-  font-size: 0.9rem;
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  width: 100%;
 }
-
-.md th,
-.md td {
-  padding: 6px 10px;
+.md th, .md td {
+  padding: 8px 12px;
   border: 1px solid var(--border-light);
   text-align: left;
+  color: var(--text-mid);
 }
-
 .md th {
-  font-weight: 600;
   background: var(--card-hover);
+  color: var(--text);
+  font-weight: 600;
 }
 
-.md hr {
-  border: 0;
-  border-top: 1px solid var(--border-light);
-  margin: 16px 0;
+/* ── Per-word fade-in (streaming only) ───────────────────────────
+   Each new word fades from 0 → 1 over ~200ms as it streams in. The
+   .mdStreaming gate ensures history loads don't replay the animation. */
+
+.fadeWord {
+  display: inline;
 }
+
+.mdStreaming .fadeWord {
+  animation: wordFadeIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes wordFadeIn {
+  from { opacity: 0; filter: blur(0.4px); }
+  to   { opacity: 1; filter: blur(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdStreaming .fadeWord { animation: none; }
+}
+
+/* ── Streaming cursor (per design) ───────────────────────────── */
 
 .cursor {
   display: inline-block;
   width: 7px;
-  height: 1em;
+  height: 1.05em;
   margin-left: 2px;
   vertical-align: text-bottom;
   background: var(--text);
-  opacity: 0.6;
-  animation: cursorBlink 0.95s ease-in-out infinite;
   border-radius: 1px;
+  transform: translateY(2px);
+  animation: cursorBlink 0.9s infinite;
 }
+
+:global([data-theme="terminal"]) .cursor { border-radius: 0; }
 
 @keyframes cursorBlink {
-  0%, 100% { opacity: 0.65; }
-  50% { opacity: 0; }
+  0%, 49%    { opacity: 1; }
+  50%, 100%  { opacity: 0; }
 }
 
-/* Unified status pill — used for "Thinking", "Searching the web", etc. */
+/* ── Inline status pill (thinking / searching) ──────────────── */
+
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 6px 0;
   color: var(--text-dim);
-  font-size: 0.82rem;
-  padding: 4px 4px;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
   animation: statusFade 0.25s ease-out;
 }
 
 .statusDot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--text);
-  opacity: 0.6;
-  animation: dotPulse 1.1s ease-in-out infinite;
+  background: var(--text-dim);
+  animation: statusPulse 1.2s ease-in-out infinite;
 }
 
-@keyframes dotPulse {
-  0%, 100% { opacity: 0.25; }
-  50%      { opacity: 0.85; }
+:global([data-theme="terminal"]) .statusDot { border-radius: 0; }
+
+@keyframes statusPulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
+  40%           { opacity: 1;   transform: scale(1); }
 }
 
 @keyframes statusFade {
@@ -267,20 +335,16 @@
   gap: 8px;
   margin-bottom: 8px;
 }
-
-.bubbleAttachments:last-child {
-  margin-bottom: 0;
-}
+.bubbleAttachments:last-child { margin-bottom: 0; }
 
 .bubbleImage {
   display: block;
   line-height: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-md, 12px);
   overflow: hidden;
   max-width: 260px;
   background: rgba(255, 255, 255, 0.08);
 }
-
 .bubbleImage img {
   display: block;
   max-width: 100%;
@@ -288,19 +352,42 @@
   object-fit: contain;
 }
 
+.bubbleImageLoading {
+  width: 200px;
+  height: 140px;
+  background: rgba(255, 255, 255, 0.08);
+  display: block;
+  animation: imgPulse 1.4s ease-in-out infinite;
+}
+
+.bubbleImageError {
+  width: 200px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@keyframes imgPulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.7; }
+}
+
 .bubbleFile {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md, 10px);
   background: rgba(255, 255, 255, 0.12);
   color: inherit;
   text-decoration: none;
   font-size: 0.82rem;
   max-width: 260px;
 }
-
 .bubbleFile span {
   white-space: nowrap;
   overflow: hidden;
@@ -315,10 +402,7 @@
   gap: 6px;
   margin-bottom: 8px;
 }
-
-.bubbleSnippets:last-child {
-  margin-bottom: 0;
-}
+.bubbleSnippets:last-child { margin-bottom: 0; }
 
 .snippetChip {
   display: inline-flex;
@@ -336,6 +420,8 @@
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+:global([data-theme="terminal"]) .snippetChip { border-radius: 0; }
+
 .snippetChip:hover {
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.3);
@@ -347,8 +433,6 @@
   text-overflow: ellipsis;
   max-width: 200px;
 }
-
-/* ── Snippet preview modal ───────────────────────────────────── */
 
 .snippetBackdrop {
   position: fixed;
@@ -363,7 +447,6 @@
   padding: 40px 20px;
   animation: snippetFade 0.18s ease-out;
 }
-
 @keyframes snippetFade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -375,12 +458,14 @@
   max-height: 85vh;
   background: var(--bg);
   border: 1px solid var(--border-light);
-  border-radius: 16px;
+  border-radius: var(--radius-lg, 16px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--menu-shadow, 0 20px 60px rgba(0, 0, 0, 0.22));
 }
+
+:global([data-theme="terminal"]) .snippetModal { border-radius: 0; }
 
 .snippetHeader {
   display: flex;
@@ -389,37 +474,33 @@
   padding: 14px 18px;
   border-bottom: 1px solid var(--border-light);
 }
-
 .snippetTitle {
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--text);
+  letter-spacing: 0.02em;
 }
-
 .snippetClose {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 30px;
   height: 30px;
-  border-radius: 6px;
+  border-radius: var(--radius-md, 6px);
   border: none;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-
-.snippetClose:hover {
-  background: var(--card-hover);
-  color: var(--text);
-}
+:global([data-theme="terminal"]) .snippetClose { border-radius: 0; }
+.snippetClose:hover { background: var(--card-hover); color: var(--text); }
 
 .snippetBody {
   flex: 1;
   margin: 0;
   padding: 16px 18px;
-  font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.55;
   color: var(--text);
@@ -429,192 +510,359 @@
   overflow-y: auto;
 }
 
-/* ── Citations footer ────────────────────────────────────────── */
+/* ── Sources footer (per design) ─────────────────────────────── */
 
 .citations {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
   border-top: 1px solid var(--border-light);
 }
 
 .citationsLabel {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-weight: 500;
   color: var(--text-dim);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 .citationsList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
 }
 
 .citationChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--text);
-  text-decoration: none;
-  padding: 4px 10px 4px 6px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--card-bg);
   border: 1px solid var(--border-light);
-  border-radius: 9999px;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  border-radius: var(--radius-md, 10px);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-mid);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.25s ease,
+              transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+:global([data-theme="terminal"]) .citationChip { border-radius: 0; }
 
 .citationChip:hover {
   background: var(--card-hover);
-  border-color: var(--text);
+  color: var(--text);
+  transform: translateY(-1px);
 }
 
 .citationIndex {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
+  width: 18px;
   height: 18px;
-  padding: 0 5px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  background: var(--card-hover);
   border-radius: 9999px;
-  color: var(--text-dim);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+:global([data-theme="terminal"]) .citationIndex { border-radius: 0; }
+
+.citationBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.citationTitle {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.82rem;
+  margin-bottom: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .citationHost {
-  color: var(--text);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Hover action toolbar ────────────────────────────────────── */
+/* ── Follow-up chips (right-aligned, no label) ──────────────── */
+
+.followUps {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* One-shot fade-in for the chip group on first mount (after stream ends).
+   Each chip stays mounted afterwards — the animation only runs once. */
+.followUpsAppear {
+  opacity: 0;
+  animation: postStreamFade 0.42s cubic-bezier(0.16, 1, 0.3, 1) 0.45s forwards;
+}
+
+.followUpChipAppear {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: postStreamChipFade 0.36s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes postStreamFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes postStreamChipFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.followUpChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.25s ease,
+              border-color 0.25s ease,
+              transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global([data-theme="terminal"]) .followUpChip {
+  border-radius: 0;
+  padding: 6px 12px;
+}
+
+.followUpChip:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.followUpChev {
+  opacity: 0.5;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.followUpChip:hover .followUpChev {
+  transform: translateX(2px);
+  opacity: 1;
+}
+
+/* ── Hover action toolbar (assistant + user) ─────────────────── */
 
 .actions {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-top: 4px;
-  padding: 0 4px;
+  margin-top: 20px;
+  padding: 0;
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transform: translateY(-2px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .row:hover .actions,
-.actionsVisible {
-  opacity: 1;
+.actionsVisible { opacity: 1; transform: translateY(0); }
+
+/* One-shot reveal for the just-completed turn — fades the toolbar in shortly
+   after the stream ends so it doesn't pop. Older messages (re-rendered on
+   scroll) won't re-animate because keyframes run only on mount. */
+.actionsAppear {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: postStreamFade 0.38s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
 }
 
-.iconBtn {
+.actionBtn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-  padding: 0;
+  font-family: var(--font, inherit);
+  font-size: 0.78rem;
+  font-weight: 400;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
-.iconBtn:hover:not(:disabled) {
-  background: var(--card-hover);
+:global([data-theme="terminal"]) .actionBtn { border-radius: 0; }
+
+.actionBtn:hover:not(:disabled) {
   color: var(--text);
+  background: var(--card-hover);
 }
 
-.iconBtn:disabled {
+.actionBtn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-.iconBtnActive {
-  color: var(--text);
+.actionBtnActive { color: var(--text); }
+
+/* Right-aligned model meta — "● SONNET 4.6 ▾" — clickable dropdown */
+.actionMetaWrap {
+  margin-left: auto;
+  position: relative;
 }
 
-/* ── Retry-with-model group ── */
-
-.retryGroup {
-  position: relative;
+.actionMeta {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
-.retryChevron {
-  width: 18px;
-  margin-left: -2px;
+:global([data-theme="terminal"]) .actionMeta { border-radius: 0; }
+
+.actionMeta:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--card-hover);
+  border-color: var(--border-light);
 }
+
+.actionMeta:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.actionMetaDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--status-live, #22c55e);
+  display: inline-block;
+}
+
+:global([data-theme="terminal"]) .actionMetaDot { border-radius: 0; }
 
 .retryMenu {
   position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
+  bottom: calc(100% + 6px);
+  right: 0;
   z-index: 40;
-  min-width: 200px;
+  min-width: 240px;
   background: var(--menu-bg, var(--bg));
   border: 1px solid var(--menu-border, var(--border-light));
-  border-radius: 10px;
-  padding: 4px;
+  border-radius: var(--radius-md, 10px);
+  padding: 6px;
   box-shadow: var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.18));
+  animation: popIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global([data-theme="terminal"]) .retryMenu { border-radius: 0; }
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .retryMenuLabel {
   padding: 6px 10px 4px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-size: 10px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  font-weight: 500;
   color: var(--text-dim);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 .retryMenuItem {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 9px 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md, 8px);
   background: transparent;
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: var(--text);
   transition: background 0.15s ease;
 }
 
-.retryMenuItem:hover {
-  background: var(--card-hover);
-}
+:global([data-theme="terminal"]) .retryMenuItem { border-radius: 0; }
+
+.retryMenuItem:hover { background: var(--card-hover); }
+
+.retryMenuItemActive { background: var(--card-hover); }
 
 .retryMenuFamily {
   color: var(--text-dim);
-  font-size: 0.72rem;
-  min-width: 48px;
+  font-size: 0.7rem;
+  min-width: 52px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-
 .retryMenuModel {
   font-weight: 500;
+  flex: 1;
 }
 
-/* ── Inline edit box ─────────────────────────────────────────── */
+/* ── Inline edit box (user message) ──────────────────────────── */
 
 .editBox {
   width: 100%;
   max-width: 720px;
   border: 1px solid var(--border-light);
-  border-radius: 16px;
+  border-radius: var(--radius-lg, 18px);
   padding: 12px 14px 10px;
   background: var(--menu-bg, var(--bg));
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
+
+:global([data-theme="terminal"]) .editBox { border-radius: 0; }
 
 .editArea {
   width: 100%;
@@ -639,7 +887,7 @@
 .editCancel,
 .editSave {
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
   padding: 6px 14px;
   border-radius: 9999px;
@@ -648,41 +896,29 @@
   transition: opacity 0.15s ease, background 0.15s ease;
 }
 
-.editCancel {
-  background: transparent;
-  color: var(--text);
-}
+:global([data-theme="terminal"]) .editCancel,
+:global([data-theme="terminal"]) .editSave { border-radius: 0; }
 
-.editCancel:hover {
-  background: var(--card-hover);
-}
+.editCancel { background: transparent; color: var(--text); }
+.editCancel:hover { background: var(--card-hover); }
 
 .editSave {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--accent);
 }
-
-.editSave:hover:not(:disabled) {
-  opacity: 0.85;
-}
-
+.editSave:hover:not(:disabled) { opacity: 0.85; }
 .editSave:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-@media (max-width: 600px) {
-  .section {
-    padding: 16px 0 180px;
-  }
+/* ── Responsive ──────────────────────────────────────────────── */
 
-  .bubble {
-    font-size: 0.9rem;
-  }
-
-  /* Always show actions on touch — hover doesn't exist */
-  .actions {
-    opacity: 1;
-  }
+@media (max-width: 760px) {
+  .section { padding: 16px 0 200px; }
+  .list { gap: 28px; padding: 0 4px; }
+  .user .bubbleWrap { max-width: 88%; }
+  .md { font-size: 0.9rem; }
+  .actions { opacity: 1; transform: none; }  /* no hover on touch */
 }

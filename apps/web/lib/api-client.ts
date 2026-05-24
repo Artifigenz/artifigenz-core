@@ -811,4 +811,59 @@ export class ApiClient {
       }>;
     }>(`/api/agents/me/instances/${agentInstanceId}/debug`);
   }
+
+  // ─── Memories ─────────────────────────────────────────────────
+
+  async listMemories(opts?: { source?: MemorySource; includeInactive?: boolean }) {
+    const params = new URLSearchParams();
+    if (opts?.source) params.set("source", opts.source);
+    if (opts?.includeInactive) params.set("includeInactive", "true");
+    const qs = params.toString();
+    return this.get<{ memories: MemoryRow[] }>(
+      `/api/me/memories${qs ? `?${qs}` : ""}`,
+    );
+  }
+
+  async createMemory(input: { text: string; type?: string; source?: MemorySource }) {
+    return this.post<{ memory: MemoryRow }>(`/api/me/memories`, input);
+  }
+
+  async updateMemory(id: string, updates: { text?: string; type?: string; active?: boolean }) {
+    return this.patch<{ memory: MemoryRow }>(`/api/me/memories/${id}`, updates);
+  }
+
+  async deleteMemory(id: string) {
+    return this.delete<void>(`/api/me/memories/${id}`);
+  }
+
+  async importMemories(input: { source: MemorySource; text: string }) {
+    return this.post<{ imported: number; memories: MemoryRow[] }>(
+      `/api/me/memories/import`,
+      input,
+    );
+  }
+
+  async deleteMemoriesBySource(source: MemorySource) {
+    return this.delete<void>(`/api/me/memories/source/${source}`);
+  }
+
+  async getMemoryImportPrompt() {
+    return this.get<{ prompt: string }>(`/api/me/memories/import-prompt`);
+  }
+}
+
+export type MemorySource =
+  | "artifigenz_chat"
+  | "chatgpt_import"
+  | "claude_import"
+  | "manual";
+
+export interface MemoryRow {
+  id: string;
+  userId: string;
+  type: string;
+  text: string;
+  source: MemorySource;
+  active: boolean;
+  createdAt: string | null;
 }
