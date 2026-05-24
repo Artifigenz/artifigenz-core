@@ -6,6 +6,7 @@ import {
   insights,
   merchantClusters,
   healthDailySummaries,
+  contextStated,
 } from "@artifigenz/db";
 import type { ChatPromptContext } from "./types";
 
@@ -147,6 +148,24 @@ export async function loadPromptContext(params: {
     anchoredInsight = insight ?? null;
   }
 
+  // Load active user-stated memories — caps at the most recent 200 so a heavy
+  // import doesn't blow the prompt budget; sufficient for a personal corpus.
+  const memoryRows = await db
+    .select({
+      type: contextStated.type,
+      text: contextStated.text,
+      source: contextStated.source,
+    })
+    .from(contextStated)
+    .where(
+      and(
+        eq(contextStated.userId, params.userId),
+        eq(contextStated.active, true),
+      ),
+    )
+    .orderBy(desc(contextStated.createdAt))
+    .limit(200);
+
   return {
     user,
     activeAgents,
@@ -154,8 +173,19 @@ export async function loadPromptContext(params: {
     financeSnapshot,
     healthSnapshot,
     anchoredInsight,
+    memories: memoryRows,
   };
 }
+
+const MEMORY_LABELS: Record<string, string> = {
+  identity: "Identity",
+  work: "Work & projects",
+  person: "People",
+  preference: "Preferences",
+  goal: "Goals & themes",
+  fact: "Facts",
+  quirk: "Quirks",
+};
 
 interface BuildPromptOptions {
   /** Web search tool is registered for this provider. */
@@ -194,14 +224,23 @@ export function buildSystemPrompt(
     today = new Date().toISOString().slice(0, 10);
   }
 
-  // Layer 1: Identity + capabilities. The capability paragraph differs by
-  // provider — Claude (Anthropic) has web search + data tools wired in;
-  // OpenAI models route through chat.completions without tools right now,
-  // so we tell them honestly to refuse anything they can't answer from
-  // training data + provided context.
-  const identity = `You are Artifigenz — an AI assistant that knows the user personally through their connected agents. You're running on ${opts.modelFamily} (${opts.modelLabel}). If the user asks which model you are, tell them honestly. Be concise, direct, and helpful. Use markdown for formatting when appropriate.
+  // Layer 1: Identity + capabilities + formatting rules.
+  const identity = `You are Artifigenz — an AI assistant that knows the user personally through their connected agents. You're running on ${opts.modelFamily} (${opts.modelLabel}). If the user asks which model you are, tell them honestly. Be concise, direct, and helpful.
 
-Today is ${today}.`;
+Today is ${today}.
+
+## Formatting rules — follow strictly
+
+The client renders your response as GitHub-flavored Markdown. Bad formatting reads as one wall of text. Follow these rules exactly:
+
+- **Code, pseudocode, SQL, shell, JSON, config — always inside fenced blocks** with a language hint, like \`\`\`ts ... \`\`\` or \`\`\`sql ... \`\`\`. Never paste code, function signatures, or multi-line snippets inline as a paragraph. Even short one-liners go in fences if they're code.
+- **Section breaks → headings.** Use \`##\` for major sections and \`###\` for subsections. Don't render section titles as bold paragraphs.
+- **Lists**: use \`- item\` for unordered, \`1. item\` for ordered. Keep list items single-line when possible; if an item has a long explanation, break it into a paragraph below the item.
+- **Inline code** for short identifiers, file paths, env vars, etc.: \`API_KEY\`, \`apps/web/page.tsx\`.
+- **Tables** for any tabular comparison; don't try to align with spaces.
+- **Bold** sparingly, for the term being defined. **Italics** for emphasis. Don't bold whole sentences.
+- **Blank lines between blocks** — never glue a paragraph to a heading or list with no separator.
+- Prefer short paragraphs (2–4 sentences) over walls. Aim for readability over completeness.`;
 
   const capability = opts.hasWebSearch
     ? `For anything time-sensitive — current events, prices, weather, news, sports scores, recently released software — call the web_search tool rather than relying on your training data, which is months out of date.`
@@ -222,6 +261,33 @@ Today is ${today}.`;
   // all conversations. Matches ChatGPT's Custom Instructions feature.
   if (ctx.user.chatCustomInstructions?.trim()) {
     layers.push(`## Custom Instructions\n${ctx.user.chatCustomInstructions.trim()}`);
+  }
+
+  // Layer 2.6: Persistent memories (self-grown from chat + imported from
+  // ChatGPT/Claude + manually added). Grouped by type so the model can
+  // weigh them appropriately.
+  if (ctx.memories.length > 0) {
+    const grouped = new Map<string, string[]>();
+    for (const m of ctx.memories) {
+      const arr = grouped.get(m.type) ?? [];
+      arr.push(m.text);
+      grouped.set(m.type, arr);
+    }
+    const order = ["identity", "work", "person", "preference", "goal", "fact", "quirk"];
+    const sections: string[] = [];
+    for (const key of order) {
+      const items = grouped.get(key);
+      if (!items || items.length === 0) continue;
+      sections.push(`### ${MEMORY_LABELS[key] ?? key}\n${items.map((t) => `- ${t}`).join("\n")}`);
+    }
+    // Capture any unknown type buckets too.
+    for (const [key, items] of grouped) {
+      if (order.includes(key)) continue;
+      sections.push(`### ${key}\n${items.map((t) => `- ${t}`).join("\n")}`);
+    }
+    layers.push(
+      `## Memories\nWhat you know about the user, gathered over time. Treat these as durable facts; let them shape your tone and recommendations without quoting them back.\n\n${sections.join("\n\n")}`,
+    );
   }
 
   // Layer 3: Active agents + goals

@@ -1,10 +1,100 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { MODELS } from '@artifigenz/shared';
+import { useAuth } from '@clerk/nextjs';
+import { MODELS, findModel } from '@artifigenz/shared';
 import styles from './HomeChatMessages.module.css';
+
+// ── Per-word fade-in for streaming markdown ─────────────────────────
+// Splits text into word-keyed spans so React reconciliation keeps already
+// rendered words mounted (no re-animation) while only new trailing words
+// mount fresh and play the fade keyframe. Inline code / pre / images are
+// left untouched. Keys are position-based so the last partial word can grow
+// char-by-char without re-mounting.
+
+function splitTextToFadeSpans(text: string): ReactNode[] {
+  if (!text) return [];
+  const tokens = text.split(/(\s+)/);
+  const out: ReactNode[] = [];
+  let wordIdx = 0;
+  for (const tok of tokens) {
+    if (tok === '') continue;
+    if (/^\s+$/.test(tok)) {
+      out.push(tok);
+    } else {
+      out.push(
+        <span key={`w${wordIdx}`} className={styles.fadeWord}>
+          {tok}
+        </span>,
+      );
+      wordIdx++;
+    }
+  }
+  return out;
+}
+
+function fadeChildren(children: ReactNode): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child === 'string') return splitTextToFadeSpans(child);
+    if (typeof child === 'number')
+      return splitTextToFadeSpans(String(child));
+    if (isValidElement(child)) {
+      const type = child.type;
+      // Leave code (inline + fenced), images, and br alone.
+      if (type === 'code' || type === 'pre' || type === 'img' || type === 'br') {
+        return child;
+      }
+      const props = child.props as { children?: ReactNode };
+      return cloneElement(
+        child,
+        undefined,
+        fadeChildren(props.children),
+      );
+    }
+    return child;
+  });
+}
+
+const FADE_COMPONENTS = {
+  p: ({ children, ...rest }: { children?: ReactNode }) => (
+    <p {...rest}>{fadeChildren(children)}</p>
+  ),
+  li: ({ children, ...rest }: { children?: ReactNode }) => (
+    <li {...rest}>{fadeChildren(children)}</li>
+  ),
+  h1: ({ children, ...rest }: { children?: ReactNode }) => (
+    <h1 {...rest}>{fadeChildren(children)}</h1>
+  ),
+  h2: ({ children, ...rest }: { children?: ReactNode }) => (
+    <h2 {...rest}>{fadeChildren(children)}</h2>
+  ),
+  h3: ({ children, ...rest }: { children?: ReactNode }) => (
+    <h3 {...rest}>{fadeChildren(children)}</h3>
+  ),
+  h4: ({ children, ...rest }: { children?: ReactNode }) => (
+    <h4 {...rest}>{fadeChildren(children)}</h4>
+  ),
+  blockquote: ({ children, ...rest }: { children?: ReactNode }) => (
+    <blockquote {...rest}>{fadeChildren(children)}</blockquote>
+  ),
+  // Table cells too — long answers often render tables.
+  td: ({ children, ...rest }: { children?: ReactNode }) => (
+    <td {...rest}>{fadeChildren(children)}</td>
+  ),
+  th: ({ children, ...rest }: { children?: ReactNode }) => (
+    <th {...rest}>{fadeChildren(children)}</th>
+  ),
+};
 
 export interface ChatCitation {
   url: string;
@@ -34,35 +124,97 @@ export interface ChatMessage {
   citations?: ChatCitation[];
   attachments?: ChatAttachment[];
   pasteSnippets?: PasteSnippet[];
+  followUps?: string[];
+  /** Model id used to generate this turn (assistant rows only). */
+  modelId?: string;
 }
 
 interface Props {
   messages: ChatMessage[];
   streaming: boolean;
+  /** Id of the message whose typewriter buffer hasn't drained yet. While this
+   *  matches a message id, that message is considered "still revealing" — its
+   *  footer + follow-up pills stay hidden even after the server's `done`
+   *  event arrives, so they don't appear while text is still being typed. */
+  drainingId?: string | null;
   toolStatus: string | null;
   onEdit: (messageId: string, newText: string) => void;
   onRegenerate: (messageId: string, overrideModelId?: string) => void;
+  onFollowUp?: (text: string) => void;
 }
 
 export default function HomeChatMessages({
   messages,
   streaming,
+  drainingId,
   toolStatus,
   onEdit,
   onRegenerate,
+  onFollowUp,
 }: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // "Stick to bottom" — only auto-scroll while the user is pinned to the
+  // bottom. The moment they scroll up we stop following until they manually
+  // return to the bottom. This is what makes Copilot/Cursor feel calm during
+  // long streams: the viewport never fights the reader.
+  const followingRef = useRef(true);
+  const lastScrollYRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+
   useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-    const distanceFromBottom =
-      document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
-    if (distanceFromBottom < 240) {
+    const NEAR_BOTTOM_PX = 80;
+
+    const onScroll = () => {
+      const y = window.scrollY;
+      const distanceFromBottom =
+        document.documentElement.scrollHeight - (y + window.innerHeight);
+      const scrolledUp = y < lastScrollYRef.current - 2;
+      lastScrollYRef.current = y;
+
+      if (scrolledUp && distanceFromBottom > NEAR_BOTTOM_PX) {
+        followingRef.current = false;
+      } else if (distanceFromBottom <= NEAR_BOTTOM_PX) {
+        followingRef.current = true;
+      }
+    };
+
+    lastScrollYRef.current = window.scrollY;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('wheel', onScroll, { passive: true });
+    window.addEventListener('touchmove', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('wheel', onScroll);
+      window.removeEventListener('touchmove', onScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!followingRef.current) return;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const sentinel = sentinelRef.current;
+      if (!sentinel || !followingRef.current) return;
       sentinel.scrollIntoView({ behavior: 'auto', block: 'end' });
-    }
+      lastScrollYRef.current = window.scrollY;
+    });
   }, [messages, toolStatus]);
+
+  // When a brand-new turn begins (user just sent), force re-engage follow so
+  // the next reply scrolls into view even if they had scrolled up before.
+  const lastMsgIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const lastId = messages[messages.length - 1]?.id ?? null;
+    if (lastId !== lastMsgIdRef.current) {
+      const wasUser =
+        messages[messages.length - 1]?.role === 'user';
+      if (wasUser) followingRef.current = true;
+      lastMsgIdRef.current = lastId;
+    }
+  }, [messages]);
 
   const lastMessage = messages[messages.length - 1];
   const lastIsEmptyAssistant =
@@ -74,13 +226,21 @@ export default function HomeChatMessages({
     <section className={styles.section}>
       <div className={styles.list}>
         {messages.map((msg, idx) => {
-          if (msg.role === 'assistant' && msg.content === '' && streaming) {
+          if (
+            msg.role === 'assistant' &&
+            msg.content === '' &&
+            (streaming || msg.id === drainingId)
+          ) {
             return null;
           }
           const isLast = idx === messages.length - 1;
           const isLastAssistant =
             msg.role === 'assistant' && idx === messages.length - 1;
-          const isBeingStreamed = streaming && isLastAssistant;
+          // "Being streamed" now means: this specific message is still
+          // revealing through the typewriter, OR the network stream is in
+          // flight for it. Either condition keeps footer/pills hidden.
+          const isBeingStreamed =
+            (streaming && isLastAssistant) || msg.id === drainingId;
 
           // User message — inline edit mode
           if (msg.role === 'user' && editingId === msg.id) {
@@ -105,8 +265,15 @@ export default function HomeChatMessages({
               <div className={styles.bubbleWrap}>
                 <div className={styles.bubble}>
                   {msg.role === 'assistant' ? (
-                    <div className={styles.md}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <div
+                      className={`${styles.md}${
+                        isBeingStreamed ? ' ' + styles.mdStreaming : ''
+                      }`}
+                    >
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={isBeingStreamed ? FADE_COMPONENTS : undefined}
+                      >
                         {msg.content}
                       </ReactMarkdown>
                       {isBeingStreamed && (
@@ -136,6 +303,7 @@ export default function HomeChatMessages({
                   <ActionBar
                     role={msg.role}
                     content={msg.content}
+                    modelId={msg.modelId}
                     canEdit={msg.role === 'user' && Boolean(msg.serverId)}
                     canRegenerate={
                       // Any past completed assistant message with a server-side
@@ -144,12 +312,26 @@ export default function HomeChatMessages({
                       msg.role === 'assistant' && Boolean(msg.serverId)
                     }
                     alwaysVisible={isLast && msg.role === 'assistant'}
+                    // Fade-in animation only for the just-completed turn (last
+                    // assistant message). Older messages re-render on scroll
+                    // and we don't want to replay the animation on them.
+                    appear={isLast && msg.role === 'assistant'}
                     onCopy={() => copyToClipboard(msg.content)}
                     onEdit={() => setEditingId(msg.id)}
                     onRegenerate={() => onRegenerate(msg.id)}
                     onRetryWithModel={(modelId) => onRegenerate(msg.id, modelId)}
                   />
                 )}
+                {!isBeingStreamed &&
+                  msg.role === 'assistant' &&
+                  msg.followUps &&
+                  msg.followUps.length > 0 && (
+                    <FollowUps
+                      items={msg.followUps}
+                      onPick={(t) => onFollowUp?.(t)}
+                      appear={isLast}
+                    />
+                  )}
               </div>
             </div>
           );
@@ -172,9 +354,11 @@ export default function HomeChatMessages({
 
 function ActionBar({
   role,
+  modelId,
   canEdit,
   canRegenerate,
   alwaysVisible,
+  appear,
   onCopy,
   onEdit,
   onRegenerate,
@@ -182,9 +366,11 @@ function ActionBar({
 }: {
   role: 'user' | 'assistant';
   content: string;
+  modelId?: string;
   canEdit: boolean;
   canRegenerate: boolean;
   alwaysVisible: boolean;
+  appear?: boolean;
   onCopy: () => void;
   onEdit: () => void;
   onRegenerate: () => void;
@@ -211,51 +397,52 @@ function ActionBar({
     setTimeout(() => setCopied(false), 1200);
   };
 
+  const model = modelId ? findModel(modelId) : null;
+
   return (
     <div
-      className={`${styles.actions} ${alwaysVisible ? styles.actionsVisible : ''}`}
+      className={`${styles.actions} ${alwaysVisible ? styles.actionsVisible : ''} ${appear ? styles.actionsAppear : ''}`}
     >
-      <IconButton
+      <ActionButton
         label={copied ? 'Copied' : 'Copy'}
         onClick={handleCopy}
         active={copied}
-      >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </IconButton>
+        icon={copied ? <CheckIcon /> : <CopyIcon />}
+      />
       {role === 'user' && canEdit && (
-        <IconButton label="Edit" onClick={onEdit}>
-          <PencilIcon />
-        </IconButton>
+        <ActionButton label="Edit" onClick={onEdit} icon={<PencilIcon />} />
       )}
       {role === 'assistant' && (
-        <div className={styles.retryGroup} ref={retryRef}>
-          <IconButton
-            label="Regenerate"
-            onClick={onRegenerate}
-            disabled={!canRegenerate}
-          >
-            <RefreshIcon />
-          </IconButton>
+        <ActionButton
+          label="Retry"
+          onClick={onRegenerate}
+          disabled={!canRegenerate}
+          icon={<RefreshIcon />}
+        />
+      )}
+      {role === 'assistant' && model && (
+        <div className={styles.actionMetaWrap} ref={retryRef}>
           <button
             type="button"
-            className={`${styles.iconBtn} ${styles.retryChevron}`}
-            aria-label="Retry with a different model"
-            title="Try a different model"
+            className={styles.actionMeta}
+            onClick={() => canRegenerate && setRetryOpen((v) => !v)}
             disabled={!canRegenerate}
-            onClick={() => setRetryOpen((v) => !v)}
+            title="Retry with a different model"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <span className={styles.actionMetaDot} aria-hidden />
+            <span>{model.label}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           {retryOpen && canRegenerate && (
             <div className={styles.retryMenu}>
-              <div className={styles.retryMenuLabel}>Try with</div>
+              <div className={styles.retryMenuLabel}>Retry with</div>
               {MODELS.map((m) => (
                 <button
                   key={m.id}
                   type="button"
-                  className={styles.retryMenuItem}
+                  className={`${styles.retryMenuItem} ${m.id === model.id ? styles.retryMenuItemActive : ''}`}
                   onClick={() => {
                     setRetryOpen(false);
                     onRetryWithModel(m.id);
@@ -263,6 +450,11 @@ function ActionBar({
                 >
                   <span className={styles.retryMenuFamily}>{m.family}</span>
                   <span className={styles.retryMenuModel}>{m.label}</span>
+                  {m.id === model.id && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
                 </button>
               ))}
             </div>
@@ -273,15 +465,15 @@ function ActionBar({
   );
 }
 
-function IconButton({
-  children,
+function ActionButton({
   label,
+  icon,
   onClick,
   disabled,
   active,
 }: {
-  children: React.ReactNode;
   label: string;
+  icon: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
@@ -289,13 +481,14 @@ function IconButton({
   return (
     <button
       type="button"
-      className={`${styles.iconBtn} ${active ? styles.iconBtnActive : ''}`}
+      className={`${styles.actionBtn} ${active ? styles.actionBtnActive : ''}`}
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
       title={label}
     >
-      {children}
+      {icon}
+      <span>{label}</span>
     </button>
   );
 }
@@ -376,39 +569,136 @@ function AttachmentList({ attachments }: { attachments: ChatAttachment[] }) {
   return (
     <div className={styles.bubbleAttachments}>
       {attachments.map((a) => {
-        const isImage = a.mimeType.startsWith('image/');
         const url = `${API_URL}/api/me/chat/attachments/${a.fileId}`;
-        if (isImage) {
+        if (a.mimeType.startsWith('image/')) {
           return (
-            <a
+            <AuthedImage
               key={a.fileId}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
+              fetchUrl={url}
+              alt={a.filename}
               className={styles.bubbleImage}
-            >
-              <img src={url} alt={a.filename} />
-            </a>
+            />
           );
         }
         return (
-          <a
+          <AuthedFileLink
             key={a.fileId}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.bubbleFile}
-            title={a.filename}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            <span>{a.filename}</span>
-          </a>
+            fetchUrl={url}
+            filename={a.filename}
+            mimeType={a.mimeType}
+          />
         );
       })}
     </div>
+  );
+}
+
+/** Loads an image with the Clerk JWT, exposes it as a blob URL so <img>
+ *  doesn't fire an un-authed request. */
+function AuthedImage({
+  fetchUrl,
+  alt,
+  className,
+}: {
+  fetchUrl: string;
+  alt: string;
+  className?: string;
+}) {
+  const { getToken } = useAuth();
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token) throw new Error('no auth');
+        const res = await fetch(fetchUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setBlobUrl(createdUrl);
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [fetchUrl, getToken]);
+
+  if (error) {
+    return (
+      <div className={`${className ?? ''} ${styles.bubbleImageError}`}>
+        <span>Image failed to load</span>
+      </div>
+    );
+  }
+  if (!blobUrl) {
+    return (
+      <div className={`${className ?? ''} ${styles.bubbleImageLoading}`} aria-busy />
+    );
+  }
+  return (
+    <a
+      href={blobUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+    >
+      <img src={blobUrl} alt={alt} />
+    </a>
+  );
+}
+
+/** PDF / other file — fetches via auth and opens via blob URL on click. */
+function AuthedFileLink({
+  fetchUrl,
+  filename,
+  mimeType,
+}: {
+  fetchUrl: string;
+  filename: string;
+  mimeType: string;
+}) {
+  const { getToken } = useAuth();
+  const open = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch(fetchUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      // Revoke shortly after — give the new tab time to load.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <button
+      type="button"
+      className={styles.bubbleFile}
+      onClick={open}
+      title={filename}
+      aria-label={mimeType === 'application/pdf' ? 'Open PDF' : 'Open file'}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+      <span>{filename}</span>
+    </button>
   );
 }
 
@@ -501,20 +791,78 @@ function Citations({ citations }: { citations: ChatCitation[] }) {
     <div className={styles.citations}>
       <div className={styles.citationsLabel}>Sources</div>
       <div className={styles.citationsList}>
-        {citations.map((c, i) => (
-          <a
-            key={`${c.url}-${i}`}
-            href={c.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.citationChip}
-            title={c.title}
-          >
-            <span className={styles.citationIndex}>{i + 1}</span>
-            <span className={styles.citationHost}>{hostnameOf(c.url)}</span>
-          </a>
-        ))}
+        {citations.map((c, i) => {
+          const host = hostnameOf(c.url);
+          const title = c.title && c.title !== c.url ? c.title : host;
+          return (
+            <a
+              key={`${c.url}-${i}`}
+              href={c.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.citationChip}
+              title={c.title || c.url}
+            >
+              <span className={styles.citationIndex}>{i + 1}</span>
+              <span className={styles.citationBody}>
+                <span className={styles.citationTitle}>{title}</span>
+                {title !== host && (
+                  <span className={styles.citationHost}>{host}</span>
+                )}
+              </span>
+            </a>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+// ── Follow-up chips ──────────────────────────────────────────────
+
+function FollowUps({
+  items,
+  onPick,
+  appear,
+}: {
+  items: string[];
+  onPick: (text: string) => void;
+  appear?: boolean;
+}) {
+  return (
+    <div
+      className={`${styles.followUps} ${appear ? styles.followUpsAppear : ''}`}
+    >
+      {items.map((t, i) => (
+        <button
+          key={`${i}-${t}`}
+          type="button"
+          className={`${styles.followUpChip} ${appear ? styles.followUpChipAppear : ''}`}
+          // Stagger each chip a touch after the group fades in.
+          style={
+            appear
+              ? { animationDelay: `${0.55 + i * 0.08}s` }
+              : undefined
+          }
+          onClick={() => onPick(t)}
+        >
+          <span>{t}</span>
+          <svg
+            className={styles.followUpChev}
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      ))}
     </div>
   );
 }
