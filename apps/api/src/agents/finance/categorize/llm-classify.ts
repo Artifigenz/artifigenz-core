@@ -99,6 +99,19 @@ Categories (pick exactly one):
 When in doubt between income vs internal_transfer for an inflow, prefer
 internal_transfer unless there's a clear employer/business pattern.
 
+Web search policy:
+- You have a web_search tool. Use it ONLY when the merchant string is opaque and
+  you genuinely cannot infer the category from name + sign + cadence + accounts.
+  Examples of when to search: payment-processor passthroughs like "FBPAY*XYZ",
+  "WL*ZTKXGB", "SQ *RANDOM", "Stripe SOMETHING", unfamiliar abbreviations, or
+  a merchant whose business model you can't identify.
+- Do NOT search for obvious merchants. "Netflix", "Uber", "Starbucks",
+  "TD Canada Trust", "RBC" — you already know these.
+- When searching, query just the merchant name or normalized key. Do NOT include
+  transaction amounts, dates, account numbers, or any user-specific details in
+  the search query.
+- You have at most 2 searches per cluster. Budget accordingly.
+
 Cadence options: monthly, weekly, biweekly, quarterly, annual, irregular, one_time
 
 monthly_amount estimation:
@@ -227,24 +240,42 @@ export async function classifyCluster(
   ].join("\n");
 
   const resp = await claude.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 600,
+    model: "claude-sonnet-4-6",
+    max_tokens: 1500,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userMessage }],
+    // Server-executed web search. The model invokes it autonomously for
+    // opaque merchant strings (payment-processor codes, unfamiliar
+    // abbreviations) — see the "Web search policy" section of the system
+    // prompt. max_uses caps how often we'll let it call out per cluster.
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 2,
+      },
+    ],
   });
 
-  const textBlock = resp.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
+  // With web_search enabled, the response may contain multiple text blocks
+  // (the model can interleave reasoning, search invocations, and the final
+  // JSON). Concat them and let extractJson find the JSON object.
+  const textContent = resp.content
+    .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+
+  if (!textContent.trim()) {
     throw new Error(`Classifier returned no text for ${cluster.merchantNormalized}`);
   }
 
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(extractJson(textBlock.text));
+    parsed = JSON.parse(extractJson(textContent));
   } catch (err) {
     throw new Error(
       `Classifier returned invalid JSON for ${cluster.merchantNormalized}: ${err}\n` +
-        `Raw: ${textBlock.text.slice(0, 300)}`,
+        `Raw: ${textContent.slice(0, 300)}`,
     );
   }
 

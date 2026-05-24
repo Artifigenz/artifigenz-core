@@ -341,6 +341,64 @@ GROUP BY category, system_category ORDER BY 1, 2;
 
 ---
 
+## 2026-05-23 · Stage 0.6 — Sonnet 4.6 + web search for the classifier
+
+**Switched the model.** Was `claude-haiku-4-5-20251001`; now `claude-sonnet-4-6`
+with the server-executed `web_search_20250305` tool enabled. Two-search budget
+per cluster (`max_uses: 2`).
+
+### Why
+
+Haiku was the original pick because categorization is a constrained task
+(pick one of 13 labels + boolean + cadence + number) and Haiku is fast and
+cheap. But categorization is foundational — every brief, every chat answer,
+every insight reads from it. Wrong clusters cascade. The cost difference at
+~200 clusters/user is small (~$0.30 → ~$0.90 per pass), and idempotent
+caching means we don't re-classify until new txns arrive for a merchant.
+
+Web search is added for the long tail of opaque merchant strings —
+payment-processor passthroughs (`FBPAY*XYZ`, `WL*ZTKXGB`, `SQ *RANDOM`,
+`Stripe SOMETHING`), unfamiliar abbreviations, etc. The prompt explicitly
+restricts it to "merchant strings you can't identify" and forbids sending
+amounts, dates, or account numbers in the query — only the merchant name
+or normalized key goes out.
+
+### Web search privacy model (clarification on earlier note)
+
+Server-executed web_search means Anthropic forwards just the query string
+to their search backend (Brave). The full transaction context never leaves.
+For our queries (merchant names only), that string would appear on
+hundreds of other people's statements too — there's no way to tie a
+search query back to a specific user.
+
+### Other code changes
+
+- `max_tokens` bumped 600 → 1500 to accommodate web-search interleaving.
+- Response parser now concats all `text` blocks (web_search responses can
+  produce multiple) before running `extractJson`.
+
+### Why not OpenAI
+
+GPT-4o + their search would be comparable in accuracy for this task. We
+defaulted to Anthropic because the rest of the codebase (brief generator,
+statement parser, validator) is on the Anthropic SDK and we'd be wiring a
+second client for one feature. Worth revisiting later if we add a
+model-routing layer.
+
+### Cost / latency notes
+
+Sonnet 4.6 input: ~$3/MTok, output: ~$15/MTok. Per cluster (~500 in, ~250
+out): ~$0.005/cluster. 200 clusters/user/pass: ~$1. Web search adds
+~$0.01/query × maybe 30 queries/pass = ~$0.30. Total: ~$1.30/pass.
+Categorization is idempotent so this is a one-shot cost per user, not
+recurring.
+
+Latency: Sonnet is fast (~1–2s per call without search, ~3–6s with).
+Concurrency is set to 8 (`CONCURRENCY = 8` in `categorize/index.ts`), so
+200 clusters takes ~1–3 min wall time.
+
+---
+
 ## How to read this file going forward
 
 Every time we ship a new stage of the categorization engine, append
