@@ -28,6 +28,7 @@ interface ConnectionStatus {
     id: string;
     filename: string;
     parseState: 'pending' | 'validated' | 'parsing' | 'complete' | 'failed';
+    parseError: string | null;
     institutionName: string | null;
     accountLast4: string | null;
     statementPeriodStart: string | null;
@@ -213,6 +214,12 @@ export default function FinanceLoadingPage() {
 
   const needsAuth = connections.filter((c) => c.ingestionState === 'needs_auth');
   const failed = connections.filter((c) => c.ingestionState === 'failed');
+  const failedFiles = connections.flatMap((c) =>
+    (c.files ?? []).filter((f) => f.parseState === 'failed'),
+  );
+  const connectionErrors = connections
+    .filter((c) => c.lastSyncError)
+    .map((c) => ({ name: c.displayName ?? c.dataSourceTypeId, error: c.lastSyncError! }));
 
   // Step 1 is "Connected your accounts" — true once we have any connection
   // row. Step 2 is "Reading your transaction history" — active while any
@@ -350,6 +357,27 @@ export default function FinanceLoadingPage() {
               {failed.map((c) => c.displayName ?? c.dataSourceTypeId).join(', ')}
             </strong>{' '}
             could not be ingested. Open Devtools → Re-sync banks to retry.
+          </div>
+        )}
+
+        {connectionErrors.length > 0 && !failed.length && (
+          <div className={`${styles.banner} ${styles.bannerError}`}>
+            {connectionErrors.map((e) => (
+              <div key={e.name} style={{ marginBottom: 4 }}>
+                <strong>{e.name}:</strong> {e.error}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {failedFiles.length > 0 && (
+          <div className={`${styles.banner} ${styles.bannerError}`}>
+            {failedFiles.map((f) => (
+              <div key={f.id} style={{ marginBottom: 4 }}>
+                <strong>{f.filename}:</strong>{' '}
+                {f.parseError ?? 'Parse failed (no error message)'}
+              </div>
+            ))}
           </div>
         )}
 

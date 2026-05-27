@@ -315,6 +315,7 @@ export class ApiClient {
           id: string;
           filename: string;
           parseState: 'pending' | 'validated' | 'parsing' | 'complete' | 'failed';
+          parseError: string | null;
           institutionName: string | null;
           accountLast4: string | null;
           statementPeriodStart: string | null;
