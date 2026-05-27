@@ -32,6 +32,7 @@ import { createPlaidRoutes } from "./routes/plaid.routes";
 import briefRoutes from "./routes/brief.routes";
 import financeRoutes from "./routes/finance.routes";
 import memoriesRoutes from "./routes/memories.routes";
+import ttsRoutes from "./routes/tts.routes";
 
 // ─── Bootstrap ──────────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ app.route("/api/me/chat", chatRoutes);
 app.route("/api/upload", uploadRoutes);
 app.route("/api/me", chatRoutes); // exposes /conversations under /api/me
 app.route("/api/me/memories", memoriesRoutes);
+app.route("/api/me/tts", ttsRoutes);
 app.route("/api/webhooks", webhookRoutes);
 app.route("/api/plaid", createPlaidRoutes());
 app.route("/api/brief", briefRoutes);

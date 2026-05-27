@@ -23,6 +23,7 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
   const [results, setResults] = useState<Record<string, ActionResult>>({});
   const [debug, setDebug] = useState<DebugInfo | null>(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [confirmWipeChats, setConfirmWipeChats] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -30,6 +31,7 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
       setResults({});
       setDebug(null);
       setConfirmWipe(false);
+      setConfirmWipeChats(false);
       return;
     }
     api.getAgentStatus()
@@ -201,6 +203,82 @@ export default function DevtoolsModal({ open, onClose }: DevtoolsModalProps) {
           paddingTop: '14px',
           borderTop: '1px solid var(--border-light)',
         }}>
+          {results['wipe-chats']?.ok && results['wipe-chats'].text ? (
+            <p style={{
+              margin: '0 0 12px 0',
+              fontSize: '0.78rem',
+              color: 'var(--text-mid)',
+            }}>
+              {results['wipe-chats'].text} · refresh history to confirm
+            </p>
+          ) : confirmWipeChats ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+              <p style={{
+                margin: 0,
+                fontSize: '0.76rem',
+                color: 'var(--text-mid)',
+                lineHeight: 1.5,
+              }}>
+                Deletes every conversation and message for your account.
+                Memories and connected accounts are kept. Cannot be undone.
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  disabled={busy === 'wipe-chats'}
+                  onClick={() =>
+                    run('wipe-chats', async () => {
+                      const r = await api.wipeAllConversations();
+                      setConfirmWipeChats(false);
+                      return `Removed ${r.removed} conversation${r.removed === 1 ? '' : 's'}`;
+                    })
+                  }
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#dc2626',
+                    color: 'white',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: busy === 'wipe-chats' ? 'wait' : 'pointer',
+                    opacity: busy === 'wipe-chats' ? 0.7 : 1,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {busy === 'wipe-chats' ? 'Wiping…' : 'Yes, wipe chat history'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmWipeChats(false)}
+                  disabled={busy === 'wipe-chats'}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-light)',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ActionRow
+              label="Wipe chat history"
+              danger
+              busy={false}
+              result={results['wipe-chats']?.ok === false ? results['wipe-chats'] : undefined}
+              onRun={() => setConfirmWipeChats(true)}
+              buttonLabel="Wipe"
+            />
+          )}
+
           {results.wipe?.ok && results.wipe.text ? (
             <p style={{
               margin: 0,

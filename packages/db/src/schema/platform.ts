@@ -399,6 +399,7 @@ export const conversations = pgTable(
     ),
     title: varchar("title", { length: 255 }),
     messageCount: integer("message_count").default(0),
+    pinned: boolean("pinned").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },

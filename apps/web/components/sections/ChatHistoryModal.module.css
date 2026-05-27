@@ -1,124 +1,531 @@
+/* ── History modal (v3, editorial) ───────────────────────────────
+   All visuals route through `--v3-*` tokens scoped to the modal.
+   Default = Aura light; theme overrides below switch the palette for
+   Aura dark, Terminal light, and Terminal dark. */
+.scope {
+  --v3-paper:           #ffffff;
+  --v3-paper-hover:     rgba(30, 23, 34, 0.04);
+  --v3-text:            #111111;
+  --v3-text-mid:        #6e6a78;
+  --v3-text-dim:        #a09aa8;
+  --v3-hairline:        rgba(20, 14, 30, 0.07);
+  --v3-hairline-strong: rgba(20, 14, 30, 0.14);
+  --v3-accent:          #111111;
+  --v3-accent-text:     #ffffff;
+  --v3-overlay:         rgba(28, 24, 48, 0.22);
+  --v3-radius:          28px;
+  --v3-radius-inner:    12px;
+  --v3-radius-sm:       8px;
+  --v3-radius-pill:     9999px;
+  --v3-radius-kbd:      4px;
+  --v3-font:            'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --v3-danger:          #b1271b;
+  --v3-danger-bg:       rgba(177, 39, 27, 0.07);
+  --v3-shadow:
+                        0 40px 120px rgba(15, 10, 30, 0.16),
+                        0 4px 18px rgba(20, 14, 50, 0.04),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --v3-menu-shadow:     0 12px 40px rgba(20, 14, 50, 0.10);
+  --v3-iconbtn-hover:   rgba(40, 30, 55, 0.07);
+  --v3-tint-1:          rgba(140, 110, 240, 0.05);
+  --v3-tint-2:          rgba(255, 158, 120, 0.03);
+  --v3-ease:            cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Aura dark ─────────────────────────────────────────────── */
+:global([data-theme="aura"].dark) .scope {
+  --v3-paper:           #141414;
+  --v3-paper-hover:     rgba(255, 255, 255, 0.04);
+  --v3-text:            #f0f0f0;
+  --v3-text-mid:        #a0a0a0;
+  --v3-text-dim:        #666666;
+  --v3-hairline:        rgba(255, 255, 255, 0.08);
+  --v3-hairline-strong: rgba(255, 255, 255, 0.20);
+  --v3-accent:          #f0f0f0;
+  --v3-accent-text:     #0a0a0a;
+  --v3-overlay:         rgba(0, 0, 0, 0.55);
+  --v3-danger:          #e35d4f;
+  --v3-danger-bg:       rgba(227, 93, 79, 0.12);
+  --v3-shadow:
+                        0 40px 120px rgba(0, 0, 0, 0.55),
+                        0 4px 18px rgba(0, 0, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --v3-menu-shadow:     0 12px 40px rgba(0, 0, 0, 0.6);
+  --v3-iconbtn-hover:   rgba(255, 255, 255, 0.07);
+  --v3-tint-1:          rgba(140, 110, 240, 0.10);
+  --v3-tint-2:          rgba(255, 158, 120, 0.05);
+}
+
+/* ── Terminal light — square, hard borders, mono ──────────── */
+:global([data-theme="terminal"]) .scope,
+:global(html:not([data-theme])) .scope {
+  --v3-paper:           #ffffff;
+  --v3-paper-hover:     #f6f6f6;
+  --v3-text:            #000000;
+  --v3-text-mid:        #444444;
+  --v3-text-dim:        #999999;
+  --v3-hairline:        #ececec;
+  --v3-hairline-strong: #000000;
+  --v3-accent:          #000000;
+  --v3-accent-text:     #ffffff;
+  --v3-overlay:         rgba(0, 0, 0, 0.25);
+  --v3-radius:          0;
+  --v3-radius-inner:    0;
+  --v3-radius-sm:       0;
+  --v3-radius-pill:     0;
+  --v3-radius-kbd:      0;
+  --v3-font:            'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --v3-danger:          #b1271b;
+  --v3-danger-bg:       rgba(177, 39, 27, 0.08);
+  --v3-shadow:          0 12px 40px rgba(0, 0, 0, 0.10);
+  --v3-menu-shadow:     0 8px 30px rgba(0, 0, 0, 0.12);
+  --v3-iconbtn-hover:   #f0f0f0;
+  --v3-tint-1:          transparent;
+  --v3-tint-2:          transparent;
+}
+
+/* ── Terminal dark ─────────────────────────────────────────── */
+:global([data-theme="terminal"].dark) .scope,
+:global(html.dark:not([data-theme])) .scope {
+  --v3-paper:           #000000;
+  --v3-paper-hover:     #111111;
+  --v3-text:            #ffffff;
+  --v3-text-mid:        #bbbbbb;
+  --v3-text-dim:        #666666;
+  --v3-hairline:        #222222;
+  --v3-hairline-strong: #ffffff;
+  --v3-accent:          #ffffff;
+  --v3-accent-text:     #000000;
+  --v3-overlay:         rgba(0, 0, 0, 0.65);
+  --v3-danger:          #e35d4f;
+  --v3-danger-bg:       rgba(227, 93, 79, 0.12);
+  --v3-shadow:          0 12px 40px rgba(0, 0, 0, 0.4);
+  --v3-menu-shadow:     0 8px 30px rgba(0, 0, 0, 0.5);
+  --v3-iconbtn-hover:   #1a1a1a;
+}
+
+/* ── Overlay ────────────────────────────────────────────────── */
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(10, 10, 10, 0.45);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 200;
+  background: var(--v3-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  animation: fadeIn 0.32s var(--v3-ease) both;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  animation: fadeIn 0.2s ease-out;
+  padding: 32px;
 }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
+/* ── Modal ──────────────────────────────────────────────────── */
 .modal {
-  width: 100%;
-  max-width: 540px;
-  max-height: 80vh;
-  background: var(--bg);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  position: relative;
+  width: min(740px, calc(100vw - 64px));
+  height: min(820px, calc(100vh - 64px));
+  background: var(--v3-paper);
+  border-radius: var(--v3-radius);
+  box-shadow: var(--v3-shadow);
+  z-index: 1001;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: rise 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--v3-font);
+  color: var(--v3-text);
+  animation: pop 0.6s var(--v3-ease) both;
+}
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.985) translateY(6px) }
+  to   { opacity: 1; transform: scale(1) translateY(0) }
 }
 
-@keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
+/* ── Header — editorial confidence ──────────────────────────── */
 .header {
+  padding: 48px 40px 20px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 18px 20px 12px;
-  border-bottom: 1px solid var(--border-light);
+  gap: 20px;
 }
 
 .title {
-  font-size: 1rem;
-  font-weight: 600;
   margin: 0;
-  color: var(--text);
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--v3-text);
+  animation: headlineIn 0.7s var(--v3-ease) both;
+}
+@keyframes headlineIn {
+  from { opacity: 0; transform: translateY(8px); letter-spacing: -0.02em; }
+  to   { opacity: 1; transform: translateY(0); letter-spacing: -0.035em; }
 }
 
 .close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--v3-radius-pill);
   background: transparent;
-  color: var(--text-dim);
+  border: 0;
+  color: var(--v3-text-mid);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  display: grid;
+  place-items: center;
+  transition: all 0.2s var(--v3-ease);
 }
+.close:hover { background: var(--v3-iconbtn-hover); color: var(--v3-text); }
 
-.close:hover {
-  background: var(--card-hover);
-  color: var(--text);
+/* ── Search ─────────────────────────────────────────────────── */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 40px 28px;
 }
+.searchIcon { color: var(--v3-text-dim); flex: 0 0 auto; }
+.searchInput {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--v3-text);
+  padding: 8px 0;
+  line-height: 1.4;
+}
+.searchInput::placeholder { color: var(--v3-text-dim); font-weight: 400; }
 
+/* ── List ───────────────────────────────────────────────────── */
 .list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  /* No padding-top: sticky group headers must sit flush with .list's
+     top edge or scrolled rows can paint through the gap above. */
+  padding: 0 24px 22px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--v3-hairline-strong) transparent;
+  border-top: 1px solid var(--v3-hairline);
+  isolation: isolate;
+}
+.list::-webkit-scrollbar { width: 8px; }
+.list::-webkit-scrollbar-thumb {
+  background: var(--v3-hairline-strong);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.list::-webkit-scrollbar-thumb:hover {
+  background: var(--v3-text-dim);
+  background-clip: padding-box;
 }
 
-.item {
+/* ── Group — chapter break ──────────────────────────────────── */
+/* Inter-group spacing lives OUTSIDE the .group box (margin) so the
+   sticky header has no transparent strip above it inside its container
+   for rows to bleed into. */
+.group + .group { margin-top: 20px; }
+
+.groupHead {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 14px;
+  background: var(--v3-paper);
+  z-index: 5;
+  /* Defensive shield: solid box-shadow extending 24px above the header so
+     no row content can visually leak into the seam between search and list,
+     even during sub-pixel scroll transitions. */
+  box-shadow: 0 -24px 0 var(--v3-paper);
+}
+.groupLabel {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--v3-text);
+}
+.groupCount {
+  /* Always mono — number reads as a count, even when the modal font is Inter. */
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--v3-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+/* Chapter rule — runs from after the count all the way right */
+.groupRule {
+  height: 1px;
+  background: var(--v3-hairline-strong);
+}
+
+/* ── Row ────────────────────────────────────────────────────── */
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 14px;
+  border-radius: var(--v3-radius-inner);
+  transition: background 0.2s var(--v3-ease), transform 0.2s var(--v3-ease);
+  cursor: pointer;
+  position: relative;
+  outline: none;
+  animation: rowIn 0.6s var(--v3-ease) both;
+  animation-delay: calc(var(--i, 0) * 28ms + 180ms);
+}
+@keyframes rowIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Left-edge tick on hover — a thin line that ticks in */
+.row::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 2px;
+  height: 0;
+  background: var(--v3-accent);
+  transform: translateY(-50%);
+  transition: height 0.22s var(--v3-ease);
+}
+.row:hover,
+.row:focus-visible { background: var(--v3-paper-hover); }
+.row:hover::before,
+.row:focus-visible::before { height: 24px; }
+.row:hover .rowTitle,
+.row:focus-visible .rowTitle { color: var(--v3-accent); }
+.rowActive { background: var(--v3-paper-hover); }
+.rowActive::before { height: 24px; }
+.rowBusy { opacity: 0.5; pointer-events: none; }
+/* When the popover menu is open, lift the row above the sticky group
+   header. The row's animation creates a stacking context (any non-none
+   transform does), trapping the menu's z-index inside the row — so we
+   raise the row itself instead. Reverts to default z-order on close. */
+.rowMenuOpen { z-index: 20; }
+
+.rowBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rowTitleLine {
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  color: var(--v3-text);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background 0.15s ease;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.item:hover {
-  background: var(--card-hover);
-}
-
-.itemActive {
-  background: var(--card-hover);
-}
-
-.itemTitle {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text);
+.rowTitle {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  transition: color 0.2s var(--v3-ease);
+}
+
+.pinMark {
+  color: var(--v3-accent);
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.renameInput {
   flex: 1;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--v3-text);
+  background: var(--v3-paper);
+  border: 1px solid var(--v3-hairline-strong);
+  border-radius: var(--v3-radius-sm);
+  padding: 4px 8px;
+  outline: 0;
+  min-width: 0;
+  letter-spacing: -0.005em;
 }
 
-.itemMeta {
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  flex-shrink: 0;
+.rowMeta {
+  font-size: 12.5px;
+  color: var(--v3-text-dim);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 400;
+  flex-wrap: wrap;
+}
+.metaDot {
+  width: 2px;
+  height: 2px;
+  background: var(--v3-text-dim);
+  border-radius: 50%;
+  opacity: 0.7;
+}
+.metaAttach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
+/* ── Hover-revealed actions ─────────────────────────────────── */
+/* No `transform` here — transforms create a stacking context that traps
+   the popover menu's z-index inside .actions, causing it to render
+   *below* the sticky group header. Slide-in is achieved via margin. */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  margin-left: 6px;
+  transition: opacity 0.2s var(--v3-ease), margin-left 0.2s var(--v3-ease);
+  pointer-events: none;
+}
+.row:hover .actions,
+.row:focus-within .actions,
+.actionsForce {
+  opacity: 1;
+  margin-left: 0;
+  pointer-events: auto;
+}
+
+.iconBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--v3-radius-sm);
+  border: 0;
+  background: transparent;
+  color: var(--v3-text-mid);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.18s var(--v3-ease);
+}
+.iconBtn:hover:not(:disabled) { background: var(--v3-iconbtn-hover); color: var(--v3-text); }
+.iconBtn.iconBtnOn { color: var(--v3-accent); }
+
+.continueBtn {
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 6px 14px;
+  border-radius: var(--v3-radius-pill);
+  background: var(--v3-accent);
+  color: var(--v3-accent-text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 0;
+  cursor: pointer;
+  transition: all 0.18s var(--v3-ease);
+}
+.continueBtn:hover { filter: brightness(0.92); }
+.continueBtn svg { transition: transform 0.2s var(--v3-ease); }
+.continueBtn:hover svg { transform: translateX(2px); }
+
+/* ── Popover menu ───────────────────────────────────────────── */
+.menuWrap { position: relative; display: inline-flex; }
+.menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  min-width: 170px;
+  background: var(--v3-paper);
+  border: 1px solid var(--v3-hairline);
+  border-radius: var(--v3-radius-inner);
+  box-shadow: var(--v3-menu-shadow);
+  padding: 6px;
+  z-index: 50;
+  animation: menuIn 0.18s var(--v3-ease) both;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(-4px) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--v3-radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--v3-text);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+.menuItem:hover { background: var(--v3-paper-hover); }
+.menuItem svg { color: var(--v3-text-mid); flex: 0 0 auto; }
+.menuItemDanger { color: var(--v3-danger); }
+.menuItemDanger:hover { background: var(--v3-danger-bg); }
+.menuItemDanger svg { color: var(--v3-danger); }
+.menuSep {
+  height: 1px;
+  background: var(--v3-hairline);
+  margin: 4px 6px;
+}
+
+/* ── Empty / states ─────────────────────────────────────────── */
 .empty {
-  padding: 40px 20px;
+  padding: 60px 24px;
   text-align: center;
-  color: var(--text-dim);
-  font-size: 0.88rem;
+  color: var(--v3-text-mid);
 }
+.empty p { margin: 0 0 6px; font-size: 14px; }
+.empty small { color: var(--v3-text-dim); font-size: 12px; }
+
+/* ── Mono footer with kbd hints ─────────────────────────────── */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 40px;
+  border-top: 1px solid var(--v3-hairline);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--v3-text-dim);
+}
+.footerGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.footer kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--v3-hairline);
+  border-radius: var(--v3-radius-kbd);
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--v3-text-mid);
+  background: transparent;
+}
+.footerSpacer { flex: 1; }

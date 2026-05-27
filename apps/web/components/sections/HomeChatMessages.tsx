@@ -14,6 +14,10 @@ import remarkGfm from 'remark-gfm';
 import { useAuth } from '@clerk/nextjs';
 import { MODELS, findModel } from '@artifigenz/shared';
 import styles from './HomeChatMessages.module.css';
+import {
+  useReadAloudPlayer,
+  type ReadAloudController,
+} from './useReadAloudPlayer';
 
 // ── Per-word fade-in for streaming markdown ─────────────────────────
 // Splits text into word-keyed spans so React reconciliation keeps already
@@ -154,6 +158,7 @@ export default function HomeChatMessages({
 }: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const readAloud = useReadAloudPlayer();
 
   // "Stick to bottom" — only auto-scroll while the user is pinned to the
   // bottom. The moment they scroll up we stop following until they manually
@@ -276,9 +281,6 @@ export default function HomeChatMessages({
                       >
                         {msg.content}
                       </ReactMarkdown>
-                      {isBeingStreamed && (
-                        <span className={styles.cursor} aria-hidden />
-                      )}
                       {!isBeingStreamed &&
                         msg.citations &&
                         msg.citations.length > 0 && (
@@ -301,6 +303,7 @@ export default function HomeChatMessages({
                 </div>
                 {!isBeingStreamed && (
                   <ActionBar
+                    messageId={msg.id}
                     role={msg.role}
                     content={msg.content}
                     modelId={msg.modelId}
@@ -316,6 +319,7 @@ export default function HomeChatMessages({
                     // assistant message). Older messages re-render on scroll
                     // and we don't want to replay the animation on them.
                     appear={isLast && msg.role === 'assistant'}
+                    readAloud={readAloud}
                     onCopy={() => copyToClipboard(msg.content)}
                     onEdit={() => setEditingId(msg.id)}
                     onRegenerate={() => onRegenerate(msg.id)}
@@ -353,17 +357,21 @@ export default function HomeChatMessages({
 // ── Action bar ────────────────────────────────────────────────────
 
 function ActionBar({
+  messageId,
   role,
+  content,
   modelId,
   canEdit,
   canRegenerate,
   alwaysVisible,
   appear,
+  readAloud,
   onCopy,
   onEdit,
   onRegenerate,
   onRetryWithModel,
 }: {
+  messageId: string;
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
@@ -371,6 +379,7 @@ function ActionBar({
   canRegenerate: boolean;
   alwaysVisible: boolean;
   appear?: boolean;
+  readAloud: ReadAloudController;
   onCopy: () => void;
   onEdit: () => void;
   onRegenerate: () => void;
@@ -379,6 +388,9 @@ function ActionBar({
   const [copied, setCopied] = useState(false);
   const [retryOpen, setRetryOpen] = useState(false);
   const retryRef = useRef<HTMLDivElement>(null);
+
+  const isPlayerActive =
+    role === 'assistant' && readAloud.activeId === messageId;
 
   useEffect(() => {
     if (!retryOpen) return;
@@ -399,6 +411,16 @@ function ActionBar({
 
   const model = modelId ? findModel(modelId) : null;
 
+  if (isPlayerActive) {
+    return (
+      <div
+        className={`${styles.actions} ${styles.actionsVisible} ${styles.actionsPlayer}`}
+      >
+        <PlayerBar content={content} readAloud={readAloud} />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`${styles.actions} ${alwaysVisible ? styles.actionsVisible : ''} ${appear ? styles.actionsAppear : ''}`}
@@ -411,6 +433,13 @@ function ActionBar({
       />
       {role === 'user' && canEdit && (
         <ActionButton label="Edit" onClick={onEdit} icon={<PencilIcon />} />
+      )}
+      {role === 'assistant' && (
+        <ActionButton
+          label="Read aloud"
+          onClick={() => readAloud.start(messageId, content)}
+          icon={<SpeakerIcon />}
+        />
       )}
       {role === 'assistant' && (
         <ActionButton
@@ -491,6 +520,292 @@ function ActionButton({
       <span>{label}</span>
     </button>
   );
+}
+
+// ── Read-aloud player bar ────────────────────────────────────────
+
+const SPEED_OPTIONS = [0.5, 1, 1.25, 1.5, 2] as const;
+const VOICE_OPTIONS: { id: string; label: string }[] = [
+  { id: 'jon_hamm', label: 'Jon Hamm' },
+  { id: 'joan_holloway', label: 'Joan Holloway' },
+];
+
+function PlayerBar({
+  content,
+  readAloud,
+}: {
+  content: string;
+  readAloud: ReadAloudController;
+}) {
+  const {
+    status,
+    currentTime,
+    bufferedEnd,
+    streamComplete,
+    duration,
+    rate,
+    voice,
+  } = readAloud;
+  const isGenerating = status === 'generating';
+  const isPlaying = status === 'playing';
+  const hasError = status === 'error';
+  const activeId = readAloud.activeId;
+
+  const [voiceMenuOpen, setVoiceMenuOpen] = useState(false);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+  const voiceMenuRef = useRef<HTMLDivElement>(null);
+  const speedMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!voiceMenuOpen && !speedMenuOpen) return;
+    const handle = (e: MouseEvent) => {
+      if (
+        voiceMenuOpen &&
+        voiceMenuRef.current &&
+        !voiceMenuRef.current.contains(e.target as Node)
+      ) {
+        setVoiceMenuOpen(false);
+      }
+      if (
+        speedMenuOpen &&
+        speedMenuRef.current &&
+        !speedMenuRef.current.contains(e.target as Node)
+      ) {
+        setSpeedMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [voiceMenuOpen, speedMenuOpen]);
+
+  const handleToggle = () => {
+    if (hasError) {
+      if (activeId) void readAloud.start(activeId, content);
+      return;
+    }
+    if (isGenerating) return;
+    readAloud.toggle();
+  };
+
+  // Forward skip is only meaningful within the buffered range.
+  const maxAvailable = streamComplete
+    ? duration || bufferedEnd
+    : bufferedEnd;
+  const canSkipForward = !isGenerating && currentTime + 1 < maxAvailable;
+  const canSkipBack = !isGenerating && currentTime > 0;
+
+  return (
+    <div className={styles.player}>
+      <button
+        type="button"
+        className={styles.playerPlay}
+        onClick={handleToggle}
+        aria-label={
+          hasError ? 'Retry' : isGenerating ? 'Loading' : isPlaying ? 'Pause' : 'Play'
+        }
+        disabled={isGenerating && !hasError}
+        title={hasError ? 'Retry' : isPlaying ? 'Pause' : 'Play'}
+      >
+        {isGenerating ? (
+          <SpinnerIcon />
+        ) : isPlaying ? (
+          <PauseIcon />
+        ) : (
+          <PlayIcon />
+        )}
+      </button>
+
+      <button
+        type="button"
+        className={styles.playerSkip}
+        onClick={() => readAloud.skip(-30)}
+        aria-label="Skip back 30 seconds"
+        disabled={!canSkipBack}
+        title="Back 30s"
+      >
+        <SkipBackIcon />
+      </button>
+
+      <button
+        type="button"
+        className={styles.playerSkip}
+        onClick={() => readAloud.skip(30)}
+        aria-label="Skip forward 30 seconds"
+        disabled={!canSkipForward}
+        title="Forward 30s"
+      >
+        <SkipForwardIcon />
+      </button>
+
+      <div className={styles.playerTime} aria-hidden>
+        {isGenerating ? 'Loading…' : formatTime(currentTime)}
+        {streamComplete && duration > 0 && !isGenerating && (
+          <span className={styles.playerTimeDim}>
+            {' / '}
+            {formatTime(duration)}
+          </span>
+        )}
+      </div>
+
+      <div className={styles.playerDivider} aria-hidden />
+
+      <div className={styles.playerSpeedWrap} ref={speedMenuRef}>
+        <button
+          type="button"
+          className={styles.playerSpeed}
+          onClick={() => setSpeedMenuOpen((v) => !v)}
+          title="Playback speed"
+        >
+          {formatSpeed(rate)}
+        </button>
+        {speedMenuOpen && (
+          <div className={styles.speedMenu}>
+            <div className={styles.speedLabel}>Speed</div>
+            <SpeedSlider value={rate} onChange={(r) => readAloud.setRate(r)} />
+          </div>
+        )}
+      </div>
+
+      {VOICE_OPTIONS.length > 1 ? (
+        <div className={styles.playerVoiceWrap} ref={voiceMenuRef}>
+          <button
+            type="button"
+            className={styles.playerVoice}
+            onClick={() => setVoiceMenuOpen((v) => !v)}
+            title="Voice"
+          >
+            {VOICE_OPTIONS.find((v) => v.id === voice)?.label ?? voice}
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {voiceMenuOpen && (
+            <div className={styles.playerVoiceMenu}>
+              {VOICE_OPTIONS.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  className={`${styles.playerVoiceItem} ${
+                    v.id === voice ? styles.playerVoiceItemActive : ''
+                  }`}
+                  onClick={() => {
+                    readAloud.setVoice(v.id);
+                    setVoiceMenuOpen(false);
+                  }}
+                >
+                  {v.label}
+                  {v.id === voice && (
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <span className={styles.playerVoiceBadge} title="Voice">
+          {VOICE_OPTIONS.find((v) => v.id === voice)?.label ?? voice}
+        </span>
+      )}
+
+      <button
+        type="button"
+        className={styles.playerClose}
+        onClick={readAloud.stop}
+        aria-label="Close player"
+        title="Close"
+      >
+        <CloseIcon />
+      </button>
+    </div>
+  );
+}
+
+function SpeedSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const idx = Math.max(
+    0,
+    SPEED_OPTIONS.findIndex((s) => s === value),
+  );
+  return (
+    <div className={styles.speedSlider}>
+      <div className={styles.speedTrack}>
+        <div
+          className={styles.speedFill}
+          style={{
+            width: `${(idx / (SPEED_OPTIONS.length - 1)) * 100}%`,
+          }}
+        />
+        {SPEED_OPTIONS.map((s, i) => {
+          const pct = (i / (SPEED_OPTIONS.length - 1)) * 100;
+          const active = i === idx;
+          return (
+            <button
+              key={s}
+              type="button"
+              className={`${styles.speedTick} ${active ? styles.speedTickActive : ''}`}
+              style={{ left: `${pct}%` }}
+              onClick={() => onChange(s)}
+              aria-label={`${formatSpeed(s)} playback`}
+            />
+          );
+        })}
+      </div>
+      <div className={styles.speedLabels}>
+        {SPEED_OPTIONS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`${styles.speedLabelBtn} ${
+              s === value ? styles.speedLabelBtnActive : ''
+            }`}
+            onClick={() => onChange(s)}
+          >
+            {formatSpeed(s)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatSpeed(n: number): string {
+  return n === Math.floor(n) ? `${n}×` : `${n}×`;
+}
+
+function formatTime(sec: number): string {
+  if (!isFinite(sec) || sec < 0) return '0:00';
+  const total = Math.floor(sec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 // ── Inline edit row ──────────────────────────────────────────────
@@ -920,6 +1235,70 @@ function RefreshIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <polyline points="23 4 23 10 17 10" />
       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <polygon points="6 4 20 12 6 20 6 4" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  );
+}
+
+function SkipBackIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <polyline points="3 3 3 8 8 8" />
+      <text x="12" y="15.5" fontSize="6.5" fontWeight="600" fill="currentColor" stroke="none" textAnchor="middle">30</text>
+    </svg>
+  );
+}
+
+function SkipForwardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+      <polyline points="21 3 21 8 16 8" />
+      <text x="12" y="15.5" fontSize="6.5" fontWeight="600" fill="currentColor" stroke="none" textAnchor="middle">30</text>
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden className={styles.spinnerIcon}>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </svg>
   );
 }

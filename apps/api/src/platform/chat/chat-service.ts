@@ -1,4 +1,4 @@
-import { eq, asc, and, gte } from "drizzle-orm";
+import { eq, asc, and, gte, desc, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -486,17 +486,96 @@ export class ChatService {
       userText: message,
       assistantText: assistantContent,
     });
+
+    // ── Auto-title the conversation (first turn only) ─────────────
+    // Mirrors ChatGPT/Claude: after the first user→assistant exchange,
+    // generate a short descriptive title with Haiku and persist it. Only
+    // runs once per conversation; user renames later are never overwritten
+    // (the trigger is gated on isNewConversation, not on title equality).
+    if (isNewConversation) {
+      void autoTitleConversation({
+        conversationId,
+        userText: message,
+        assistantText: assistantContent,
+      });
+    }
   }
 
   /**
-   * List user's conversations.
+   * List user's conversations with the data the history modal needs:
+   * a short preview of the last user/assistant turn, the model used for
+   * the most recent assistant reply, an attachment flag, and the pin state.
+   *
+   * One round-trip — correlated subqueries on `messages` keep this cheap
+   * for the small N (~tens) of conversations a user typically has.
    */
   async listConversations(userId: string) {
+    const PREVIEW_LEN = 240;
     return db
-      .select()
+      .select({
+        id: conversations.id,
+        title: conversations.title,
+        messageCount: conversations.messageCount,
+        pinned: conversations.pinned,
+        updatedAt: conversations.updatedAt,
+        lastUserText: sql<string | null>`(
+          SELECT LEFT(content, ${PREVIEW_LEN})
+          FROM ${messages}
+          WHERE conversation_id = ${conversations.id} AND role = 'user'
+          ORDER BY created_at DESC
+          LIMIT 1
+        )`,
+        lastAssistantText: sql<string | null>`(
+          SELECT LEFT(content, ${PREVIEW_LEN})
+          FROM ${messages}
+          WHERE conversation_id = ${conversations.id} AND role = 'assistant'
+          ORDER BY created_at DESC
+          LIMIT 1
+        )`,
+        lastAssistantModelId: sql<string | null>`(
+          SELECT metadata->>'modelId'
+          FROM ${messages}
+          WHERE conversation_id = ${conversations.id} AND role = 'assistant'
+          ORDER BY created_at DESC
+          LIMIT 1
+        )`,
+        hasAttachments: sql<boolean>`EXISTS (
+          SELECT 1 FROM ${messages}
+          WHERE conversation_id = ${conversations.id}
+            AND metadata->'attachments' IS NOT NULL
+            AND jsonb_array_length(metadata->'attachments') > 0
+        )`,
+      })
       .from(conversations)
       .where(eq(conversations.userId, userId))
-      .orderBy(asc(conversations.updatedAt));
+      .orderBy(desc(conversations.pinned), desc(conversations.updatedAt));
+  }
+
+  /**
+   * Patch a conversation's title or pinned state. Returns the updated row
+   * or null if the conversation doesn't exist or doesn't belong to the user.
+   */
+  async updateConversation(
+    userId: string,
+    conversationId: string,
+    updates: { title?: string; pinned?: boolean },
+  ) {
+    const patch: Record<string, unknown> = {};
+    if (typeof updates.title === "string") patch.title = updates.title.slice(0, 255);
+    if (typeof updates.pinned === "boolean") patch.pinned = updates.pinned;
+    if (Object.keys(patch).length === 0) return null;
+
+    const [row] = await db
+      .update(conversations)
+      .set(patch)
+      .where(
+        and(
+          eq(conversations.id, conversationId),
+          eq(conversations.userId, userId),
+        ),
+      )
+      .returning();
+    return row ?? null;
   }
 
   /**
@@ -537,6 +616,18 @@ export class ChatService {
           eq(conversations.userId, userId),
         ),
       );
+  }
+
+  /**
+   * Wipe every conversation (and via FK cascade, every message) for a user.
+   * Returns the number of conversations deleted.
+   */
+  async wipeAllConversations(userId: string): Promise<number> {
+    const deleted = await db
+      .delete(conversations)
+      .where(eq(conversations.userId, userId))
+      .returning({ id: conversations.id });
+    return deleted.length;
   }
 }
 
@@ -579,6 +670,48 @@ async function extractAndStoreMemories(opts: {
   }
 }
 
+// ── Auto-title (small, fast, best-effort) ─────────────────────────
+
+const TITLE_MODEL = "claude-haiku-4-5-20251001";
+
+async function autoTitleConversation(params: {
+  conversationId: string;
+  userText: string;
+  assistantText: string;
+}): Promise<void> {
+  try {
+    const client = getClaudeClient();
+    const res = await client.messages.create({
+      model: TITLE_MODEL,
+      max_tokens: 40,
+      system:
+        "You write a short, descriptive title for a chat conversation. Output the title ONLY — no quotes, no preamble, no trailing period. Constraints: max 6 words, sentence case (capitalize first word + proper nouns only), specific over generic. For trivial greetings or small talk ('hi', 'hello', 'thanks'), output exactly: New chat.",
+      messages: [
+        {
+          role: "user",
+          content: `First user message:\n${params.userText.slice(0, 1000)}\n\nFirst assistant reply:\n${params.assistantText.slice(0, 1500)}\n\nWrite the title.`,
+        },
+      ],
+    });
+    const raw = (
+      res.content.find((b) => b.type === "text") as { text?: string } | undefined
+    )?.text;
+    if (!raw) return;
+    const title = raw
+      .trim()
+      .replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "")
+      .replace(/[.。]+$/, "")
+      .slice(0, 80);
+    if (!title) return;
+    await db
+      .update(conversations)
+      .set({ title })
+      .where(eq(conversations.id, params.conversationId));
+  } catch {
+    // Silent — keep the placeholder title (first user message slice).
+  }
+}
+
 // ── Follow-up suggestions (small, fast, best-effort) ──────────────
 
 const FOLLOWUP_MODEL = "claude-haiku-4-5-20251001";
@@ -594,11 +727,11 @@ async function generateFollowUps(
       model: FOLLOWUP_MODEL,
       max_tokens: 240,
       system:
-        "You generate exactly 3 short, distinct follow-up questions a user might ask next, based on a Q&A turn. Return ONLY a JSON array of 3 strings, no preamble, no trailing prose. Each question stands on its own (no 'and', no follow-on context required), max 80 characters.",
+        "You decide whether follow-up question pills would help the user, then emit 0–3 of them. Return ONLY a JSON array of strings (no preamble, no trailing prose). Each question stands on its own (no 'and', no follow-on context), max 80 characters.\n\nReturn an empty array [] when pills would be noise, including:\n- Greetings or small talk (\"hi\", \"hello\", \"thanks\", \"ok\").\n- The assistant just asked the user a question — the user should answer it, not pick a different prompt.\n- The assistant's reply is very short, generic, or a clarification request.\n- You cannot think of 3 distinct, substantive next questions naturally suggested by the answer.\n\nReturn 2–3 questions only when the assistant gave a substantive answer that opens clear, distinct branches a user would plausibly explore next. Prefer fewer good questions over padding to 3.",
       messages: [
         {
           role: "user",
-          content: `User asked: ${userPrompt}\n\nAssistant answered:\n${assistantReply.slice(0, 4000)}\n\nReturn 3 follow-up questions as a JSON array of strings.`,
+          content: `User asked: ${userPrompt}\n\nAssistant answered:\n${assistantReply.slice(0, 4000)}\n\nReturn a JSON array of 0–3 follow-up questions. Use [] if pills would add no value.`,
         },
       ],
     });

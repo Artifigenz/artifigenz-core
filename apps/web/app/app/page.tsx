@@ -659,6 +659,7 @@ export default function AppHome() {
         onClose={() => setHistoryOpen(false)}
         onSelect={loadConversation}
         currentConversationId={conversationId}
+        onCurrentDeleted={newChat}
       />
       <main className={styles.main}>
         <div
