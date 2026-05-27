@@ -886,21 +886,32 @@ export default function FinanceBriefPage() {
 
             {brief.summary && (() => {
               const { income, outflow, leftover, breakdown } = brief.summary;
-              // Calculate segment widths as percentages of outflow
               const subscriptions = breakdown.find(b => b.id === 'subscriptions')?.amount ?? 0;
               const loans = breakdown.find(b => b.id === 'loans')?.amount ?? 0;
               const other = breakdown.find(b => b.id === 'other')?.amount ?? 0;
               const variable = outflow - subscriptions - loans - other;
 
-              const pctSub = outflow > 0 ? (subscriptions / outflow) * 100 : 0;
-              const pctLoans = outflow > 0 ? (loans / outflow) * 100 : 0;
-              const pctOther = outflow > 0 ? (other / outflow) * 100 : 0;
-              const pctVariable = outflow > 0 ? (variable / outflow) * 100 : 0;
-              const incomeLinePos = outflow > 0 ? (income / outflow) * 100 : 0;
+              // Scale the bar to whichever side is bigger, so segments are
+              // honest and the leftover space tells the story at a glance.
+              //   • Surplus (income > outflow): bar = income, outflow
+              //     segments fill the left, the empty tail to the right
+              //     IS the surplus.
+              //   • Deficit (outflow > income): bar = outflow, outflow
+              //     segments fill the whole bar, a marker shows where
+              //     income runs out — the segments past that marker are
+              //     what you couldn't afford.
+              const scale = Math.max(income, outflow, 1);
+              const pctSub = (subscriptions / scale) * 100;
+              const pctLoans = (loans / scale) * 100;
+              const pctOther = (other / scale) * 100;
+              const pctVariable = (variable / scale) * 100;
+              const incomePct = (income / scale) * 100;
+              const isDeficit = leftover < 0;
+              const surplusAbs = Math.abs(leftover);
 
               return (
                 <>
-                  {/* Bar Graph */}
+                  {/* Bar Graph — bar width = max(income, outflow) */}
                   <div className={styles.aFlow}>
                     <div className={styles.afbBar}>
                       <div className={styles.afbTrack}>
@@ -917,12 +928,29 @@ export default function FinanceBriefPage() {
                           <div className={`${styles.afbSeg} ${styles.s4}`} style={{ width: `${pctVariable}%` }} title={`Variable spend ${formatMoney(variable)}/mo`} />
                         )}
                       </div>
-                      <div className={styles.afbIncome} style={{ left: `${Math.min(100, incomeLinePos)}%` }} />
+                      {/* Income marker — only meaningful in deficit mode,
+                          where it shows where income runs out and the
+                          segments past it are the shortfall. */}
+                      {isDeficit && (
+                        <div className={styles.afbIncome} style={{ left: `${incomePct}%` }} />
+                      )}
                     </div>
                     <div className={styles.afbAxis}>
-                      <span className={styles.afbAxisL}>Outflow · {formatMoney(outflow)}/mo</span>
-                      <span className={styles.afbAxisMid} style={{ left: `${Math.min(100, incomeLinePos)}%` }}>income line → {formatMoney(income)}</span>
-                      <span className={styles.afbAxisR}>{leftover < 0 ? `deficit · −${formatMoney(leftover)}` : `surplus · ${formatMoney(leftover)}`}</span>
+                      {/* Bookend labels: what's being shown on each side. */}
+                      <span className={styles.afbAxisL}>
+                        spent · {formatMoney(outflow)}
+                      </span>
+                      <span className={styles.afbAxisR}>
+                        {isDeficit ? (
+                          <>
+                            income · {formatMoney(income)} <span style={{ color: '#c1432f', fontWeight: 600 }}>· over by {formatMoney(surplusAbs)}</span>
+                          </>
+                        ) : (
+                          <>
+                            income · {formatMoney(income)} <span style={{ color: '#2f7a3e', fontWeight: 600 }}>· {formatMoney(surplusAbs)} left</span>
+                          </>
+                        )}
+                      </span>
                     </div>
                   </div>
 
