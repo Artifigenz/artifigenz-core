@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import crypto from "crypto";
 import { db, deliveryPreferences } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 
@@ -73,6 +74,59 @@ app.patch("/", async (c) => {
     .returning();
 
   return c.json({ deliveryPreferences: prefs });
+});
+
+// POST /api/me/delivery/telegram/link — Generate deep-link token
+app.post("/telegram/link", async (c) => {
+  const user = c.get("user");
+
+  // Generate a cryptographically secure token
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+  await db
+    .insert(deliveryPreferences)
+    .values({
+      userId: user.id,
+      telegramLinkToken: token,
+      telegramLinkTokenExpiresAt: expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: deliveryPreferences.userId,
+      set: {
+        telegramLinkToken: token,
+        telegramLinkTokenExpiresAt: expiresAt,
+        updatedAt: new Date(),
+      },
+    });
+
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? "Artifigenz_bot";
+  const linkUrl = `https://t.me/${botUsername}?start=${token}`;
+
+  return c.json({ linkUrl, expiresAt: expiresAt.toISOString() });
+});
+
+// GET /api/me/delivery/telegram/status — Check connection status
+app.get("/telegram/status", async (c) => {
+  const user = c.get("user");
+
+  const [prefs] = await db
+    .select()
+    .from(deliveryPreferences)
+    .where(eq(deliveryPreferences.userId, user.id))
+    .limit(1);
+
+  if (!prefs) {
+    return c.json({ connected: false, linkPending: false });
+  }
+
+  const connected = Boolean(prefs.telegramChatId);
+  const linkPending =
+    Boolean(prefs.telegramLinkToken) &&
+    prefs.telegramLinkTokenExpiresAt &&
+    new Date(prefs.telegramLinkTokenExpiresAt) > new Date();
+
+  return c.json({ connected, linkPending });
 });
 
 export default app;

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { Webhook } from "svix";
-import { db, users } from "@artifigenz/db";
+import { db, users, deliveryPreferences } from "@artifigenz/db";
 import { plaidAdapter } from "../agents/finance/data-sources/plaid.adapter";
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
 
@@ -96,10 +96,86 @@ app.post("/plaid", async (c) => {
   return c.json({ received: true });
 });
 
-// POST /api/webhooks/telegram — Telegram bot webhook (Phase 3)
+// POST /api/webhooks/telegram — Telegram bot webhook
 app.post("/telegram", async (c) => {
-  // TODO: Phase 3 — handle user opt-in messages
+  const body = await c.req.json();
+
+  // Telegram sends updates with message object
+  const message = body.message;
+  if (!message || !message.text || !message.chat?.id) {
+    return c.json({ received: true });
+  }
+
+  const chatId = String(message.chat.id);
+  const text = message.text.trim();
+
+  // Handle /start <token> command
+  if (text.startsWith("/start ")) {
+    const token = text.slice(7).trim();
+
+    if (!token || token.length !== 64) {
+      await sendTelegramMessage(chatId, "Invalid link. Please generate a new connection link from the Artifigenz settings page.");
+      return c.json({ received: true });
+    }
+
+    // Find user with this token that hasn't expired
+    const [prefs] = await db
+      .select()
+      .from(deliveryPreferences)
+      .where(
+        and(
+          eq(deliveryPreferences.telegramLinkToken, token),
+          gt(deliveryPreferences.telegramLinkTokenExpiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (!prefs) {
+      await sendTelegramMessage(chatId, "This link has expired. Please generate a new connection link from the Artifigenz settings page.");
+      return c.json({ received: true });
+    }
+
+    // Store chat_id and clear the token
+    await db
+      .update(deliveryPreferences)
+      .set({
+        telegramChatId: chatId,
+        telegramOptedIn: true,
+        telegramLinkToken: null,
+        telegramLinkTokenExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(deliveryPreferences.userId, prefs.userId));
+
+    await sendTelegramMessage(chatId, "Your Telegram is now connected to Artifigenz! You'll receive notifications here when enabled.");
+    return c.json({ received: true });
+  }
+
+  // Handle plain /start command (no token)
+  if (text === "/start") {
+    await sendTelegramMessage(chatId, "Welcome to Artifigenz! To connect your account, click the 'Connect Telegram' button in your settings at app.artifigenz.com/settings");
+    return c.json({ received: true });
+  }
+
   return c.json({ received: true });
 });
+
+async function sendTelegramMessage(chatId: string, text: string) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) {
+    console.error("[Telegram] TELEGRAM_BOT_TOKEN not configured");
+    return;
+  }
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+  } catch (err) {
+    console.error("[Telegram] Failed to send message:", err);
+  }
+}
 
 export default app;
