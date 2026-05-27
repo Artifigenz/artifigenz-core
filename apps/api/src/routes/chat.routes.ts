@@ -195,6 +195,32 @@ app.get("/conversations/:id", async (c) => {
   return c.json(result);
 });
 
+// PATCH /api/me/conversations/:id — rename or pin/unpin
+app.patch("/conversations/:id", async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    title?: unknown;
+    pinned?: unknown;
+  };
+  const updates: { title?: string; pinned?: boolean } = {};
+  if (typeof body.title === "string") updates.title = body.title.trim();
+  if (typeof body.pinned === "boolean") updates.pinned = body.pinned;
+  const row = await chatService.updateConversation(
+    user.id,
+    c.req.param("id"),
+    updates,
+  );
+  if (!row) return c.json({ error: "Not found" }, 404);
+  return c.json({ conversation: row });
+});
+
+// DELETE /api/me/conversations — wipe every conversation for the user
+app.delete("/conversations", async (c) => {
+  const user = c.get("user");
+  const removed = await chatService.wipeAllConversations(user.id);
+  return c.json({ removed });
+});
+
 // DELETE /api/me/conversations/:id
 app.delete("/conversations/:id", async (c) => {
   const user = c.get("user");

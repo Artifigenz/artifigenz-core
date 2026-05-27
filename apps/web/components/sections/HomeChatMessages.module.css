@@ -272,25 +272,87 @@
   .mdStreaming .fadeWord { animation: none; }
 }
 
-/* ── Streaming cursor (per design) ───────────────────────────── */
+/* ── Streaming cursor ────────────────────────────────────────
+   Injected via ::after on the LAST text-bearing block inside the
+   streaming markdown, so it sits right after the last character instead
+   of dropping onto a new line below the paragraph.
 
-.cursor {
+   Aura (default): a slim 2px bar with a smooth fade — sleek and Claude-
+   like. Terminal: a thin block that keeps the CRT feel without the bulk
+   of the old 7px brick. */
+
+.mdStreaming > p:last-child::after,
+.mdStreaming > h1:last-child::after,
+.mdStreaming > h2:last-child::after,
+.mdStreaming > h3:last-child::after,
+.mdStreaming > h4:last-child::after,
+.mdStreaming > h5:last-child::after,
+.mdStreaming > h6:last-child::after,
+.mdStreaming > ul:last-child > li:last-child::after,
+.mdStreaming > ol:last-child > li:last-child::after,
+.mdStreaming > blockquote:last-child > p:last-child::after,
+.mdStreaming > pre:last-child > code::after {
+  content: '';
   display: inline-block;
-  width: 7px;
-  height: 1.05em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
   background: var(--text);
   border-radius: 1px;
-  transform: translateY(2px);
-  animation: cursorBlink 0.9s infinite;
+  opacity: 0.9;
+  animation: cursorPulse 1.05s ease-in-out infinite;
 }
 
-:global([data-theme="terminal"]) .cursor { border-radius: 0; }
+/* Empty assistant bubble (haven't streamed any blocks yet) — show the
+   cursor directly inside the .md container so the user still sees a beat. */
+.mdStreaming:not(:has(*))::after,
+.mdStreaming:empty::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  vertical-align: -0.12em;
+  background: var(--text);
+  border-radius: 1px;
+  opacity: 0.9;
+  animation: cursorPulse 1.05s ease-in-out infinite;
+}
+
+/* Terminal theme: thin block (4px), hard square edges, classic blink. */
+:global([data-theme="terminal"]) .mdStreaming > p:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > h1:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > h2:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > h3:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > h4:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > h5:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > h6:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > ul:last-child > li:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > ol:last-child > li:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > blockquote:last-child > p:last-child::after,
+:global([data-theme="terminal"]) .mdStreaming > pre:last-child > code::after,
+:global([data-theme="terminal"]) .mdStreaming:not(:has(*))::after,
+:global([data-theme="terminal"]) .mdStreaming:empty::after {
+  width: 4px;
+  height: 1.05em;
+  border-radius: 0;
+  margin-left: 2px;
+  animation: cursorBlink 0.85s steps(2, end) infinite;
+}
+
+@keyframes cursorPulse {
+  0%, 100% { opacity: 0.95; }
+  50%      { opacity: 0.18; }
+}
 
 @keyframes cursorBlink {
-  0%, 49%    { opacity: 1; }
-  50%, 100%  { opacity: 0; }
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdStreaming *::after,
+  .mdStreaming::after { animation: none !important; opacity: 0.7; }
 }
 
 /* ── Inline status pill (thinking / searching) ──────────────── */
@@ -911,6 +973,338 @@
 .editSave:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* ── Read-aloud player bar ──────────────────────────────────── */
+
+.actionsPlayer {
+  width: auto;
+  gap: 2px;
+  padding: 4px 6px 4px 4px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  animation: popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global([data-theme="terminal"]) .actionsPlayer { border-radius: 0; }
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.playerPlay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: none;
+  background: var(--text);
+  color: var(--bg);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .playerPlay { border-radius: 0; }
+
+.playerPlay:hover:not(:disabled) { opacity: 0.88; transform: scale(1.04); }
+.playerPlay:disabled { opacity: 0.6; cursor: default; }
+
+.playerSkip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .playerSkip { border-radius: 0; }
+
+.playerSkip:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--card-hover);
+}
+.playerSkip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.playerTime {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  padding: 0 8px 0 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.playerTimeDim {
+  color: var(--text-dim);
+}
+
+.playerDivider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-light);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+.playerSpeedWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.playerSpeed {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  min-width: 38px;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .playerSpeed { border-radius: 0; }
+
+.playerSpeed:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--card-hover);
+}
+.playerSpeed:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.speedMenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 240px;
+  padding: 12px 14px 10px;
+  background: var(--menu-bg, var(--bg));
+  border: 1px solid var(--menu-border, var(--border-light));
+  border-radius: var(--radius-md, 12px);
+  box-shadow: var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.18));
+  animation: popIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global([data-theme="terminal"]) .speedMenu { border-radius: 0; }
+
+.speedLabel {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  margin-bottom: 10px;
+}
+
+.speedSlider {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.speedTrack {
+  position: relative;
+  height: 18px;
+  display: flex;
+  align-items: center;
+}
+
+.speedTrack::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 50%;
+  height: 3px;
+  background: var(--border-light);
+  border-radius: 9999px;
+  transform: translateY(-50%);
+}
+
+:global([data-theme="terminal"]) .speedTrack::before { border-radius: 0; }
+
+.speedFill {
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  height: 3px;
+  background: var(--text);
+  border-radius: 9999px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: calc(100% - 10px);
+}
+
+:global([data-theme="terminal"]) .speedFill { border-radius: 0; }
+
+.speedTick {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--bg);
+  border: 2px solid var(--border-light);
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .speedTick { border-radius: 0; }
+
+.speedTick:hover { border-color: var(--text); }
+
+.speedTickActive {
+  background: var(--text);
+  border-color: var(--text);
+  transform: translate(-50%, -50%) scale(1.18);
+}
+
+.speedLabels {
+  display: flex;
+  justify-content: space-between;
+}
+
+.speedLabelBtn {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.speedLabelBtn:hover { color: var(--text); }
+.speedLabelBtnActive { color: var(--text); font-weight: 600; }
+
+.playerVoiceWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.playerVoiceBadge {
+  display: inline-flex;
+  align-items: center;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.playerVoice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .playerVoice { border-radius: 0; }
+
+.playerVoice:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--card-hover);
+}
+.playerVoice:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.playerVoiceMenu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 130px;
+  background: var(--menu-bg, var(--bg));
+  border: 1px solid var(--menu-border, var(--border-light));
+  border-radius: var(--radius-md, 10px);
+  padding: 4px;
+  box-shadow: var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.18));
+  animation: popIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:global([data-theme="terminal"]) .playerVoiceMenu { border-radius: 0; }
+
+.playerVoiceItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--text);
+  transition: background 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .playerVoiceItem { border-radius: 0; }
+
+.playerVoiceItem:hover { background: var(--card-hover); }
+.playerVoiceItemActive { background: var(--card-hover); }
+
+.playerClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+:global([data-theme="terminal"]) .playerClose { border-radius: 0; }
+
+.playerClose:hover { color: var(--text); background: var(--card-hover); }
+
+.spinnerIcon {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */

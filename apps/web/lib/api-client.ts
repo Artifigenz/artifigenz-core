@@ -727,11 +727,26 @@ export class ApiClient {
     return this.get<{
       conversations: Array<{
         id: string;
-        title: string;
-        agentInstanceId: string;
-        updatedAt: string;
+        title: string | null;
+        messageCount: number | null;
+        pinned: boolean;
+        updatedAt: string | null;
+        lastUserText: string | null;
+        lastAssistantText: string | null;
+        lastAssistantModelId: string | null;
+        hasAttachments: boolean;
       }>;
     }>('/api/me/conversations');
+  }
+
+  async updateConversation(
+    id: string,
+    updates: { title?: string; pinned?: boolean },
+  ) {
+    return this.patch<{ conversation: { id: string; title: string | null; pinned: boolean } }>(
+      `/api/me/conversations/${id}`,
+      updates,
+    );
   }
 
   async getConversation(id: string) {
@@ -743,6 +758,11 @@ export class ApiClient {
 
   async deleteConversation(id: string) {
     return this.delete<void>(`/api/me/conversations/${id}`);
+  }
+
+  /** Devtools: wipe every conversation for the current user. */
+  async wipeAllConversations() {
+    return this.delete<{ removed: number }>('/api/me/conversations');
   }
 
   /**
