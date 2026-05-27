@@ -49,6 +49,9 @@ interface Brief {
 // shaped to make the bar graph and cards visually populated. Real
 // generation will overwrite this.
 function buildPlaceholderBrief(accountCount: number, txnCount: number): Brief {
+  // Engaging mock numbers — realistic shape, not 0s, with a clear surplus so
+  // the flow bar shows the "left over" tail. Replaces the older "Placeholder"
+  // copy that made the homepage feel empty before real categorization is in.
   const income = 7800;
   const subscriptions = 350;
   const loans = 1800;
@@ -58,16 +61,16 @@ function buildPlaceholderBrief(accountCount: number, txnCount: number): Brief {
   const leftover = income - outflow;
 
   return {
-    id: 'placeholder',
+    id: 'preview',
     verdict:
-      'Placeholder brief — your real numbers will land here once analysis is wired back in.',
+      "You're tracking well this month — $2,400 ahead of spending with no surprises in your recurring lineup.",
     numbers: [
-      { value: '$7,800/mo', phrase: 'placeholder income' },
-      { value: '$2,400/mo', phrase: 'placeholder leftover' },
-      { value: '$3,000/mo', phrase: 'placeholder recurring' },
+      { value: '$7,800/mo', phrase: 'coming in across all accounts' },
+      { value: '$2,400/mo', phrase: 'left over after recurring + variable spend' },
+      { value: '$3,000/mo', phrase: 'locked in to subscriptions, loans, and bills' },
     ],
     paragraph:
-      'This brief is dummy content while we rebuild the analysis pipeline. Categorization and recurring detection are paused — only ingestion is live. Real insights will replace this once the next phases are in.',
+      "Income is steady on the 1st and 15th. Subscriptions are stable at $350 — no price changes detected. Loans and EMI take the biggest chunk at $1,800; variable spend (groceries, dining, fuel) averages $2,400. You're keeping ~31% of income, which is healthy by most benchmarks.",
     summary: {
       income,
       outflow,
@@ -76,73 +79,86 @@ function buildPlaceholderBrief(accountCount: number, txnCount: number): Brief {
         {
           id: 'subscriptions',
           label: 'Subscriptions',
-          sublabel: '5 active',
+          sublabel: '5 active · Netflix, Spotify, Adobe, NYT, iCloud',
           amount: subscriptions,
           count: 5,
         },
         {
           id: 'loans',
           label: 'Loans & EMI',
-          sublabel: '1 line',
+          sublabel: 'Auto loan · $1,800/mo · 14 months left',
           amount: loans,
           count: 1,
         },
         {
           id: 'other',
           label: 'Other recurring',
-          sublabel: 'rent, utilities, autopay',
+          sublabel: 'Rent, utilities, phone, insurance',
           amount: other,
         },
       ],
     },
-    data_scope: `Based on ${accountCount} account${accountCount === 1 ? '' : 's'}, ${txnCount.toLocaleString()} transactions ingested · dev mode.`,
+    data_scope: `Preview brief · based on ${accountCount} account${accountCount === 1 ? '' : 's'}, ${txnCount.toLocaleString()} transactions ingested · real analysis lands here once categorization runs.`,
     generated_at: new Date().toISOString(),
   };
 }
 
 function buildPlaceholderInsights(): Insight[] {
+  // Preview insights — populated until real categorization + skill execution
+  // takes over. Covers the four main insight shapes (upcoming, observed,
+  // new, price-change) so the feed renders varied content out of the gate.
   const now = new Date();
   const iso = (offsetMs: number) => new Date(now.getTime() - offsetMs).toISOString();
   return [
     {
-      id: 'placeholder-1',
-      title: 'Placeholder · Netflix will charge $17.99 tomorrow',
-      description: 'Dummy insight while analysis is paused.',
-      insightTypeId: 'placeholder',
-      data: {},
+      id: 'preview-1',
+      title: 'Netflix will charge $17.99 tomorrow',
+      description: 'Same as last month. Comes off your TD chequing.',
+      insightTypeId: 'subscription-upcoming',
+      data: { merchant: 'netflix', amount: 17.99, daysUntil: 1 },
       isCritical: false,
       isRead: false,
       createdAt: iso(0),
     },
     {
-      id: 'placeholder-2',
-      title: 'Placeholder · Spotify charged $12.99 — as expected',
-      description: 'Dummy insight while analysis is paused.',
-      insightTypeId: 'placeholder',
-      data: {},
+      id: 'preview-2',
+      title: 'Spotify charged $12.99 — as expected',
+      description: 'Monthly cadence, no change since March.',
+      insightTypeId: 'subscription-observed',
+      data: { merchant: 'spotify', amount: 12.99 },
       isCritical: false,
       isRead: false,
       createdAt: iso(3 * 3600_000),
     },
     {
-      id: 'placeholder-3',
-      title: 'Placeholder · New subscription detected: Audible',
-      description: 'Dummy insight while analysis is paused.',
-      insightTypeId: 'placeholder',
-      data: {},
-      isCritical: false,
+      id: 'preview-3',
+      title: 'New subscription detected: Audible',
+      description: 'First $14.95 charge on May 24 — flagging it so you can confirm.',
+      insightTypeId: 'subscription-new',
+      data: { merchant: 'audible', amount: 14.95 },
+      isCritical: true,
       isRead: false,
       createdAt: iso(24 * 3600_000),
     },
     {
-      id: 'placeholder-4',
-      title: 'Placeholder · Adobe increased $19.99 → $22.99',
-      description: 'Dummy insight while analysis is paused.',
-      insightTypeId: 'placeholder',
-      data: {},
-      isCritical: false,
+      id: 'preview-4',
+      title: 'Adobe increased $19.99 → $22.99',
+      description: 'Up 15% from last billing cycle. Annual cost: +$36.',
+      insightTypeId: 'price-change',
+      data: { merchant: 'adobe', oldAmount: 19.99, newAmount: 22.99 },
+      isCritical: true,
       isRead: false,
       createdAt: iso(2 * 24 * 3600_000),
+    },
+    {
+      id: 'preview-5',
+      title: 'Groceries trending high this month',
+      description: '$612 so far vs. your $480 monthly average. 10 days left in cycle.',
+      insightTypeId: 'category-trend',
+      data: { merchant: 'groceries', amount: 612, monthlyTotal: 480 },
+      isCritical: false,
+      isRead: false,
+      createdAt: iso(4 * 24 * 3600_000),
     },
   ];
 }
