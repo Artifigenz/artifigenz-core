@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { findModel } from '@artifigenz/shared';
 import styles from './ChatHistoryModal.module.css';
+import ShareConversationModal from './ShareConversationModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -55,6 +56,9 @@ export default function ChatHistoryModal({
   const [editValue, setEditValue] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [shareTarget, setShareTarget] = useState<ConversationSummary | null>(
+    null,
+  );
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   // ── Load on open ──────────────────────────────────────────────
@@ -234,6 +238,7 @@ export default function ChatHistoryModal({
   if (!open) return null;
 
   return (
+    <>
     <div className={`${styles.scope} ${styles.backdrop}`} onClick={onClose}>
       <div
         className={styles.modal}
@@ -331,6 +336,10 @@ export default function ChatHistoryModal({
                           setOpenMenuId(null);
                           patchRow(c.id, { pinned: !c.pinned });
                         }}
+                        onShare={() => {
+                          setOpenMenuId(null);
+                          setShareTarget(c);
+                        }}
                         onDelete={() => {
                           setOpenMenuId(null);
                           removeRow(c.id);
@@ -361,6 +370,13 @@ export default function ChatHistoryModal({
         </footer>
       </div>
     </div>
+    <ShareConversationModal
+      open={shareTarget !== null}
+      conversationId={shareTarget?.id ?? null}
+      conversationTitle={shareTarget?.title ?? null}
+      onClose={() => setShareTarget(null)}
+    />
+    </>
   );
 }
 
@@ -384,6 +400,7 @@ interface RowProps {
   onToggleMenu: () => void;
   onCloseMenu: () => void;
   onTogglePin: () => void;
+  onShare: () => void;
   onDelete: () => void;
 }
 
@@ -404,6 +421,7 @@ function Row({
   onToggleMenu,
   onCloseMenu,
   onTogglePin,
+  onShare,
   onDelete,
 }: RowProps) {
   const menuRef = useRef<HTMLSpanElement | null>(null);
@@ -527,6 +545,15 @@ function Row({
               >
                 <EditIcon />
                 <span>Rename</span>
+              </button>
+              <button
+                type="button"
+                className={styles.menuItem}
+                onClick={onShare}
+                role="menuitem"
+              >
+                <ShareIcon />
+                <span>Share link</span>
               </button>
               <div className={styles.menuSep} />
               <button
@@ -665,6 +692,18 @@ function AttachIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
     </svg>
   );
 }

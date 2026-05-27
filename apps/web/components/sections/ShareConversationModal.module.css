@@ -1,0 +1,245 @@
+/* ── Theme tokens — match ChatHistoryModal palette ───────────────── */
+.scope {
+  --sm-paper:           #ffffff;
+  --sm-paper-hover:     rgba(30, 23, 34, 0.04);
+  --sm-text:            #111111;
+  --sm-text-mid:        #6e6a78;
+  --sm-text-dim:        #a09aa8;
+  --sm-hairline:        rgba(20, 14, 30, 0.07);
+  --sm-hairline-strong: rgba(20, 14, 30, 0.14);
+  --sm-accent:          #111111;
+  --sm-accent-text:     #ffffff;
+  --sm-overlay:         rgba(28, 24, 48, 0.22);
+  --sm-radius:          20px;
+  --sm-radius-inner:    10px;
+  --sm-radius-sm:       6px;
+  --sm-radius-pill:     9999px;
+  --sm-danger:          #b1271b;
+  --sm-danger-bg:       rgba(177, 39, 27, 0.07);
+  --sm-font:            'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sm-shadow:
+                        0 30px 90px rgba(15, 10, 30, 0.18),
+                        0 4px 18px rgba(20, 14, 50, 0.04),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:global([data-theme="aura"].dark) .scope {
+  --sm-paper:           #141414;
+  --sm-paper-hover:     rgba(255, 255, 255, 0.04);
+  --sm-text:            #f0f0f0;
+  --sm-text-mid:        #a0a0a0;
+  --sm-text-dim:        #666666;
+  --sm-hairline:        rgba(255, 255, 255, 0.08);
+  --sm-hairline-strong: rgba(255, 255, 255, 0.20);
+  --sm-accent:          #f0f0f0;
+  --sm-accent-text:     #0a0a0a;
+  --sm-overlay:         rgba(0, 0, 0, 0.55);
+  --sm-danger:          #e35d4f;
+  --sm-danger-bg:       rgba(227, 93, 79, 0.12);
+  --sm-shadow:
+                        0 30px 90px rgba(0, 0, 0, 0.55),
+                        0 4px 18px rgba(0, 0, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:global([data-theme="terminal"]) .scope,
+:global(html:not([data-theme])) .scope {
+  --sm-paper:           #ffffff;
+  --sm-paper-hover:     #f6f6f6;
+  --sm-text:            #000000;
+  --sm-text-mid:        #444444;
+  --sm-text-dim:        #999999;
+  --sm-hairline:        #ececec;
+  --sm-hairline-strong: #000000;
+  --sm-accent:          #000000;
+  --sm-accent-text:     #ffffff;
+  --sm-overlay:         rgba(0, 0, 0, 0.25);
+  --sm-radius:          0;
+  --sm-radius-inner:    0;
+  --sm-radius-sm:       0;
+  --sm-radius-pill:     0;
+  --sm-font:            'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sm-shadow:          0 12px 40px rgba(0, 0, 0, 0.10);
+}
+
+:global([data-theme="terminal"].dark) .scope,
+:global(html.dark:not([data-theme])) .scope {
+  --sm-paper:           #000000;
+  --sm-paper-hover:     #111111;
+  --sm-text:            #ffffff;
+  --sm-text-mid:        #bbbbbb;
+  --sm-text-dim:        #666666;
+  --sm-hairline:        #222222;
+  --sm-hairline-strong: #ffffff;
+  --sm-accent:          #ffffff;
+  --sm-accent-text:     #000000;
+  --sm-overlay:         rgba(0, 0, 0, 0.65);
+  --sm-danger:          #e35d4f;
+  --sm-danger-bg:       rgba(227, 93, 79, 0.12);
+  --sm-shadow:          0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--sm-overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  animation: fadeIn 0.22s ease both;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.modal {
+  width: min(520px, calc(100vw - 64px));
+  background: var(--sm-paper);
+  border-radius: var(--sm-radius);
+  box-shadow: var(--sm-shadow);
+  color: var(--sm-text);
+  font-family: var(--sm-font);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pop 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.985) }
+  to   { opacity: 1; transform: translateY(0) scale(1) }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px 8px;
+}
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--sm-text);
+}
+.close {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sm-radius-pill);
+  border: 0;
+  background: transparent;
+  color: var(--sm-text-mid);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: background 0.15s ease;
+}
+.close:hover { background: var(--sm-paper-hover); color: var(--sm-text); }
+
+.body {
+  padding: 6px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.subtitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sm-text);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note {
+  font-size: 12.5px;
+  color: var(--sm-text-mid);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.spinner {
+  font-size: 13px;
+  color: var(--sm-text-mid);
+  padding: 14px 0;
+}
+
+.error {
+  font-size: 12.5px;
+  color: var(--sm-danger);
+  background: var(--sm-danger-bg);
+  padding: 8px 12px;
+  border-radius: var(--sm-radius-sm);
+}
+
+.urlRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.urlInput {
+  flex: 1;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--sm-text);
+  background: var(--sm-paper-hover);
+  border: 1px solid var(--sm-hairline);
+  border-radius: var(--sm-radius-sm);
+  padding: 10px 12px;
+  outline: 0;
+  min-width: 0;
+}
+.urlInput:focus { border-color: var(--sm-hairline-strong); }
+
+.copyBtn {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sm-accent-text);
+  background: var(--sm-accent);
+  border: 0;
+  border-radius: var(--sm-radius-pill);
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+  white-space: nowrap;
+}
+.copyBtn:hover { filter: brightness(1.1); }
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--sm-hairline);
+}
+
+.previewLink {
+  font-size: 12.5px;
+  color: var(--sm-text-mid);
+  text-decoration: none;
+}
+.previewLink:hover { color: var(--sm-text); }
+
+.revoke {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sm-danger);
+  background: transparent;
+  border: 1px solid var(--sm-danger);
+  border-radius: var(--sm-radius-pill);
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.revoke:hover:not(:disabled) { background: var(--sm-danger-bg); }
+.revoke:disabled { opacity: 0.5; cursor: not-allowed; }

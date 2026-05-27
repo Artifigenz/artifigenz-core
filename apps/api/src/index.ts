@@ -33,6 +33,10 @@ import briefRoutes from "./routes/brief.routes";
 import financeRoutes from "./routes/finance.routes";
 import memoriesRoutes from "./routes/memories.routes";
 import ttsRoutes from "./routes/tts.routes";
+import {
+  createPublicShareRoutes,
+  createOwnerShareRoutes,
+} from "./routes/shares.routes";
 
 // ─── Bootstrap ──────────────────────────────────────────────────────
 
@@ -95,6 +99,8 @@ app.route("/api/webhooks", webhookRoutes);
 app.route("/api/plaid", createPlaidRoutes());
 app.route("/api/brief", briefRoutes);
 app.route("/api/finance", financeRoutes);
+app.route("/api/me/shares", createOwnerShareRoutes());
+app.route("/api/shares", createPublicShareRoutes());
 
 // ─── Start ──────────────────────────────────────────────────────────
 
