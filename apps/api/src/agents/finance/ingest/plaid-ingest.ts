@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Transaction as PlaidTransaction, AccountBase } from "plaid";
 import {
   db,
   dataSourceConnections,
+  financeAccounts,
   financeTransactions,
   agentInstances,
 } from "@artifigenz/db";
@@ -37,10 +38,15 @@ export interface PlaidIngestResult {
   skippedInFlight: boolean;
 }
 
-// How many consecutive zero-add syncs before we declare Plaid finished.
+// How many consecutive zero-add syncs before we declare Plaid finished —
+// but only AFTER we've actually pulled at least one transaction. Without
+// any transactions on the connection, 3 empty syncs likely means Plaid
+// hasn't started its initial backfill yet, not that we're caught up.
 // 3 × 30s polling interval = ~90s of stability.
 const COMPLETE_AFTER_EMPTY_SYNCS = 3;
-// Hard cap on how long we keep polling before forcing complete.
+// When we have zero transactions, require Plaid's item.status.transactions
+// to show a last_successful_update before we'll accept "0 txns" as truth.
+// Until then, keep the connection in_progress so the loading screen waits.
 const TIMEOUT_MINUTES = 30;
 // Mark connection failed after this many consecutive errored syncs.
 const FAIL_AFTER_ERRORS = 10;
@@ -252,17 +258,63 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
 
   // 4. Apply modified (Plaid re-issues txns when amount/description/category
   // change — e.g. pending → posted, merchant rename). Match by plaid_transaction_id.
+  // Re-run prepareTransaction so direction, normalized_description,
+  // merchant_normalized, and description_hash stay consistent with the new
+  // amount/description — otherwise downstream dedup and clustering drift.
   for (const tx of modified) {
-    await db
-      .update(financeTransactions)
-      .set({
+    const accountId = plaidAccountToId.get(tx.account_id);
+    if (!accountId) continue;
+    const snap = plaidAccountSnapshots.get(tx.account_id);
+    const prepared = prepareTransaction({
+      raw: {
+        transactionDate: tx.date,
+        postedDate: tx.date,
+        authorizedDate: tx.authorized_date ?? null,
         description: tx.name,
         merchantName: tx.merchant_name ?? null,
         amount: tx.amount.toString(),
+        source: "plaid",
+        accountName: null,
+        accountType: snap?.type ?? null,
+        accountMask: snap?.mask ?? null,
+        currency: snap?.currency ?? tx.iso_currency_code ?? null,
+        institutionId,
+        plaidTransactionId: tx.transaction_id,
+        plaidAccountId: tx.account_id,
+        pending: tx.pending ? 1 : 0,
         personalFinanceCategoryPrimary:
           tx.personal_finance_category?.primary ?? null,
         personalFinanceCategoryDetailed:
           tx.personal_finance_category?.detailed ?? null,
+        rawData: tx as unknown as Record<string, unknown>,
+      },
+      agentInstanceId: conn.agentInstanceId,
+      userId,
+      accountId,
+      dataSourceConnectionId: conn.id,
+    });
+    await db
+      .update(financeTransactions)
+      .set({
+        transactionDate: prepared.transactionDate,
+        postedDate: prepared.postedDate ?? null,
+        authorizedDate: prepared.authorizedDate ?? null,
+        amount: prepared.amount,
+        direction: prepared.direction,
+        description: prepared.description,
+        normalizedDescription: prepared.normalizedDescription,
+        merchantName: prepared.merchantName,
+        merchantNormalized: prepared.merchantNormalized,
+        descriptionHash: prepared.descriptionHash,
+        accountType: prepared.accountType ?? null,
+        accountMask: prepared.accountMask ?? null,
+        currency: prepared.currency ?? null,
+        pending: prepared.pending ?? 0,
+        personalFinanceCategoryPrimary:
+          prepared.personalFinanceCategoryPrimary ?? null,
+        personalFinanceCategoryDetailed:
+          prepared.personalFinanceCategoryDetailed ?? null,
+        rawData: prepared.rawData ?? null,
       })
       .where(eq(financeTransactions.plaidTransactionId, tx.transaction_id));
   }
@@ -286,9 +338,44 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
     Date.now() - new Date(conn.ingestionStartedAt).getTime() >
       TIMEOUT_MINUTES * 60_000;
 
-  const stable = newEmptyCount >= COMPLETE_AFTER_EMPTY_SYNCS;
+  // Cumulative txn count across this connection's accounts. If it's zero,
+  // empty syncs likely mean Plaid is still backfilling history — not that
+  // we've caught up — so we shouldn't transition to 'complete' yet.
+  const [{ totalTxns }] = await db
+    .select({ totalTxns: sql<number>`count(*)::int` })
+    .from(financeTransactions)
+    .innerJoin(
+      financeAccounts,
+      eq(financeTransactions.accountId, financeAccounts.id),
+    )
+    .where(eq(financeAccounts.dataSourceConnectionId, connectionId));
+
+  // If we still have zero transactions, only accept 'complete' when Plaid's
+  // own item.status confirms it has finished its initial transactions update.
+  // Otherwise we'd silently mark a connection done before any history arrived.
+  let plaidBackfillDone = false;
+  if (totalTxns === 0) {
+    try {
+      const itemResp = await plaid.itemGet({ access_token: creds.accessToken });
+      const txStatus = itemResp.data.status?.transactions ?? null;
+      plaidBackfillDone = Boolean(txStatus?.last_successful_update);
+    } catch (err) {
+      // Don't fail the sync over a status probe; just stay in_progress.
+      console.warn(
+        `[plaid-ingest] item.status probe failed for ${connectionId}:`,
+        err,
+      );
+    }
+  }
+
+  const stableWithData = totalTxns > 0 && newEmptyCount >= COMPLETE_AFTER_EMPTY_SYNCS;
+  const stableEmpty =
+    totalTxns === 0 &&
+    plaidBackfillDone &&
+    newEmptyCount >= COMPLETE_AFTER_EMPTY_SYNCS;
+
   const nextState: PlaidIngestResult["ingestionState"] =
-    stable || timedOut ? "complete" : "in_progress";
+    stableWithData || stableEmpty || timedOut ? "complete" : "in_progress";
 
   await db
     .update(dataSourceConnections)

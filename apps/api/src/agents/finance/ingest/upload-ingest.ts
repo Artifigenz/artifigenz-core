@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
 import {
   db,
@@ -6,6 +6,7 @@ import {
   dataSourceConnections,
   agentInstances,
   financeAccounts,
+  financeTransactions,
 } from "@artifigenz/db";
 import {
   parseStatement,
@@ -13,8 +14,60 @@ import {
   type ParsedStatement,
   type ValidationResult,
 } from "../lib/statement-parser";
-import { upsertAccount } from "./account-matcher";
+import { normalizeInstitution, upsertAccount } from "./account-matcher";
 import { insertTransactions, prepareTransaction } from "./dedup";
+
+/**
+ * Statement uploads don't carry a Plaid-style institution_id. Resolve one
+ * cross-source: first prefer an institution_id already stamped on prior
+ * transactions for this account (the canonical case when Plaid + statement
+ * resolved to the same account row), then fall back to any sibling Plaid
+ * connection on this agent_instance whose normalized institutionName matches.
+ * Returns null when neither source can provide one.
+ */
+async function resolveInstitutionId(args: {
+  agentInstanceId: string;
+  accountId: string;
+  institutionName: string | null | undefined;
+}): Promise<string | null> {
+  const [existing] = await db
+    .select({ institutionId: financeTransactions.institutionId })
+    .from(financeTransactions)
+    .where(
+      and(
+        eq(financeTransactions.accountId, args.accountId),
+        isNotNull(financeTransactions.institutionId),
+      ),
+    )
+    .limit(1);
+  if (existing?.institutionId) return existing.institutionId;
+
+  const target = normalizeInstitution(args.institutionName);
+  if (target === "unknown") return null;
+
+  const siblings = await db
+    .select({ metadata: dataSourceConnections.metadata })
+    .from(dataSourceConnections)
+    .where(
+      and(
+        eq(dataSourceConnections.agentInstanceId, args.agentInstanceId),
+        eq(dataSourceConnections.dataSourceTypeId, "plaid"),
+      ),
+    );
+  for (const s of siblings) {
+    const meta = (s.metadata ?? {}) as {
+      institutionName?: string;
+      institutionId?: string;
+    };
+    if (
+      meta.institutionId &&
+      normalizeInstitution(meta.institutionName) === target
+    ) {
+      return meta.institutionId;
+    }
+  }
+  return null;
+}
 
 type FileType = "pdf" | "csv" | "text" | "image";
 
@@ -219,6 +272,12 @@ export async function parseUploadFull(
       filename: file.originalFilename,
     });
 
+    const institutionId = await resolveInstitutionId({
+      agentInstanceId: conn.agentInstanceId,
+      accountId,
+      institutionName: file.institutionName,
+    });
+
     const prepared = parsed.transactions.map((tx) =>
       prepareTransaction({
         raw: {
@@ -231,6 +290,7 @@ export async function parseUploadFull(
           accountType: acct?.type ?? null,
           accountMask: acct?.last4 ?? null,
           currency: acct?.currency ?? null,
+          institutionId,
           personalFinanceCategoryPrimary: tx.category,
           rawData: tx as unknown as Record<string, unknown>,
         },

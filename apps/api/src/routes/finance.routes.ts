@@ -376,9 +376,11 @@ app.get("/agent-status", async (c) => {
     filesByConn.set(f.dataSourceConnectionId, arr);
   }
 
-  // Watchdog: force-complete any connection that's been in_progress longer
-  // than INGEST_HARD_TIMEOUT_MS. This is the safety net for the loading
-  // page UX — without it, a stuck sync can pin the user indefinitely.
+  // Watchdog: a connection that's been in_progress longer than
+  // INGEST_HARD_TIMEOUT_MS gets forced out of in_progress. Connections that
+  // actually pulled transactions land on 'complete' (we're done). Connections
+  // that pulled zero land on 'failed' — silently completing a zero-txn
+  // connection would strand the user with no data and a "ready" banner.
   const watchdogNow = Date.now();
   for (const conn of conns) {
     if (conn.ingestionState !== "in_progress") continue;
@@ -386,18 +388,27 @@ app.get("/agent-status", async (c) => {
     const ageMs =
       watchdogNow - new Date(conn.ingestionStartedAt).getTime();
     if (ageMs <= INGEST_HARD_TIMEOUT_MS) continue;
+    const txnsForConn = perConnCount.get(conn.id) ?? 0;
+    const forcedState: "complete" | "failed" =
+      txnsForConn > 0 ? "complete" : "failed";
+    const forcedError =
+      forcedState === "failed"
+        ? "Plaid did not return any transactions within the ingest window. The bank may still be backfilling history; try reconnecting in a few minutes."
+        : null;
     await db
       .update(dataSourceConnections)
       .set({
-        ingestionState: "complete",
+        ingestionState: forcedState,
         ingestionCompletedAt: new Date(),
+        ...(forcedError ? { lastSyncError: forcedError } : {}),
         updatedAt: new Date(),
       })
       .where(eq(dataSourceConnections.id, conn.id));
-    conn.ingestionState = "complete";
+    conn.ingestionState = forcedState;
     conn.ingestionCompletedAt = new Date();
+    if (forcedError) conn.lastSyncError = forcedError;
     console.log(
-      `[agent-status] watchdog: forced ${conn.id} to complete after ${Math.round(ageMs / 1000)}s`,
+      `[agent-status] watchdog: forced ${conn.id} to ${forcedState} after ${Math.round(ageMs / 1000)}s (${txnsForConn} txns)`,
     );
   }
 
