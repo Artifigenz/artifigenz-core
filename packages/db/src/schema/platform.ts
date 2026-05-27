@@ -237,6 +237,8 @@ export const deliveryPreferences = pgTable("delivery_preferences", {
   telegramEnabled: boolean("telegram_enabled").default(false),
   telegramChatId: varchar("telegram_chat_id", { length: 50 }),
   telegramOptedIn: boolean("telegram_opted_in").default(false),
+  telegramLinkToken: varchar("telegram_link_token", { length: 64 }),
+  telegramLinkTokenExpiresAt: timestamp("telegram_link_token_expires_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
