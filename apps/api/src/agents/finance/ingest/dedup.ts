@@ -86,6 +86,20 @@ export function prepareTransaction(args: {
 export interface IngestStats {
   inserted: number;
   skipped: number;
+  /** Per-row insert failures (not conflicts — actual exceptions). Surfaced
+   *  so the caller can decide whether to log/escalate; non-empty means a
+   *  schema mismatch, FK violation, or similar that onConflictDoNothing
+   *  did not absorb. */
+  errors: Array<{ index: number; error: string; sample: InsertSampleSnapshot }>;
+}
+
+export interface InsertSampleSnapshot {
+  source: string;
+  agentInstanceId: string;
+  accountId: string;
+  transactionDate: string;
+  amount: string;
+  description: string;
 }
 
 /**
@@ -93,53 +107,76 @@ export interface IngestStats {
  * (account_id, date, amount, description_hash) to skip duplicates regardless
  * of source. Plaid txns get a second guard via the plaid_transaction_id unique
  * constraint.
+ *
+ * Each row is inserted in its own try/catch so a single bad row (e.g. a
+ * schema mismatch or FK violation) doesn't abort the whole batch and end
+ * up looking like "Plaid returned nothing" upstream.
  */
 export async function insertTransactions(
   txs: InsertableTransaction[],
 ): Promise<IngestStats> {
   let inserted = 0;
   let skipped = 0;
+  const errors: IngestStats["errors"] = [];
 
-  for (const tx of txs) {
-    const result = await db
-      .insert(financeTransactions)
-      .values({
-        agentInstanceId: tx.agentInstanceId,
-        userId: tx.userId,
-        accountId: tx.accountId,
-        dataSourceConnectionId: tx.dataSourceConnectionId,
-        institutionId: tx.institutionId ?? null,
+  for (let i = 0; i < txs.length; i++) {
+    const tx = txs[i];
+    try {
+      const result = await db
+        .insert(financeTransactions)
+        .values({
+          agentInstanceId: tx.agentInstanceId,
+          userId: tx.userId,
+          accountId: tx.accountId,
+          dataSourceConnectionId: tx.dataSourceConnectionId,
+          institutionId: tx.institutionId ?? null,
+          source: tx.source,
+          sourceTransactionId: tx.sourceTransactionId ?? null,
+          transactionDate: tx.transactionDate,
+          postedDate: tx.postedDate ?? null,
+          authorizedDate: tx.authorizedDate ?? null,
+          amount: tx.amount,
+          direction: tx.direction,
+          description: tx.description,
+          normalizedDescription: tx.normalizedDescription,
+          merchantName: tx.merchantName,
+          merchantNormalized: tx.merchantNormalized,
+          descriptionHash: tx.descriptionHash,
+          accountType: tx.accountType ?? null,
+          accountMask: tx.accountMask ?? null,
+          currency: tx.currency ?? null,
+          accountName: tx.accountName ?? null,
+          plaidTransactionId: tx.plaidTransactionId ?? null,
+          plaidAccountId: tx.plaidAccountId ?? null,
+          pending: tx.pending ?? 0,
+          personalFinanceCategoryPrimary:
+            tx.personalFinanceCategoryPrimary ?? null,
+          personalFinanceCategoryDetailed:
+            tx.personalFinanceCategoryDetailed ?? null,
+          rawData: tx.rawData ?? null,
+        })
+        .onConflictDoNothing()
+        .returning({ id: financeTransactions.id });
+
+      if (result.length > 0) inserted++;
+      else skipped++;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const sample: InsertSampleSnapshot = {
         source: tx.source,
-        sourceTransactionId: tx.sourceTransactionId ?? null,
+        agentInstanceId: tx.agentInstanceId,
+        accountId: tx.accountId,
         transactionDate: tx.transactionDate,
-        postedDate: tx.postedDate ?? null,
-        authorizedDate: tx.authorizedDate ?? null,
         amount: tx.amount,
-        direction: tx.direction,
-        description: tx.description,
-        normalizedDescription: tx.normalizedDescription,
-        merchantName: tx.merchantName,
-        merchantNormalized: tx.merchantNormalized,
-        descriptionHash: tx.descriptionHash,
-        accountType: tx.accountType ?? null,
-        accountMask: tx.accountMask ?? null,
-        currency: tx.currency ?? null,
-        accountName: tx.accountName ?? null,
-        plaidTransactionId: tx.plaidTransactionId ?? null,
-        plaidAccountId: tx.plaidAccountId ?? null,
-        pending: tx.pending ?? 0,
-        personalFinanceCategoryPrimary:
-          tx.personalFinanceCategoryPrimary ?? null,
-        personalFinanceCategoryDetailed:
-          tx.personalFinanceCategoryDetailed ?? null,
-        rawData: tx.rawData ?? null,
-      })
-      .onConflictDoNothing()
-      .returning({ id: financeTransactions.id });
-
-    if (result.length > 0) inserted++;
-    else skipped++;
+        description: tx.description.slice(0, 80),
+      };
+      errors.push({ index: i, error: message, sample });
+      console.error(
+        `[insertTransactions] row ${i} failed (${tx.source}/${tx.accountId}): ${message}`,
+        sample,
+      );
+    }
   }
 
-  return { inserted, skipped };
+  return { inserted, skipped, errors };
 }

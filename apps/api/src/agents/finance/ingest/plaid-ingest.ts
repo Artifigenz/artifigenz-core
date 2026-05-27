@@ -256,6 +256,24 @@ async function runIngest(connectionId: string): Promise<PlaidIngestResult> {
 
   const stats = await insertTransactions(prepared);
 
+  // Surface per-row insert failures into lastSyncError so the loading page
+  // banner reports the real cause (schema mismatch, FK violation, etc.)
+  // instead of a silent "0 transactions".
+  if (stats.errors.length > 0) {
+    const first = stats.errors[0];
+    const summary =
+      stats.errors.length === 1
+        ? `Insert failed: ${first.error}`
+        : `${stats.errors.length} insert failures, first: ${first.error}`;
+    await db
+      .update(dataSourceConnections)
+      .set({
+        lastSyncError: summary,
+        updatedAt: new Date(),
+      })
+      .where(eq(dataSourceConnections.id, connectionId));
+  }
+
   // 4. Apply modified (Plaid re-issues txns when amount/description/category
   // change — e.g. pending → posted, merchant rename). Match by plaid_transaction_id.
   // Re-run prepareTransaction so direction, normalized_description,

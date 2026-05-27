@@ -303,6 +303,33 @@ export async function parseUploadFull(
 
     const stats = await insertTransactions(prepared);
 
+    // If every row failed to insert, the file landed nothing useful —
+    // mark it failed with the first row's error so the loading page can
+    // explain it. If only some failed, complete but log a warning.
+    const allRowsFailed =
+      prepared.length > 0 &&
+      stats.errors.length === prepared.length &&
+      stats.inserted === 0;
+    if (allRowsFailed) {
+      const first = stats.errors[0];
+      await db
+        .update(fileUploads)
+        .set({
+          parseState: "failed",
+          parseError: `Could not save extracted transactions: ${first.error}`,
+          extractionStatus: "failed",
+        })
+        .where(eq(fileUploads.id, fileUploadId));
+      throw new Error(
+        `All ${stats.errors.length} extracted rows failed to insert. First: ${first.error}`,
+      );
+    }
+    if (stats.errors.length > 0) {
+      console.warn(
+        `[parseUploadFull] ${stats.errors.length}/${prepared.length} rows failed to insert for ${fileUploadId}`,
+      );
+    }
+
     await db
       .update(fileUploads)
       .set({
