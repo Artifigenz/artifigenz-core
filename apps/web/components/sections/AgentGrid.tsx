@@ -14,6 +14,19 @@ interface FinanceData {
   insights: string[];
 }
 
+// Preview insights shown on the homepage card before real brief +
+// categorization runs. Same shapes the rest of the product uses
+// (upcoming, observed, new, price-change, category-trend) so the
+// rotation looks like the live product, not a placeholder.
+const FINANCE_PREVIEW_INSIGHTS: string[] = [
+  "You're tracking $2,400 ahead of spending this month",
+  "Netflix will charge $17.99 tomorrow",
+  "Spotify charged $12.99 — as expected",
+  "New subscription detected: Audible $14.95",
+  "Adobe increased $19.99 → $22.99",
+  "Groceries trending high: $612 vs. $480 average",
+];
+
 const ICON_MAP: Record<string, ReactNode> = {
   Finance: <Icons.FinanceIcon />,
   Travel: <Icons.TravelIcon />,
@@ -215,15 +228,16 @@ export default function AgentGrid() {
                   <span className={styles.activeTime}>{agent.lastActive}</span>
                 </div>
                 {agentSlug(agent.name) === 'finance' ? (
-                  (financeData.verdict || financeData.insights.length > 0) && (
-                    <CyclingInsight
-                      insights={[
-                        ...(financeData.verdict ? [financeData.verdict] : []),
-                        ...financeData.insights,
-                      ]}
-                      tick={ticks[index] ?? 0}
-                    />
-                  )
+                  (() => {
+                    // Prefer real brief/insights; fall back to preview strings
+                    // so the card never looks empty before categorization runs.
+                    const real = [
+                      ...(financeData.verdict ? [financeData.verdict] : []),
+                      ...financeData.insights,
+                    ];
+                    const insights = real.length > 0 ? real : FINANCE_PREVIEW_INSIGHTS;
+                    return <CyclingInsight insights={insights} tick={ticks[index] ?? 0} />;
+                  })()
                 ) : (
                   agent.insights && <CyclingInsight insights={agent.insights} tick={ticks[index] ?? 0} />
                 )}
