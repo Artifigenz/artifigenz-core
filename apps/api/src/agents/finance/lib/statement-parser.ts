@@ -57,97 +57,121 @@ Return ONLY a valid JSON object matching this schema:
 
 Do not include any explanation, markdown formatting, or text outside the JSON.`;
 
+type ChunkResult = {
+  institution_name?: string | null;
+  account_name?: string | null;
+  account_last4?: string | null;
+  account_type?: string | null;
+  opening_balance?: number | null;
+  closing_balance?: number | null;
+  statement_period?: { start: string; end: string } | null;
+  transactions: Array<{
+    date: string;
+    description: string;
+    merchant_name?: string | null;
+    amount: number;
+    category?: string | null;
+    account_name?: string | null;
+  }>;
+};
+
+// Pages per Claude call. Picked empirically:
+//  • 8 pages of dense bank-statement text ≈ ~80K tokens of PDF input.
+//  • Leaves ~120K headroom in Sonnet 4's 200K window for the response
+//    and the system prompt, so even verbose statements don't truncate.
+//  • Parses ~50 txns/chunk on average, well within max_tokens=16384.
+const PDF_CHUNK_PAGES = 8;
+// Run at most this many chunks in parallel. Anthropic's free-tier rate
+// limit is ~5 concurrent reqs; keeping conservative avoids 429s on long
+// statements (a 60-page PDF = 8 chunks).
+const CHUNK_CONCURRENCY = 4;
+
 /**
  * Parses a bank statement file using Claude API.
- * Supports: PDF, CSV (text), plain text, images
+ * Supports: PDF, CSV (text), plain text, images.
+ *
+ * Large PDFs are split by page so each Claude call stays well under the
+ * model's context window. Chunks are parsed in parallel (bounded by
+ * CHUNK_CONCURRENCY), then transactions are concatenated. Metadata
+ * (institution, account, period) is taken from the first chunk that
+ * produced any of those fields, since they're identical across a single
+ * statement.
  */
 export async function parseStatement(params: {
   fileType: "pdf" | "csv" | "text" | "image";
   fileContent: Buffer | string;
   filename?: string;
 }): Promise<ParsedStatement> {
-  const client = getClaudeClient();
-
-  // Build the user message content based on file type
-  const content: Anthropic.MessageCreateParams["messages"][0]["content"] =
-    buildMessageContent(params);
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 16384,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content }],
-  });
-
-  // Extract text from response
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude returned no text content");
+  // Non-PDF paths can't be page-split; fall through to single-call parse.
+  if (params.fileType !== "pdf" || typeof params.fileContent === "string") {
+    const result = await parseOneChunk(params);
+    return finaliseParsed(result);
   }
 
-  // Parse JSON from response — handle truncation from max_tokens
-  let jsonText = extractJson(textBlock.text);
-
-  // If the response was truncated (stop_reason === 'max_tokens'), try to
-  // salvage partial JSON by closing open arrays/objects
-  if (response.stop_reason === "max_tokens") {
-    console.warn("[statement-parser] Response truncated — attempting to salvage partial JSON");
-    jsonText = salvageTruncatedJson(jsonText);
-  }
-
-  type ParsedResult = {
-    institution_name?: string | null;
-    account_name?: string | null;
-    account_last4?: string | null;
-    account_type?: string | null;
-    opening_balance?: number | null;
-    closing_balance?: number | null;
-    statement_period?: { start: string; end: string } | null;
-    transactions: Array<{
-      date: string;
-      description: string;
-      merchant_name?: string | null;
-      amount: number;
-      category?: string | null;
-      account_name?: string | null;
-    }>;
-  };
-
-  let parsed: ParsedResult;
+  // PDF — check page count and chunk if large.
+  const { PDFDocument } = await import("pdf-lib");
+  let chunks: Buffer[];
   try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    // Last resort: try to extract whatever transactions we can find
-    console.error("Claude returned invalid JSON, attempting line-by-line extraction:", textBlock.text.slice(0, 200));
-    try {
-      // Find the transactions array and close it
-      const txStart = jsonText.indexOf('"transactions"');
-      if (txStart !== -1) {
-        const arrStart = jsonText.indexOf("[", txStart);
-        if (arrStart !== -1) {
-          // Find the last complete object (ends with })
-          const lastBrace = jsonText.lastIndexOf("}");
-          if (lastBrace > arrStart) {
-            const salvaged = jsonText.slice(0, lastBrace + 1) + "]}";
-            parsed = JSON.parse(salvaged);
-          } else {
-            throw err;
-          }
-        } else {
-          throw err;
-        }
-      } else {
-        throw err;
-      }
-    } catch {
-      throw new Error(`Failed to parse Claude response as JSON: ${err}`);
+    const doc = await PDFDocument.load(params.fileContent, {
+      ignoreEncryption: false,
+    });
+    const pageCount = doc.getPageCount();
+
+    if (pageCount <= PDF_CHUNK_PAGES) {
+      chunks = [params.fileContent];
+    } else {
+      chunks = await splitPdf(doc, PDF_CHUNK_PAGES);
+      console.log(
+        `[statement-parser] split ${pageCount}-page PDF into ${chunks.length} chunks`,
+      );
     }
+  } catch (err) {
+    // pdf-lib fails on a small minority of PDFs (esoteric encryption,
+    // exotic structure). Fall back to a single call — Claude is usually
+    // fine, and if not we surface the original error.
+    console.warn(
+      `[statement-parser] pdf-lib couldn't load, parsing as single chunk: ${(err as Error).message}`,
+    );
+    chunks = [params.fileContent];
   }
 
+  // Parse chunks in bounded-parallel batches.
+  const results: ChunkResult[] = await runWithConcurrency(
+    chunks.map((chunk, i) => () =>
+      parseOneChunk({
+        fileType: "pdf",
+        fileContent: chunk,
+        filename: chunks.length > 1
+          ? `${params.filename ?? "statement"} (part ${i + 1}/${chunks.length})`
+          : params.filename,
+      }),
+    ),
+    CHUNK_CONCURRENCY,
+  );
+
+  // Merge: stitch all transactions together. Take the first non-null
+  // value seen for each metadata field across chunks — they should all
+  // agree on a single statement.
+  const merged: ChunkResult = {
+    institution_name: firstNonNull(results, "institution_name"),
+    account_name: firstNonNull(results, "account_name"),
+    account_last4: firstNonNull(results, "account_last4"),
+    account_type: firstNonNull(results, "account_type"),
+    opening_balance: results[0]?.opening_balance ?? null,
+    closing_balance: results[results.length - 1]?.closing_balance ?? null,
+    statement_period: firstNonNull(results, "statement_period"),
+    transactions: results.flatMap((r) => r.transactions ?? []),
+  };
+  return finaliseParsed(merged);
+}
+
+function finaliseParsed(parsed: ChunkResult): ParsedStatement {
   return {
     institutionName: parsed.institution_name ?? null,
     accountName: parsed.account_name ?? null,
-    accountLast4: parsed.account_last4 ? String(parsed.account_last4).slice(-4) : null,
+    accountLast4: parsed.account_last4
+      ? String(parsed.account_last4).slice(-4)
+      : null,
     accountType: parsed.account_type ?? null,
     openingBalance: parsed.opening_balance ?? null,
     closingBalance: parsed.closing_balance ?? null,
@@ -161,6 +185,117 @@ export async function parseStatement(params: {
       accountName: t.account_name ?? parsed.account_name ?? null,
     })),
   };
+}
+
+/**
+ * Single Claude call against one piece of PDF/CSV/text/image. Used by
+ * parseStatement directly (small inputs) and as the per-chunk worker for
+ * large PDFs.
+ */
+async function parseOneChunk(params: {
+  fileType: "pdf" | "csv" | "text" | "image";
+  fileContent: Buffer | string;
+  filename?: string;
+}): Promise<ChunkResult> {
+  const client = getClaudeClient();
+  const content = buildMessageContent(params);
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 16384,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content }],
+  });
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("Claude returned no text content");
+  }
+
+  let jsonText = extractJson(textBlock.text);
+  if (response.stop_reason === "max_tokens") {
+    console.warn(
+      `[statement-parser] chunk truncated (${params.filename ?? "?"}) — salvaging`,
+    );
+    jsonText = salvageTruncatedJson(jsonText);
+  }
+
+  try {
+    return JSON.parse(jsonText) as ChunkResult;
+  } catch (err) {
+    // Last resort — close the transactions array at the last complete
+    // object so we keep whatever rows did parse.
+    console.error(
+      `[statement-parser] invalid JSON in ${params.filename ?? "chunk"}, attempting recovery:`,
+      textBlock.text.slice(0, 200),
+    );
+    const txStart = jsonText.indexOf('"transactions"');
+    const arrStart = txStart !== -1 ? jsonText.indexOf("[", txStart) : -1;
+    const lastBrace = jsonText.lastIndexOf("}");
+    if (arrStart !== -1 && lastBrace > arrStart) {
+      try {
+        return JSON.parse(jsonText.slice(0, lastBrace + 1) + "]}") as ChunkResult;
+      } catch {
+        /* fall through */
+      }
+    }
+    throw new Error(`Failed to parse Claude response as JSON: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Split a loaded PDFDocument into N-page sub-documents and return the
+ * serialised bytes for each.
+ */
+async function splitPdf(
+  doc: Awaited<ReturnType<typeof import("pdf-lib").PDFDocument.load>>,
+  pagesPerChunk: number,
+): Promise<Buffer[]> {
+  const { PDFDocument } = await import("pdf-lib");
+  const total = doc.getPageCount();
+  const chunks: Buffer[] = [];
+  for (let start = 0; start < total; start += pagesPerChunk) {
+    const end = Math.min(start + pagesPerChunk, total);
+    const sub = await PDFDocument.create();
+    const indices = Array.from({ length: end - start }, (_, i) => start + i);
+    const pages = await sub.copyPages(doc, indices);
+    pages.forEach((p) => sub.addPage(p));
+    const bytes = await sub.save();
+    chunks.push(Buffer.from(bytes));
+  }
+  return chunks;
+}
+
+/** Run `tasks` with at most `n` running at once. Returns results in order. */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  n: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let idx = 0;
+  const workers = Array.from(
+    { length: Math.min(n, tasks.length) },
+    async () => {
+      while (true) {
+        const myIdx = idx++;
+        if (myIdx >= tasks.length) return;
+        results[myIdx] = await tasks[myIdx]();
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+function firstNonNull<K extends keyof ChunkResult>(
+  results: ChunkResult[],
+  key: K,
+): ChunkResult[K] | null {
+  for (const r of results) {
+    const v = r[key];
+    if (v !== null && v !== undefined && v !== "") return v;
+  }
+  return null;
 }
 
 // ─── Fast validation pass ──────────────────────────────────────────
