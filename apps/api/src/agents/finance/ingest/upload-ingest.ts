@@ -16,6 +16,14 @@ import {
 } from "../lib/statement-parser";
 import { normalizeInstitution, upsertAccount } from "./account-matcher";
 import { insertTransactions, prepareTransaction } from "./dedup";
+import {
+  decryptIfEncrypted,
+  deleteDecryptedFile,
+  detectEncryption,
+  EncryptionUnsupportedError,
+  WrongPasswordError,
+} from "./decrypt-file";
+import { rename } from "node:fs/promises";
 
 /**
  * Statement uploads don't carry a Plaid-style institution_id. Resolve one
@@ -84,6 +92,8 @@ export interface ValidateUploadResult {
   validation: ValidationResult;
   accountId: string | null;
   rejected: boolean;
+  needsPassword?: boolean;
+  encryptedKind?: "pdf" | "xlsx" | "zip";
 }
 
 /**
@@ -114,6 +124,36 @@ export async function validateUpload(
   if (!conn) throw new Error(`Connection for upload ${fileUploadId} not found`);
 
   const fileType = inferFileType(file.originalFilename);
+
+  // Detect encryption BEFORE sending bytes to Claude. Encrypted PDFs/XLSX
+  // would just confuse the model (it'd see binary headers, not text) and
+  // burn tokens. Pause the upload in 'needs_password' state until the
+  // user submits a password via /api/upload/:id/unlock.
+  const encryptedKind = await detectEncryption(file.storagePath);
+  if (encryptedKind) {
+    await db
+      .update(fileUploads)
+      .set({
+        parseState: "needs_password",
+        parseError: null,
+      })
+      .where(eq(fileUploads.id, fileUploadId));
+    return {
+      validation: {
+        isStatement: false,
+        institutionName: null,
+        accountName: null,
+        accountLast4: null,
+        accountType: null,
+        statementPeriod: null,
+      },
+      accountId: null,
+      rejected: false,
+      needsPassword: true,
+      encryptedKind,
+    };
+  }
+
   const fileContent = await readFile(file.storagePath);
 
   let validation: ValidationResult;
@@ -192,6 +232,97 @@ export async function validateUpload(
     );
 
   return { validation, accountId, rejected: false };
+}
+
+export interface UnlockUploadResult {
+  outcome: "validated" | "rejected" | "wrong_password" | "unsupported";
+  validation?: ValidationResult;
+  accountId?: string | null;
+  error?: string;
+}
+
+/**
+ * Decrypt an encrypted upload with the user-supplied password, then run
+ * validateUpload on the decrypted file. Replaces the original storagePath
+ * so all downstream code (parseUploadFull) reads the cleartext bytes.
+ *
+ * The password is held only in this function's stack frame. It is never
+ * persisted in the DB, never logged, never sent to Claude.
+ */
+export async function unlockUpload(
+  fileUploadId: string,
+  password: string,
+): Promise<UnlockUploadResult> {
+  const [file] = await db
+    .select()
+    .from(fileUploads)
+    .where(eq(fileUploads.id, fileUploadId))
+    .limit(1);
+  if (!file) throw new Error(`File upload ${fileUploadId} not found`);
+
+  if (file.parseState !== "needs_password" && file.parseState !== "validated") {
+    // Defensive: only allow unlock from needs_password (or re-unlock from
+    // validated for retries). Refusing other states avoids racing with
+    // an in-flight parse.
+    return {
+      outcome: "unsupported",
+      error: `Upload is in state ${file.parseState}; cannot unlock.`,
+    };
+  }
+
+  let decryptedPath: string | null = null;
+  try {
+    const result = await decryptIfEncrypted(file.storagePath, password);
+    if (!result) {
+      // Not encrypted at all — re-run validate on the original file.
+      const validation = await validateUpload(fileUploadId);
+      return {
+        outcome: validation.rejected ? "rejected" : "validated",
+        validation: validation.validation,
+        accountId: validation.accountId,
+      };
+    }
+    decryptedPath = result.decryptedPath;
+
+    // Replace the encrypted file with the decrypted one in place so all
+    // downstream readers (parseUploadFull) just see the cleartext bytes.
+    // We rename rather than update storagePath so the path on disk and in
+    // the DB stay aligned, and we don't leak a separate decrypted file.
+    await rename(decryptedPath, file.storagePath);
+    decryptedPath = null; // no longer needs cleanup, it's now at storagePath
+
+    // Reset parse_state so validateUpload re-evaluates the (now decrypted)
+    // file, picks up institution/last4, and lands on 'validated'.
+    await db
+      .update(fileUploads)
+      .set({ parseState: "pending", parseError: null })
+      .where(eq(fileUploads.id, fileUploadId));
+
+    const validation = await validateUpload(fileUploadId);
+    return {
+      outcome: validation.rejected ? "rejected" : "validated",
+      validation: validation.validation,
+      accountId: validation.accountId,
+    };
+  } catch (err) {
+    if (err instanceof WrongPasswordError) {
+      // Leave parse_state at 'needs_password' so the UI can prompt again.
+      return { outcome: "wrong_password", error: err.message };
+    }
+    if (err instanceof EncryptionUnsupportedError) {
+      await db
+        .update(fileUploads)
+        .set({
+          parseState: "failed",
+          parseError: `Unsupported encryption: ${err.message}`,
+        })
+        .where(eq(fileUploads.id, fileUploadId));
+      return { outcome: "unsupported", error: err.message };
+    }
+    throw err;
+  } finally {
+    await deleteDecryptedFile(decryptedPath);
+  }
 }
 
 export interface ParseUploadFullResult {

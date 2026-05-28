@@ -14,6 +14,33 @@ export interface ApiError {
   message: string;
 }
 
+export interface StatementMetadata {
+  institutionName: string | null;
+  accountLast4: string | null;
+  accountType: string | null;
+  statementPeriod: { start: string; end: string } | null;
+}
+
+export type UploadResult =
+  | {
+      status: 'validated';
+      fileId: string;
+      file: { name: string; size: number; type: string };
+      metadata: StatementMetadata;
+    }
+  | {
+      status: 'needs_password';
+      fileId: string;
+      encryptedKind: 'pdf' | 'xlsx' | 'zip';
+      file: { name: string; size: number; type: string };
+    };
+
+export type UnlockResult =
+  | { status: 'validated'; metadata: StatementMetadata }
+  | { status: 'rejected'; reason: string }
+  | { status: 'wrong_password' }
+  | { status: 'unsupported'; reason?: string };
+
 export class ApiClient {
   constructor(private getToken: GetToken) {}
 
@@ -494,17 +521,7 @@ export class ApiClient {
     );
   }
 
-  async uploadFile(formData: FormData): Promise<{
-    status: 'validated';
-    fileId: string;
-    file: { name: string; size: number; type: string };
-    metadata: {
-      institutionName: string | null;
-      accountLast4: string | null;
-      accountType: string | null;
-      statementPeriod: { start: string; end: string } | null;
-    };
-  }> {
+  async uploadFile(formData: FormData): Promise<UploadResult> {
     const token = await this.getToken();
     if (!token) throw { status: 401, message: 'Not authenticated' } satisfies ApiError;
 
@@ -523,17 +540,42 @@ export class ApiClient {
       } satisfies ApiError;
     }
 
-    return data as {
-      status: 'validated';
-      fileId: string;
-      file: { name: string; size: number; type: string };
-      metadata: {
-        institutionName: string | null;
-        accountLast4: string | null;
-        accountType: string | null;
-        statementPeriod: { start: string; end: string } | null;
-      };
-    };
+    return data as UploadResult;
+  }
+
+  /**
+   * Unlock a password-protected upload. Returns the post-validation state.
+   * The password is sent in the request body over TLS, held in memory on
+   * the server only for the duration of decryption, and never persisted.
+   */
+  async unlockUpload(
+    fileId: string,
+    password: string,
+  ): Promise<UnlockResult> {
+    const token = await this.getToken();
+    if (!token) throw { status: 401, message: 'Not authenticated' } satisfies ApiError;
+
+    const res = await fetch(`${API_URL}/api/upload/${fileId}/unlock`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    // 401 here is specifically wrong_password — bubble as a normal result,
+    // not an auth error.
+    if (res.status === 401 && (data as { status?: string }).status === 'wrong_password') {
+      return { status: 'wrong_password' };
+    }
+    if (!res.ok) {
+      throw {
+        status: res.status,
+        message: (data as { error?: string }).error ?? `Unlock failed (${res.status})`,
+      } satisfies ApiError;
+    }
+    return data as UnlockResult;
   }
 
   /**

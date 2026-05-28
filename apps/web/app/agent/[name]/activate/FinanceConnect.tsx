@@ -7,6 +7,8 @@ import { useUser } from '@clerk/nextjs';
 import { usePlaidLink } from 'react-plaid-link';
 import Header from '@/components/layout/Header';
 import { useApiClient } from '@/hooks/useApiClient';
+import { usePasswordedUpload } from '@/hooks/usePasswordedUpload';
+import PasswordPromptDialog from '@/components/sections/PasswordPromptDialog';
 import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { clearPlaidPending, savePlaidPending } from '@/lib/plaid-pending';
 import styles from './FinanceConnect.module.css';
@@ -199,6 +201,7 @@ export default function FinanceConnect() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const pwUpload = usePasswordedUpload();
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const [query, setQuery] = useState('');
@@ -358,9 +361,11 @@ export default function FinanceConnect() {
     setUploadError(null);
     setUploadBusy(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const result = await api.uploadFile(formData);
+      const result = await pwUpload.upload(file);
+      if (!result) {
+        if (pwUpload.unsupportedReason) setUploadError(pwUpload.unsupportedReason);
+        return;
+      }
       setUploadedFiles((prev) => [
         ...prev,
         {
@@ -484,6 +489,16 @@ export default function FinanceConnect() {
   return (
     <div className={styles.page}>
       <Header />
+      {pwUpload.pendingUnlock && (
+        <PasswordPromptDialog
+          filename={pwUpload.pendingUnlock.filename}
+          encryptedKind={pwUpload.pendingUnlock.encryptedKind}
+          submitting={pwUpload.submittingPassword}
+          wrongPassword={pwUpload.wrongPassword}
+          onSubmit={pwUpload.submitPassword}
+          onCancel={pwUpload.cancelPassword}
+        />
+      )}
       <main className={styles.main}>
         <Link href="/app" className={styles.back}>
           ← Back

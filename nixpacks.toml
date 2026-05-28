@@ -1,5 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm-10_x", "openssl"]
+# qpdf is the system binary used to decrypt password-protected bank
+# statements (PDF). Pure-JS fallbacks struggle with AES-256 and malformed
+# PDFs that some banks emit — qpdf is the gold-standard.
+nixPkgs = ["nodejs_20", "npm-10_x", "openssl", "qpdf"]
 
 [phases.install]
 cmds = ["npm ci --include=dev"]
