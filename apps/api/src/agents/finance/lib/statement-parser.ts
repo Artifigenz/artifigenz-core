@@ -230,7 +230,12 @@ export async function validateStatement(params: {
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 400,
+    // 400 used to be enough for the small fixed JSON we ask for, but Haiku
+    // 4.5 occasionally emits a longer rejection_reason or wraps the JSON
+    // in extra preamble, truncating the response mid-string and breaking
+    // JSON.parse. 1200 gives plenty of headroom while still keeping the
+    // validator cheap (~$0.0005/call).
+    max_tokens: 1200,
     system: VALIDATE_SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
   });
@@ -240,8 +245,17 @@ export async function validateStatement(params: {
     throw new Error("Validator returned no text content");
   }
 
-  const jsonText = extractJson(textBlock.text);
-  let parsed: {
+  // Even with the bigger budget, salvage truncated JSON the same way
+  // parseStatement does — small files can still hit edge cases.
+  let jsonText = extractJson(textBlock.text);
+  if (response.stop_reason === "max_tokens") {
+    console.warn(
+      "[statement-parser/validate] Response truncated — attempting to salvage",
+    );
+    jsonText = salvageTruncatedJson(jsonText);
+  }
+
+  type ValidatorParsed = {
     is_statement?: boolean;
     rejection_reason?: string;
     institution_name?: string | null;
@@ -250,10 +264,19 @@ export async function validateStatement(params: {
     account_type?: string | null;
     statement_period?: { start: string; end: string } | null;
   };
+  let parsed: ValidatorParsed;
   try {
     parsed = JSON.parse(jsonText);
-  } catch (err) {
-    throw new Error(`Validator returned invalid JSON: ${err}`);
+  } catch {
+    // Last-ditch salvage — try closing brackets, parse again.
+    try {
+      parsed = JSON.parse(salvageTruncatedJson(jsonText));
+    } catch (err2) {
+      throw new Error(
+        `Validator returned invalid JSON: ${(err2 as Error).message}. ` +
+          `Raw response head: ${textBlock.text.slice(0, 200).replace(/\s+/g, " ")}…`,
+      );
+    }
   }
 
   return {
