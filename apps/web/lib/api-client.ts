@@ -872,6 +872,34 @@ export class ApiClient {
   async getMemoryImportPrompt() {
     return this.get<{ prompt: string }>(`/api/me/memories/import-prompt`);
   }
+
+  // ─── Chat sharing ───────────────────────────────────────────────
+
+  async createShare(conversationId: string, showOwnerName = true) {
+    return this.post<{ share: ShareRecord }>(`/api/me/shares`, {
+      conversationId,
+      showOwnerName,
+    });
+  }
+
+  async listShares() {
+    return this.get<{ shares: ShareRecord[] }>(`/api/me/shares`);
+  }
+
+  async revokeShare(token: string) {
+    return this.delete<void>(`/api/me/shares/${token}`);
+  }
+}
+
+export interface ShareRecord {
+  id: string;
+  shareToken: string;
+  conversationId: string;
+  title: string | null;
+  showOwnerName: boolean;
+  viewCount: number;
+  revokedAt: string | null;
+  createdAt: string;
 }
 
 export type MemorySource =

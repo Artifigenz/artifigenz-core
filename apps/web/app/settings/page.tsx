@@ -6,6 +6,7 @@ import {
   IdentitySection,
   ChannelsSection,
   ChatSection,
+  SharedChatsSection,
   MemoriesSection,
   AppearanceSection,
   PrivacySection,
@@ -33,6 +34,7 @@ function SettingsContent() {
           <IdentitySection />
           <ChannelsSection />
           <ChatSection />
+          <SharedChatsSection />
           <MemoriesSection />
           <AppearanceSection />
           <PrivacySection />

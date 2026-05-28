@@ -6,7 +6,9 @@ import { useAuth } from '@clerk/nextjs';
 
 // Routes an anonymous visitor can reach without being redirected to /sign-in.
 // '/' is the public landing page; authed users visiting it are bounced to /app.
-const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up', '/sso-callback'];
+// '/share' hosts read-only conversation snapshots that anyone with the link
+// can view without an account.
+const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up', '/sso-callback', '/share'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_ROUTES.some(

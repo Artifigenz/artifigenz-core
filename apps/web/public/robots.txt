@@ -1,0 +1,7 @@
+# Allow general crawling but keep shared user conversations out of search
+# indexes. Each /share/<token> page also sets a noindex meta tag — robots.txt
+# is the broader signal, the meta tag is the per-page enforcement.
+
+User-agent: *
+Disallow: /share/
+Disallow: /api/

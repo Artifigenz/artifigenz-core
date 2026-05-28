@@ -438,3 +438,44 @@ export const messages = pgTable(
     ),
   ],
 );
+
+// ─── Shared conversations (read-only public snapshots) ─────────────
+//
+// A user explicitly shares a conversation; we freeze the messages at
+// share-time into messages_snapshot and expose the share at a random
+// nanoid-style token. The /share/<token> page is public — no auth — but
+// the API enforces ownership for create/list/revoke. Revoking sets
+// revoked_at; the public GET returns 410 once that's set.
+
+export const sharedConversations = pgTable(
+  "shared_conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shareToken: varchar("share_token", { length: 32 }).notNull(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title"),
+    /** Frozen array of { role, content, createdAt } at share-time. */
+    messagesSnapshot: jsonb("messages_snapshot").notNull(),
+    showOwnerName: boolean("show_owner_name").default(true).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    viewCount: integer("view_count").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_shared_conversations_token").on(table.shareToken),
+    index("idx_shared_conversations_owner").on(
+      table.ownerUserId,
+      table.createdAt,
+    ),
+  ],
+);
