@@ -10,6 +10,8 @@ import { useApiClient } from '@/hooks/useApiClient';
 import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { FinanceIcon } from '@/components/sections/AgentIcons';
 import { savePlaidPending, clearPlaidPending } from '@/lib/plaid-pending';
+import { usePasswordedUpload } from '@/hooks/usePasswordedUpload';
+import PasswordPromptDialog from '@/components/sections/PasswordPromptDialog';
 import shell from '../agent/[name]/page.module.css';
 import styles from './page.module.css';
 
@@ -390,6 +392,7 @@ export default function FinanceBriefPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const pwUpload = usePasswordedUpload();
 
   // Dev-only: ?regen triggers fresh brief generation
   const shouldRegen = searchParams.get('regen') === '1';
@@ -792,9 +795,12 @@ export default function FinanceBriefPage() {
     setUploadSuccess(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const result = await api.uploadFile(formData);
+      const result = await pwUpload.upload(file);
+      if (!result) {
+        // User cancelled the password prompt or file was unsupported.
+        if (pwUpload.unsupportedReason) setUploadError(pwUpload.unsupportedReason);
+        return;
+      }
       const inst = result.metadata.institutionName ?? 'statement';
       const last4 = result.metadata.accountLast4 ? ` ••${result.metadata.accountLast4}` : '';
       setUploadSuccess(`Validated ${inst}${last4} — parsing in background.`);
@@ -852,6 +858,16 @@ export default function FinanceBriefPage() {
   return (
     <div className={shell.page}>
       <Header />
+      {pwUpload.pendingUnlock && (
+        <PasswordPromptDialog
+          filename={pwUpload.pendingUnlock.filename}
+          encryptedKind={pwUpload.pendingUnlock.encryptedKind}
+          submitting={pwUpload.submittingPassword}
+          wrongPassword={pwUpload.wrongPassword}
+          onSubmit={pwUpload.submitPassword}
+          onCancel={pwUpload.cancelPassword}
+        />
+      )}
       <main className={shell.main}>
         <Link href="/app" className={shell.back}>← Back</Link>
 

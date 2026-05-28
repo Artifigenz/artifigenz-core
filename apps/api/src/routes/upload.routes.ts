@@ -11,7 +11,7 @@ import {
 } from "@artifigenz/db";
 import { clerkAuth } from "../platform/auth/clerk-middleware";
 import { fileUploadAdapter } from "../agents/finance/data-sources/file-upload.adapter";
-import { validateUpload } from "../agents/finance/ingest/upload-ingest";
+import { unlockUpload, validateUpload } from "../agents/finance/ingest/upload-ingest";
 import { appleHealthAdapter } from "../agents/health/data-sources/apple-health.adapter";
 import { SkillExecutor } from "../platform/execution/skill-executor";
 import { AgentRegistry } from "../platform/registry/agent-registry";
@@ -161,6 +161,15 @@ app.post("/", async (c) => {
     );
   }
 
+  if (validation.needsPassword) {
+    return c.json({
+      status: "needs_password",
+      fileId: fileRow.id,
+      encryptedKind: validation.encryptedKind,
+      file: { name: fileName, size: fileSize, type: fileType },
+    });
+  }
+
   return c.json({
     status: "validated",
     fileId: fileRow.id,
@@ -172,6 +181,58 @@ app.post("/", async (c) => {
       statementPeriod: validation.validation.statementPeriod,
     },
   });
+});
+
+/**
+ * POST /api/upload/:fileId/unlock
+ *
+ * Decrypt a password-protected upload with the user-supplied password,
+ * then re-run validateUpload on the decrypted file. The password lives
+ * only in the request body — never persisted, never logged, never sent
+ * to Claude.
+ *
+ * Outcomes:
+ *   200 + { status: 'validated', metadata } — unlocked + parsed
+ *   200 + { status: 'rejected', reason }    — decrypted but not a statement
+ *   401 + { status: 'wrong_password' }      — try again
+ *   422 + { status: 'unsupported', reason } — encryption scheme not supported
+ */
+app.post("/:fileId/unlock", async (c) => {
+  const fileId = c.req.param("fileId");
+  const body = await c.req.json().catch(() => ({}));
+  const password = typeof body?.password === "string" ? body.password : "";
+  if (!password) {
+    return c.json({ error: "password is required" }, 400);
+  }
+
+  try {
+    const result = await unlockUpload(fileId, password);
+    if (result.outcome === "validated") {
+      return c.json({
+        status: "validated",
+        metadata: {
+          institutionName: result.validation?.institutionName ?? null,
+          accountLast4: result.validation?.accountLast4 ?? null,
+          accountType: result.validation?.accountType ?? null,
+          statementPeriod: result.validation?.statementPeriod ?? null,
+        },
+      });
+    }
+    if (result.outcome === "rejected") {
+      return c.json({
+        status: "rejected",
+        reason: result.validation?.rejectionReason ?? "Not a bank statement",
+      });
+    }
+    if (result.outcome === "wrong_password") {
+      return c.json({ status: "wrong_password" }, 401);
+    }
+    return c.json({ status: "unsupported", reason: result.error }, 422);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[upload/unlock] ${fileId}:`, err);
+    return c.json({ error: msg }, 500);
+  }
 });
 
 /**

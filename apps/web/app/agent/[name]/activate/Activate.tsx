@@ -9,6 +9,8 @@ import Header from '@/components/layout/Header';
 import { AGENTS } from '@artifigenz/shared';
 import { useActivatedAgents } from '@/hooks/useActivatedAgents';
 import { useApiClient } from '@/hooks/useApiClient';
+import { usePasswordedUpload } from '@/hooks/usePasswordedUpload';
+import PasswordPromptDialog from '@/components/sections/PasswordPromptDialog';
 import { clearPlaidPending, savePlaidPending } from '@/lib/plaid-pending';
 import * as Icons from '@/components/sections/AgentIcons';
 import * as CapIcons from '@/components/sections/CapabilityIcons';
@@ -408,6 +410,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   // countries Plaid doesn't cover and accounts whose connection broke.
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const pwUpload = usePasswordedUpload();
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
     name: string;
     institutionName: string | null;
@@ -623,9 +626,11 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
     setUploadError(null);
     setUploadBusy(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const result = await api.uploadFile(formData);
+      const result = await pwUpload.upload(file);
+      if (!result) {
+        if (pwUpload.unsupportedReason) setUploadError(pwUpload.unsupportedReason);
+        return;
+      }
       setUploadedFiles((prev) => [
         ...prev,
         {
@@ -798,6 +803,16 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
   return (
     <div className={styles.page}>
       <Header />
+      {pwUpload.pendingUnlock && (
+        <PasswordPromptDialog
+          filename={pwUpload.pendingUnlock.filename}
+          encryptedKind={pwUpload.pendingUnlock.encryptedKind}
+          submitting={pwUpload.submittingPassword}
+          wrongPassword={pwUpload.wrongPassword}
+          onSubmit={pwUpload.submitPassword}
+          onCancel={pwUpload.cancelPassword}
+        />
+      )}
       <main className={styles.main}>
         {/* Agent header */}
         <div className={styles.agentHeader}>
