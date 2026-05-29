@@ -92,6 +92,13 @@
       "when": 1779927668019,
       "tag": "0012_chat_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780061820722,
+      "tag": "0013_merchant_brands",
+      "breakpoints": true
     }
   ]
 }

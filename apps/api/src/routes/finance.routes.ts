@@ -11,6 +11,7 @@ import {
   financeBriefs,
   financeInsights,
   merchantClusters,
+  merchantBrands,
   fileUploads,
   dataSourceConnections,
   insights,
@@ -23,11 +24,36 @@ import {
 } from "../agents/finance/categorize";
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
 import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ingest";
+import { extractPlaidBrands } from "../agents/finance/enrich/plaid-extractor";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
 // without this throttle we'd hammer Plaid.
 const SYNC_THROTTLE_MS = 30_000;
+
+// How long to wait between brand-extraction passes per agent instance.
+// Plaid brand metadata rarely changes mid-day; one run per 10 min after
+// ingest completes is plenty and keeps the DB cheap. In-memory throttle
+// (lost on restart, fine — the extractor is idempotent).
+const BRAND_EXTRACT_THROTTLE_MS = 10 * 60_000;
+const lastBrandExtractAt = new Map<string, number>();
+
+async function maybeExtractBrands(agentInstanceId: string): Promise<void> {
+  const last = lastBrandExtractAt.get(agentInstanceId) ?? 0;
+  if (Date.now() - last < BRAND_EXTRACT_THROTTLE_MS) return;
+  lastBrandExtractAt.set(agentInstanceId, Date.now());
+  try {
+    const stats = await extractPlaidBrands(agentInstanceId);
+    if (stats.brandsUpserted > 0) {
+      console.log(
+        `[brand-extract] ${agentInstanceId}: +${stats.brandsUpserted} brands ` +
+          `(${stats.brandsSkipped} skipped, ${stats.candidatesScanned} scanned)`,
+      );
+    }
+  } catch (err) {
+    console.error(`[brand-extract] failed for ${agentInstanceId}:`, err);
+  }
+}
 
 // Watchdog: if a connection has been in_progress for this long, force it to
 // "complete" regardless of consecutive-empty-sync count. This protects users
@@ -237,20 +263,49 @@ app.get("/clusters", async (c) => {
     if (r.date > agg.lastSeen) agg.lastSeen = r.date;
   }
 
+  // Pull brand metadata for every cluster we'll return, in one shot. The
+  // merchant_brands table is keyed by merchant_normalized — global cache,
+  // no per-user filter. Falls back to merchant_normalized's pre-computed
+  // displayName when no brand row exists yet.
+  const merchantKeys = Array.from(map.keys());
+  let brandsByMerchant = new Map<
+    string,
+    { displayName: string | null; logoUrl: string | null; website: string | null }
+  >();
+  if (merchantKeys.length > 0) {
+    const brandRows = await db
+      .select({
+        merchantNormalized: merchantBrands.merchantNormalized,
+        displayName: merchantBrands.displayName,
+        logoUrl: merchantBrands.logoUrl,
+        website: merchantBrands.website,
+      })
+      .from(merchantBrands)
+      .where(inArray(merchantBrands.merchantNormalized, merchantKeys));
+    brandsByMerchant = new Map(brandRows.map((b) => [b.merchantNormalized, b]));
+  }
+
   const clusters = Array.from(map.values())
-    .map((c) => ({
-      merchantNormalized: c.merchantNormalized,
-      displayName: c.displayName,
-      txnCount: c.txnCount,
-      totalAmount: Math.round(c.totalAmount * 100) / 100,
-      inflowAmount: Math.round(c.inflowAmount * 100) / 100,
-      outflowAmount: Math.round(c.outflowAmount * 100) / 100,
-      firstSeen: c.firstSeen,
-      lastSeen: c.lastSeen,
-      category: c.category,
-      systemCategory: c.systemCategory,
-      isRecurring: c.isRecurring,
-    }))
+    .map((c) => {
+      const brand = brandsByMerchant.get(c.merchantNormalized);
+      return {
+        merchantNormalized: c.merchantNormalized,
+        // Prefer the enriched brand name; fall back to the per-txn display
+        // string we computed above.
+        displayName: brand?.displayName ?? c.displayName,
+        logoUrl: brand?.logoUrl ?? null,
+        website: brand?.website ?? null,
+        txnCount: c.txnCount,
+        totalAmount: Math.round(c.totalAmount * 100) / 100,
+        inflowAmount: Math.round(c.inflowAmount * 100) / 100,
+        outflowAmount: Math.round(c.outflowAmount * 100) / 100,
+        firstSeen: c.firstSeen,
+        lastSeen: c.lastSeen,
+        category: c.category,
+        systemCategory: c.systemCategory,
+        isRecurring: c.isRecurring,
+      };
+    })
     .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
 
   return c.json({
@@ -453,6 +508,14 @@ app.get("/agent-status", async (c) => {
       c.ingestionState === "failed" ||
       c.ingestionState === "needs_auth",
   );
+
+  // Once everything finishes ingesting, kick a free Plaid-source brand
+  // extractor. Cheap (pure SQL), idempotent, and throttled in-memory so
+  // we don't re-scan every poll. Brand metadata becomes available to the
+  // /clusters endpoint a moment later.
+  if (ingestionComplete && conns.length > 0) {
+    void maybeExtractBrands(instance.id);
+  }
 
   return c.json({
     agentExists: true,

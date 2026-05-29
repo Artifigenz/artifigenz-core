@@ -12,6 +12,8 @@ import local from './page.module.css';
 interface Cluster {
   merchantNormalized: string;
   displayName: string;
+  logoUrl: string | null;
+  website: string | null;
   txnCount: number;
   totalAmount: number;
   inflowAmount: number;
@@ -42,6 +44,80 @@ function direction(c: Cluster): 'in' | 'out' | 'mixed' {
   if (c.inflowAmount > 0 && c.outflowAmount === 0) return 'in';
   if (c.outflowAmount > 0 && c.inflowAmount === 0) return 'out';
   return 'mixed';
+}
+
+// Stable color per merchant so the initials fallback isn't a bag of random
+// colors on every render. Hash the display name into one of 8 tints.
+const AVATAR_TINTS = [
+  '#1d4ed8', '#0e7490', '#15803d', '#ca8a04',
+  '#c2410c', '#be123c', '#7e22ce', '#475569',
+];
+
+function avatarTint(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_TINTS[hash % AVATAR_TINTS.length];
+}
+
+/**
+ * 28x28 avatar that shows the merchant's logo if we have one, falling back
+ * to a tinted initials chip. The img onError flips to the fallback when
+ * the logo URL is dead or CORS-blocked.
+ */
+function BrandAvatar({
+  logoUrl,
+  displayName,
+}: {
+  logoUrl: string | null;
+  displayName: string;
+}) {
+  const [errored, setErrored] = useState(false);
+  const initials = displayName
+    .replace(/[^a-zA-Z0-9 ]/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('') || '?';
+  const baseStyle: React.CSSProperties = {
+    width: '28px',
+    height: '28px',
+    borderRadius: '6px',
+    flexShrink: 0,
+    objectFit: 'cover',
+    background: 'var(--card-hover, rgba(0,0,0,0.05))',
+  };
+  if (logoUrl && !errored) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        loading="lazy"
+        style={baseStyle}
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        ...baseStyle,
+        background: avatarTint(displayName),
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.7rem',
+        fontWeight: 600,
+        letterSpacing: '0.02em',
+      }}
+      aria-hidden
+    >
+      {initials}
+    </div>
+  );
 }
 
 export default function ClustersPage() {
@@ -213,13 +289,26 @@ export default function ClustersPage() {
                           <td style={{ ...tdStyle, maxWidth: '320px' }}>
                             <div
                               style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
                                 overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                fontWeight: 500,
                               }}
                             >
-                              {c.displayName}
+                              <BrandAvatar
+                                logoUrl={c.logoUrl}
+                                displayName={c.displayName}
+                              />
+                              <div
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {c.displayName}
+                              </div>
                             </div>
                           </td>
                           <td

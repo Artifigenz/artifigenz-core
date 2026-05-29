@@ -191,6 +191,48 @@ export const merchantClusters = pgTable(
   ],
 );
 
+// ─── Merchant Brands (global enrichment cache) ────────────────────
+// Cross-user cache of brand metadata keyed by merchant_normalized. The same
+// "amzn mktp" string is Amazon for every user, so we lookup/write once and
+// every agent_instance benefits. Per-user category/cadence/recurring stays
+// on merchant_clusters; this table is identity/branding only.
+//
+// Source priority (cheapest first):
+//   plaid        — Plaid's personal_finance_category + merchant_entity_id +
+//                  logo_url, pulled free from raw_data on ingest
+//   brand_api    — Brandfetch / Logo.dev for non-Plaid sources
+//   llm          — Claude with web search for the long tail
+//   manual       — user-supplied override (highest trust, never overwritten)
+// A later source never overwrites a higher-trust one unless source='manual'
+// is set explicitly.
+
+export const merchantBrands = pgTable(
+  "merchant_brands",
+  {
+    merchantNormalized: varchar("merchant_normalized", { length: 255 })
+      .primaryKey(),
+    displayName: varchar("display_name", { length: 255 }),
+    logoUrl: text("logo_url"),
+    website: varchar("website", { length: 255 }),
+    brandColor: varchar("brand_color", { length: 7 }), // hex like #FF6900
+    industry: varchar("industry", { length: 60 }),
+    source: varchar("source", { length: 16 }).notNull(), // plaid | brand_api | llm | manual
+    confidence: decimal("confidence", { precision: 3, scale: 2 }), // 0.00 - 1.00
+    // Free-form payload from the source — Plaid's PFC primary/detailed,
+    // raw API responses, LLM reasoning, etc. Kept so we can re-derive later.
+    rawData: jsonb("raw_data"),
+    lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("idx_merchant_brands_source").on(table.source),
+  ],
+);
+
 // ─── Briefs (The Finance agent's home screen output) ───────────────
 
 export const financeBriefs = pgTable(

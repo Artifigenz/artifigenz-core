@@ -443,6 +443,8 @@ export class ApiClient {
       clusters: Array<{
         merchantNormalized: string;
         displayName: string;
+        logoUrl: string | null;
+        website: string | null;
         txnCount: number;
         totalAmount: number;
         inflowAmount: number;
