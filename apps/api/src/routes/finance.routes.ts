@@ -24,34 +24,35 @@ import {
 } from "../agents/finance/categorize";
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
 import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ingest";
-import { extractPlaidBrands } from "../agents/finance/enrich/plaid-extractor";
+import { resolveMissingBrands } from "../agents/finance/enrich/resolver-pipeline";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
 // without this throttle we'd hammer Plaid.
 const SYNC_THROTTLE_MS = 30_000;
 
-// How long to wait between brand-extraction passes per agent instance.
-// Plaid brand metadata rarely changes mid-day; one run per 10 min after
-// ingest completes is plenty and keeps the DB cheap. In-memory throttle
-// (lost on restart, fine — the extractor is idempotent).
-const BRAND_EXTRACT_THROTTLE_MS = 10 * 60_000;
-const lastBrandExtractAt = new Map<string, number>();
+// How long to wait between brand-resolution passes per agent instance.
+// The resolver does one LLM call per missing merchant — expensive — so
+// we don't want to fire it on every poll. 10-min throttle is plenty since
+// brand identity rarely changes. In-memory (lost on restart, fine: the
+// resolver only touches missing merchants, so re-firing is cheap).
+const BRAND_RESOLVE_THROTTLE_MS = 10 * 60_000;
+const lastBrandResolveAt = new Map<string, number>();
 
-async function maybeExtractBrands(agentInstanceId: string): Promise<void> {
-  const last = lastBrandExtractAt.get(agentInstanceId) ?? 0;
-  if (Date.now() - last < BRAND_EXTRACT_THROTTLE_MS) return;
-  lastBrandExtractAt.set(agentInstanceId, Date.now());
+async function maybeResolveBrands(agentInstanceId: string): Promise<void> {
+  const last = lastBrandResolveAt.get(agentInstanceId) ?? 0;
+  if (Date.now() - last < BRAND_RESOLVE_THROTTLE_MS) return;
+  lastBrandResolveAt.set(agentInstanceId, Date.now());
   try {
-    const stats = await extractPlaidBrands(agentInstanceId);
-    if (stats.brandsUpserted > 0) {
+    const stats = await resolveMissingBrands(agentInstanceId);
+    if (stats.brandsResolved > 0 || stats.errors.length > 0) {
       console.log(
-        `[brand-extract] ${agentInstanceId}: +${stats.brandsUpserted} brands ` +
-          `(${stats.brandsSkipped} skipped, ${stats.candidatesScanned} scanned)`,
+        `[brand-resolve] ${agentInstanceId}: +${stats.brandsResolved} resolved, ` +
+          `${stats.errors.length} errors, ${stats.candidatesFound} candidates`,
       );
     }
   } catch (err) {
-    console.error(`[brand-extract] failed for ${agentInstanceId}:`, err);
+    console.error(`[brand-resolve] failed for ${agentInstanceId}:`, err);
   }
 }
 
@@ -216,9 +217,52 @@ app.get("/clusters", async (c) => {
     .from(financeTransactions)
     .where(eq(financeTransactions.agentInstanceId, instance.id));
 
+  // Step 1: load brand mappings for every distinct merchant_normalized in
+  // the user's txns. The merchant_brands table is global; we hit it once
+  // up-front so the cluster groupby below can use brand_slug as the key.
+  const distinctMerchants = Array.from(
+    new Set(rows.map((r) => r.merchantNormalized).filter((s): s is string => !!s)),
+  );
+  const brandsByMerchant = new Map<
+    string,
+    {
+      brandSlug: string | null;
+      displayName: string | null;
+      logoUrl: string | null;
+      website: string | null;
+    }
+  >();
+  if (distinctMerchants.length > 0) {
+    const brandRows = await db
+      .select({
+        merchantNormalized: merchantBrands.merchantNormalized,
+        brandSlug: merchantBrands.brandSlug,
+        displayName: merchantBrands.displayName,
+        logoUrl: merchantBrands.logoUrl,
+        website: merchantBrands.website,
+      })
+      .from(merchantBrands)
+      .where(inArray(merchantBrands.merchantNormalized, distinctMerchants));
+    for (const b of brandRows) {
+      brandsByMerchant.set(b.merchantNormalized, {
+        brandSlug: b.brandSlug,
+        displayName: b.displayName,
+        logoUrl: b.logoUrl,
+        website: b.website,
+      });
+    }
+  }
+
+  // Step 2: group by brand_slug when available, falling back to the
+  // merchant_normalized string when the merchant hasn't been resolved yet.
+  // This is what collapses BC Ferries' 7 variants into a single cluster.
   interface ClusterAgg {
-    merchantNormalized: string;
+    key: string;                       // brand_slug || merchant_normalized
+    brandSlug: string | null;
+    merchantNormalizedSeen: Set<string>; // every alias that contributed
     displayName: string;
+    logoUrl: string | null;
+    website: string | null;
     txnCount: number;
     totalAmount: number;
     inflowAmount: number;
@@ -232,17 +276,23 @@ app.get("/clusters", async (c) => {
 
   const map = new Map<string, ClusterAgg>();
   for (const r of rows) {
-    const key = r.merchantNormalized ?? "unknown";
+    const mn = r.merchantNormalized ?? "unknown";
+    const brand = brandsByMerchant.get(mn);
+    const key = brand?.brandSlug ?? mn;
     const amt = parseFloat(r.amount);
-    const display =
+    const fallbackDisplay =
       (r.merchantName && r.merchantName.trim()) ||
       r.description.slice(0, 60).trim();
 
     let agg = map.get(key);
     if (!agg) {
       agg = {
-        merchantNormalized: key,
-        displayName: display,
+        key,
+        brandSlug: brand?.brandSlug ?? null,
+        merchantNormalizedSeen: new Set([mn]),
+        displayName: brand?.displayName ?? fallbackDisplay,
+        logoUrl: brand?.logoUrl ?? null,
+        website: brand?.website ?? null,
         txnCount: 0,
         totalAmount: 0,
         inflowAmount: 0,
@@ -255,6 +305,7 @@ app.get("/clusters", async (c) => {
       };
       map.set(key, agg);
     }
+    agg.merchantNormalizedSeen.add(mn);
     agg.txnCount += 1;
     agg.totalAmount += amt;
     if (amt < 0) agg.inflowAmount += -amt;
@@ -263,49 +314,31 @@ app.get("/clusters", async (c) => {
     if (r.date > agg.lastSeen) agg.lastSeen = r.date;
   }
 
-  // Pull brand metadata for every cluster we'll return, in one shot. The
-  // merchant_brands table is keyed by merchant_normalized — global cache,
-  // no per-user filter. Falls back to merchant_normalized's pre-computed
-  // displayName when no brand row exists yet.
-  const merchantKeys = Array.from(map.keys());
-  let brandsByMerchant = new Map<
-    string,
-    { displayName: string | null; logoUrl: string | null; website: string | null }
-  >();
-  if (merchantKeys.length > 0) {
-    const brandRows = await db
-      .select({
-        merchantNormalized: merchantBrands.merchantNormalized,
-        displayName: merchantBrands.displayName,
-        logoUrl: merchantBrands.logoUrl,
-        website: merchantBrands.website,
-      })
-      .from(merchantBrands)
-      .where(inArray(merchantBrands.merchantNormalized, merchantKeys));
-    brandsByMerchant = new Map(brandRows.map((b) => [b.merchantNormalized, b]));
-  }
-
   const clusters = Array.from(map.values())
-    .map((c) => {
-      const brand = brandsByMerchant.get(c.merchantNormalized);
-      return {
-        merchantNormalized: c.merchantNormalized,
-        // Prefer the enriched brand name; fall back to the per-txn display
-        // string we computed above.
-        displayName: brand?.displayName ?? c.displayName,
-        logoUrl: brand?.logoUrl ?? null,
-        website: brand?.website ?? null,
-        txnCount: c.txnCount,
-        totalAmount: Math.round(c.totalAmount * 100) / 100,
-        inflowAmount: Math.round(c.inflowAmount * 100) / 100,
-        outflowAmount: Math.round(c.outflowAmount * 100) / 100,
-        firstSeen: c.firstSeen,
-        lastSeen: c.lastSeen,
-        category: c.category,
-        systemCategory: c.systemCategory,
-        isRecurring: c.isRecurring,
-      };
-    })
+    .map((c) => ({
+      // Primary identity exposed to the UI. brand_slug if resolved, else
+      // the merchant_normalized fallback. The UI keys rows on this.
+      key: c.key,
+      brandSlug: c.brandSlug,
+      // Surface the underlying aliases for debugging / "show variants" UX.
+      aliases: Array.from(c.merchantNormalizedSeen).sort(),
+      // For backward compat with existing UI code that still reads
+      // merchantNormalized — we expose the first alias (deterministic via
+      // sort) until callers migrate to `key`.
+      merchantNormalized: Array.from(c.merchantNormalizedSeen).sort()[0],
+      displayName: c.displayName,
+      logoUrl: c.logoUrl,
+      website: c.website,
+      txnCount: c.txnCount,
+      totalAmount: Math.round(c.totalAmount * 100) / 100,
+      inflowAmount: Math.round(c.inflowAmount * 100) / 100,
+      outflowAmount: Math.round(c.outflowAmount * 100) / 100,
+      firstSeen: c.firstSeen,
+      lastSeen: c.lastSeen,
+      category: c.category,
+      systemCategory: c.systemCategory,
+      isRecurring: c.isRecurring,
+    }))
     .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
 
   return c.json({
@@ -509,12 +542,12 @@ app.get("/agent-status", async (c) => {
       c.ingestionState === "needs_auth",
   );
 
-  // Once everything finishes ingesting, kick a free Plaid-source brand
-  // extractor. Cheap (pure SQL), idempotent, and throttled in-memory so
-  // we don't re-scan every poll. Brand metadata becomes available to the
-  // /clusters endpoint a moment later.
+  // Once everything finishes ingesting, kick the hybrid brand resolver.
+  // It only touches merchants we haven't enriched yet (anti-join against
+  // the global merchant_brands cache), so the cost is amortised across
+  // all users — popular merchants get resolved once, ever.
   if (ingestionComplete && conns.length > 0) {
-    void maybeExtractBrands(instance.id);
+    void maybeResolveBrands(instance.id);
   }
 
   return c.json({

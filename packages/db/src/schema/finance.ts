@@ -209,8 +209,17 @@ export const merchantClusters = pgTable(
 export const merchantBrands = pgTable(
   "merchant_brands",
   {
+    // The alias key. Multiple merchant_normalized strings can point at the
+    // same brand_slug — that's how BC Ferries' "bcf - alberni _m",
+    // "bcf-customer se _v", and "bcf" all collapse into one brand at read
+    // time. The row IS both the alias and the brand denormalized inline.
     merchantNormalized: varchar("merchant_normalized", { length: 255 })
       .primaryKey(),
+    // The canonical brand entity key. Stable across normalized variants
+    // and across users. Kebab-cased from display_name (e.g., "bc-ferries",
+    // "amazon"). The clustering join key going forward — the UI groups
+    // transactions by this column.
+    brandSlug: varchar("brand_slug", { length: 64 }),
     displayName: varchar("display_name", { length: 255 }),
     logoUrl: text("logo_url"),
     website: varchar("website", { length: 255 }),
@@ -230,6 +239,9 @@ export const merchantBrands = pgTable(
   },
   (table) => [
     index("idx_merchant_brands_source").on(table.source),
+    // Cluster lookups join transactions to brands and group by brand_slug.
+    // This index makes the groupby cheap.
+    index("idx_merchant_brands_slug").on(table.brandSlug),
   ],
 );
 

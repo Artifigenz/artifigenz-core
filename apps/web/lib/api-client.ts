@@ -441,6 +441,13 @@ export class ApiClient {
     return this.get<{
       count: number;
       clusters: Array<{
+        /** Stable per-cluster id — brand_slug if resolved, else first alias */
+        key: string;
+        /** Canonical brand identity (null until resolved) */
+        brandSlug: string | null;
+        /** Every merchant_normalized variant that landed in this cluster */
+        aliases: string[];
+        /** Kept for backwards compat with older UI — first alias */
         merchantNormalized: string;
         displayName: string;
         logoUrl: string | null;

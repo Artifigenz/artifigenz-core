@@ -99,6 +99,13 @@
       "when": 1780061820722,
       "tag": "0013_merchant_brands",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780064890364,
+      "tag": "0014_merchant_brand_slug",
+      "breakpoints": true
     }
   ]
 }

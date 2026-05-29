@@ -10,6 +10,9 @@ import styles from '../page.module.css';
 import local from './page.module.css';
 
 interface Cluster {
+  key: string;
+  brandSlug: string | null;
+  aliases: string[];
   merchantNormalized: string;
   displayName: string;
   logoUrl: string | null;
@@ -281,9 +284,10 @@ export default function ClustersPage() {
                   <tbody>
                     {filtered.map((c) => {
                       const dir = direction(c);
+                      const aliasCount = c.aliases?.length ?? 1;
                       return (
                         <tr
-                          key={c.merchantNormalized}
+                          key={c.key}
                           style={{ borderTop: '1px solid var(--border-light)' }}
                         >
                           <td style={{ ...tdStyle, maxWidth: '320px' }}>
@@ -308,6 +312,19 @@ export default function ClustersPage() {
                                 }}
                               >
                                 {c.displayName}
+                                {aliasCount > 1 && (
+                                  <span
+                                    style={{
+                                      marginLeft: '8px',
+                                      fontSize: '0.7rem',
+                                      color: 'var(--text-dim)',
+                                      fontWeight: 400,
+                                    }}
+                                    title={c.aliases.join('\n')}
+                                  >
+                                    · {aliasCount} variants
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -319,7 +336,7 @@ export default function ClustersPage() {
                               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                             }}
                           >
-                            {c.merchantNormalized}
+                            {c.brandSlug ?? c.merchantNormalized}
                           </td>
                           <td
                             style={{
