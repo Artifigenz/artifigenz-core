@@ -79,6 +79,13 @@ export const financeTransactions = pgTable(
     reasoning: text("reasoning"),
     needsReview: boolean("needs_review").default(false),
 
+    // Links two transactions that pair up as an internal transfer
+    // (outflow on Account A + same-amount inflow on Account B, within
+    // a few days). Pure-SQL detection in the categorize/internal-transfer
+    // pipeline. Null when unpaired (e.g., one-sided internal where the
+    // other account isn't connected — those still get category set, but
+    // no pair link).
+    transferPairId: uuid("transfer_pair_id"),
     plaidTransactionId: varchar("plaid_transaction_id", { length: 255 }).unique(),
     plaidAccountId: varchar("plaid_account_id", { length: 255 }),
     pending: integer("pending").default(0),
@@ -99,6 +106,7 @@ export const financeTransactions = pgTable(
     index("idx_finance_tx_account").on(table.plaidAccountId),
     index("idx_finance_tx_account_id").on(table.accountId),
     index("idx_finance_tx_cluster").on(table.merchantClusterId),
+    index("idx_finance_tx_transfer_pair").on(table.transferPairId),
     uniqueIndex("idx_finance_tx_dedup").on(
       table.accountId,
       table.transactionDate,
@@ -242,6 +250,56 @@ export const merchantBrands = pgTable(
     // Cluster lookups join transactions to brands and group by brand_slug.
     // This index makes the groupby cheap.
     index("idx_merchant_brands_slug").on(table.brandSlug),
+  ],
+);
+
+// ─── User-Brand Categories (per-user category cache) ───────────────
+// Caches per-user LLM classifications keyed by (agent_instance, brand_slug).
+// The merchant_brands table holds GLOBAL brand identity (Amazon is Amazon
+// for everyone). This table holds per-user category decisions because
+// Netflix is "subscription" for me but a UPI handle like "@okhdfcbank" is
+// internal_transfer for one user and external for another.
+//
+// The flow: after Stage 2.2 enrichment writes brand_slug onto every txn's
+// merchant_normalized row, Stage 2.3 categorization fires per brand_slug.
+// It first checks this cache; if hit, applies the category to all matching
+// txns. Cache miss → LLM call → write here → apply.
+
+export const userBrandCategories = pgTable(
+  "user_brand_categories",
+  {
+    agentInstanceId: uuid("agent_instance_id")
+      .notNull()
+      .references(() => agentInstances.id, { onDelete: "cascade" }),
+    brandSlug: varchar("brand_slug", { length: 64 }).notNull(),
+    // Visible category: income, subscription, loan_emi, fee_interest,
+    // variable_recurring, internal_transfer, miscellaneous.
+    category: varchar("category", { length: 30 }).notNull(),
+    // Hidden engine label: credit_card_payment, refund_or_reversal, etc.
+    systemCategory: varchar("system_category", { length: 40 }),
+    confidence: decimal("confidence", { precision: 3, scale: 2 }),
+    // Which layer made the decision: 'pair_match' (deterministic SQL
+    // pair), 'self_reference' (account ##### match), 'llm' (Claude
+    // classifier), 'user' (user override). Lets us decide whether to
+    // re-classify when new evidence arrives.
+    source: varchar("source", { length: 20 }).notNull(),
+    reasoning: text("reasoning"),
+    classifiedAt: timestamp("classified_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_user_brand_categories_pk").on(
+      table.agentInstanceId,
+      table.brandSlug,
+    ),
+    index("idx_user_brand_categories_cat").on(
+      table.agentInstanceId,
+      table.category,
+    ),
   ],
 );
 

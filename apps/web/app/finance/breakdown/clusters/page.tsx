@@ -196,6 +196,9 @@ export default function ClustersPage() {
           <Link href="/finance/breakdown/clusters" className={`${local.tab} ${local.tabActive}`}>
             Merchant Clusters
           </Link>
+          <Link href="/finance/breakdown/categories" className={local.tab}>
+            Categories
+          </Link>
         </div>
 
         {loading ? (

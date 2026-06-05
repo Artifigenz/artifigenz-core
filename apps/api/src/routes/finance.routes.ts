@@ -25,6 +25,7 @@ import {
 import { ingestPlaidConnection } from "../agents/finance/ingest/plaid-ingest";
 import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ingest";
 import { resolveMissingBrands } from "../agents/finance/enrich/resolver-pipeline";
+import { detectInternalTransfers } from "../agents/finance/categorize/internal-transfer";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
@@ -51,8 +52,37 @@ async function maybeResolveBrands(agentInstanceId: string): Promise<void> {
           `${stats.errors.length} errors, ${stats.candidatesFound} candidates`,
       );
     }
+    // Internal transfer detection only makes sense once brand resolution
+    // has populated brand_slug — Layer 3 of the detector keys on it.
+    // Fire-and-forget; idempotent so re-runs are cheap.
+    void maybeDetectInternalTransfers(agentInstanceId);
   } catch (err) {
     console.error(`[brand-resolve] failed for ${agentInstanceId}:`, err);
+  }
+}
+
+const INTERNAL_TRANSFER_THROTTLE_MS = 10 * 60_000;
+const lastInternalTransferAt = new Map<string, number>();
+
+async function maybeDetectInternalTransfers(
+  agentInstanceId: string,
+): Promise<void> {
+  const last = lastInternalTransferAt.get(agentInstanceId) ?? 0;
+  if (Date.now() - last < INTERNAL_TRANSFER_THROTTLE_MS) return;
+  lastInternalTransferAt.set(agentInstanceId, Date.now());
+  try {
+    const stats = await detectInternalTransfers(agentInstanceId);
+    const total = stats.pairMatched + stats.selfReferenceMatched + stats.llmClassified;
+    if (total > 0 || stats.llmErrors.length > 0) {
+      console.log(
+        `[internal-transfer] ${agentInstanceId}: ` +
+          `pair=${stats.pairMatched} self=${stats.selfReferenceMatched} ` +
+          `llm=${stats.llmClassified} cache=${stats.cacheHits} ` +
+          `errors=${stats.llmErrors.length}`,
+      );
+    }
+  } catch (err) {
+    console.error(`[internal-transfer] failed for ${agentInstanceId}:`, err);
   }
 }
 
@@ -359,6 +389,200 @@ app.get("/clusters", async (c) => {
  *   The fire-and-forget sync is awaited only briefly via a 100ms grace
  *   period so the caller gets fresh-ish state without waiting for Plaid.
  */
+/**
+ * GET /api/finance/categories
+ *   Returns count + total per category bucket for the current user's
+ *   finance agent. Used by the Categories tab on /finance/breakdown.
+ *   Only buckets with > 0 transactions are returned.
+ */
+app.get("/categories", async (c) => {
+  const user = c.get("user");
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) return c.json({ categories: [] });
+
+  // One pass over the user's txns, group by category.
+  const rows = await db
+    .select({
+      category: financeTransactions.category,
+      amount: financeTransactions.amount,
+    })
+    .from(financeTransactions)
+    .where(eq(financeTransactions.agentInstanceId, instance.id));
+
+  interface Bucket {
+    category: string;
+    label: string;
+    count: number;
+    totalAbs: number;
+    inflow: number;
+    outflow: number;
+  }
+  const labelMap: Record<string, string> = {
+    income: "Income",
+    subscription: "Subscriptions",
+    loan_emi: "Loans & EMI",
+    fee_interest: "Bank fees & interest",
+    variable_recurring: "Recurring variable",
+    internal_transfer: "Internal transfers",
+    miscellaneous: "Miscellaneous",
+    uncategorized: "Uncategorized",
+  };
+
+  const map = new Map<string, Bucket>();
+  for (const r of rows) {
+    const cat = r.category ?? "uncategorized";
+    const amt = parseFloat(r.amount);
+    let b = map.get(cat);
+    if (!b) {
+      b = {
+        category: cat,
+        label: labelMap[cat] ?? cat,
+        count: 0,
+        totalAbs: 0,
+        inflow: 0,
+        outflow: 0,
+      };
+      map.set(cat, b);
+    }
+    b.count++;
+    b.totalAbs += Math.abs(amt);
+    if (amt > 0) b.outflow += amt;
+    else b.inflow += -amt;
+  }
+
+  const categories = Array.from(map.values())
+    .map((b) => ({
+      category: b.category,
+      label: b.label,
+      count: b.count,
+      totalAbs: Math.round(b.totalAbs * 100) / 100,
+      inflow: Math.round(b.inflow * 100) / 100,
+      outflow: Math.round(b.outflow * 100) / 100,
+    }))
+    .sort((a, b) => b.totalAbs - a.totalAbs);
+
+  return c.json({ categories });
+});
+
+/**
+ * GET /api/finance/categories/internal-transfers
+ *   Returns the detail view: paired transfers collapsed into one row
+ *   with both halves' account context, plus any unpaired internals
+ *   below. The UI mounts this at /finance/breakdown/categories/internal-transfers.
+ */
+app.get("/categories/internal-transfers", async (c) => {
+  const user = c.get("user");
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) return c.json({ pairs: [], unpaired: [], total: 0 });
+
+  const rows = await db
+    .select({
+      id: financeTransactions.id,
+      transferPairId: financeTransactions.transferPairId,
+      accountId: financeTransactions.accountId,
+      direction: financeTransactions.direction,
+      amount: financeTransactions.amount,
+      transactionDate: financeTransactions.transactionDate,
+      description: financeTransactions.description,
+      systemCategory: financeTransactions.systemCategory,
+      confidence: financeTransactions.confidence,
+      reasoning: financeTransactions.reasoning,
+      institutionName: financeAccounts.institutionName,
+      accountLast4: financeAccounts.accountLast4,
+      accountType: financeAccounts.type,
+    })
+    .from(financeTransactions)
+    .leftJoin(financeAccounts, eq(financeTransactions.accountId, financeAccounts.id))
+    .where(
+      and(
+        eq(financeTransactions.agentInstanceId, instance.id),
+        eq(financeTransactions.category, "internal_transfer"),
+      ),
+    );
+
+  // Collapse rows sharing a transfer_pair_id into one paired view.
+  type Row = (typeof rows)[number];
+  const byPair = new Map<string, Row[]>();
+  const unpaired: Row[] = [];
+  for (const r of rows) {
+    if (r.transferPairId) {
+      const arr = byPair.get(r.transferPairId) ?? [];
+      arr.push(r);
+      byPair.set(r.transferPairId, arr);
+    } else {
+      unpaired.push(r);
+    }
+  }
+
+  const accountLabel = (r: Row) => {
+    if (!r.institutionName) return "Unknown account";
+    return `${r.institutionName.charAt(0).toUpperCase() + r.institutionName.slice(1)} ${r.accountType ?? ""} ••${r.accountLast4 ?? "?"}`.replace(/\s+/g, " ").trim();
+  };
+
+  const pairs = Array.from(byPair.values())
+    .map((halves) => {
+      const out = halves.find((h) => h.direction === "out") ?? halves[0];
+      const ins = halves.find((h) => h.direction === "in") ?? halves[1] ?? halves[0];
+      const amount = Math.abs(parseFloat(out.amount));
+      return {
+        pairId: out.transferPairId!,
+        fromLabel: accountLabel(out),
+        toLabel: accountLabel(ins),
+        amount: Math.round(amount * 100) / 100,
+        date: out.transactionDate,
+        systemCategory: out.systemCategory,
+        outDescription: out.description,
+        inDescription: ins.description,
+        outId: out.id,
+        inId: ins.id,
+      };
+    })
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  const unpairedView = unpaired
+    .map((r) => ({
+      id: r.id,
+      label: accountLabel(r),
+      direction: r.direction,
+      amount: Math.round(Math.abs(parseFloat(r.amount)) * 100) / 100,
+      date: r.transactionDate,
+      description: r.description,
+      systemCategory: r.systemCategory,
+      reasoning: r.reasoning,
+    }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  const total =
+    pairs.reduce((s, p) => s + p.amount, 0) +
+    unpairedView.reduce((s, u) => s + u.amount, 0);
+
+  return c.json({
+    pairs,
+    unpaired: unpairedView,
+    total: Math.round(total * 100) / 100,
+  });
+});
+
 app.get("/agent-status", async (c) => {
   const user = c.get("user");
 

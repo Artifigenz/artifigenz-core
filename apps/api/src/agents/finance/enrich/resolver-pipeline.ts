@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   db,
   financeTransactions,
@@ -43,8 +43,10 @@ export async function resolveMissingBrands(
   agentInstanceId: string,
 ): Promise<ResolveStats> {
   // Find merchant_normalized values this agent has txns for, but which
-  // aren't already in merchant_brands. LEFT JOIN + NULL filter is the
-  // standard "anti-join" pattern.
+  // either aren't in merchant_brands at all OR are there with a NULL
+  // brand_slug (legacy rows from the original Plaid-only extractor — they
+  // have display_name + logo but no canonical brand_slug, so clustering
+  // by brand_slug would silently fall back to merchant_normalized).
   const missing = await db
     .selectDistinct({
       merchantNormalized: financeTransactions.merchantNormalized,
@@ -58,7 +60,10 @@ export async function resolveMissingBrands(
       and(
         eq(financeTransactions.agentInstanceId, agentInstanceId),
         isNotNull(financeTransactions.merchantNormalized),
-        isNull(merchantBrands.merchantNormalized),
+        or(
+          isNull(merchantBrands.merchantNormalized),
+          isNull(merchantBrands.brandSlug),
+        ),
       ),
     );
 

@@ -465,6 +465,47 @@ export class ApiClient {
     }>('/api/finance/clusters');
   }
 
+  async getFinanceCategories() {
+    return this.get<{
+      categories: Array<{
+        category: string;
+        label: string;
+        count: number;
+        totalAbs: number;
+        inflow: number;
+        outflow: number;
+      }>;
+    }>('/api/finance/categories');
+  }
+
+  async getFinanceInternalTransfers() {
+    return this.get<{
+      pairs: Array<{
+        pairId: string;
+        fromLabel: string;
+        toLabel: string;
+        amount: number;
+        date: string;
+        systemCategory: string | null;
+        outDescription: string;
+        inDescription: string;
+        outId: string;
+        inId: string;
+      }>;
+      unpaired: Array<{
+        id: string;
+        label: string;
+        direction: 'in' | 'out' | null;
+        amount: number;
+        date: string;
+        description: string;
+        systemCategory: string | null;
+        reasoning: string | null;
+      }>;
+      total: number;
+    }>('/api/finance/categories/internal-transfers');
+  }
+
   async getInsights(options?: {
     unreadOnly?: boolean;
     agentTypeId?: string;

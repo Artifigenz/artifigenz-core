@@ -114,6 +114,9 @@ export default function BreakdownPage() {
           <Link href="/finance/breakdown/clusters" className={tabStyles.tab}>
             Merchant Clusters
           </Link>
+          <Link href="/finance/breakdown/categories" className={tabStyles.tab}>
+            Categories
+          </Link>
         </div>
 
         {loading ? (
