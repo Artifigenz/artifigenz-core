@@ -333,34 +333,61 @@ You will be given:
 
 Classify the brand into ONE of:
 
-1. "salary" — recurring payroll from an employer.
-   Strong signals: monthly or biweekly or semi-monthly cadence, stable
-   amount (amount_stddev_pct < 25%), 3+ occurrences, and the merchant
-   either has an employer/payroll-flavored name OR the pattern is
-   unmistakably wage-like even if the merchant is opaque.
+1. "salary" — recurring pay from an employer.
+   Decisive signal #1: the merchant is a recognizable employer brand
+   (Microsoft, Google, Amazon, Acme Corp, Tata Consultancy Services,
+   Deel, ADP, payroll processors) AND the inflows are recurring (≥3
+   occurrences with biweekly / semi-monthly / monthly / weekly cadence).
+   When BOTH are true, classify as salary even if amount variance is
+   high (50%+). Tech salaries include base + RSU vests + bonuses +
+   commissions + ESPP refunds, which routinely produce 50–80% variance
+   while still being unambiguously salary. Variance alone is NOT a
+   disqualifier when the brand is a known employer.
+
+   Decisive signal #2: cadence is highly regular (biweekly or
+   semi-monthly) AND amount is stable (variance < 25%) AND 3+
+   occurrences, even if the merchant name is opaque (e.g.,
+   "DIRECT DEPOSIT", "PAYROLL CR"). Stable wage-shaped pattern is
+   enough.
+
+   If neither decisive signal fires, this isn't salary.
 
 2. "investment_income" — dividends, interest payments, coupons.
-   Strong signals: monthly/quarterly/annual cadence, merchant is a
-   brokerage / investment platform / bank's investment arm (RBC Direct
-   Investing, Wealthsimple, Vanguard, Fidelity, Schwab, Questrade,
-   Zerodha, Groww), or descriptions hint at dividend / interest / coupon.
+   Strong signals: merchant is a brokerage / investment platform / bank
+   investment arm (RBC Direct Investing, Wealthsimple, Vanguard,
+   Fidelity, Schwab, Questrade, Zerodha, Groww, Morgan Stanley) AND
+   inflows are recurring or interest-shaped (small periodic amounts).
+   Also: any merchant whose display name explicitly contains "interest"
+   ("Savings Bank Interest", "Interest Credit", "Bond Coupon").
 
 3. "gov_benefit" — tax refunds, government transfers, child benefits.
-   Strong signals: merchant is a government agency (CRA, IRS, HMRC,
-   Service Canada, etc.), descriptions hint at tax/refund/benefit/credit.
-   Cadence may be irregular or one-off (tax refunds), or recurring
-   (CCB monthly).
+   Strong signals: merchant is a government / tax authority (CRA, IRS,
+   HMRC, Service Canada, ITR, Income Tax Dept). OR the display name
+   itself contains "Tax", "Tax Refund", "Tax Payment", "Benefit",
+   "Credit" (in a gov sense), "CCB", "GST", "HST", "EI". A single
+   one-off inflow labeled as a tax payment / tax refund IS a gov_benefit
+   even with no recurring pattern — do not require a recurring cadence
+   here.
 
-4. "other" — anything else. Includes one-off gifts, friend paybacks,
-   loan disbursements, refunds from merchants, internal transfers we
-   missed, ATM cash deposits — anything that isn't clearly one of the
-   three categories above. We'll handle these later; for now they stay
-   uncategorized.
+4. "other" — anything else. Includes:
+     • Refunds from merchants (Amazon return, Uber refund, Apple credit)
+     • Insurance reimbursements (Sun Life claim, employer reimbursement)
+     • Loan disbursements (Fairstone, OneMain, personal loan)
+     • Bank fee reversals (NSF return, fee credit)
+     • One-off gifts, friend paybacks via e-Transfer
+     • ATM cash deposits / mobile cheque deposits of unclear origin
+     • Internal transfers we missed
+   These all stay uncategorized.
 
-CRITICAL: be conservative. If you're not confident it's salary /
-investment_income / gov_benefit, classify as "other". Mislabeling a
-friend payback as salary inflates the user's "money in" totals and
-breaks downstream math.
+GUIDANCE:
+- Be specific in your reasoning — name the merchant and cite the actual
+  signals you used. Avoid generic boilerplate. Your reasoning will be
+  shown to the user.
+- For salary: trust the brand identity over amount variance.
+- For gov_benefit: a tax-refund-shaped label IS enough on its own; you
+  don't need recurrence.
+- For "other": say WHY the brand isn't income (refund / loan / insurance
+  / one-off ambiguous), not generic language.
 
 Reply with ONLY JSON, no markdown:
 {
