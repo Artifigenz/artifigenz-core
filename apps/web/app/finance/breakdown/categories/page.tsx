@@ -46,6 +46,29 @@ interface InternalTransferData {
   total: number;
 }
 
+interface IncomeStream {
+  brandSlug: string;
+  displayName: string;
+  logoUrl: string | null;
+  txnCount: number;
+  total: number;
+  firstDate: string;
+  lastDate: string;
+  cadence: string;
+}
+
+interface IncomeSubtype {
+  subtype: string;
+  label: string;
+  total: number;
+  streams: IncomeStream[];
+}
+
+interface IncomeData {
+  subtypes: IncomeSubtype[];
+  total: number;
+}
+
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -77,7 +100,7 @@ const CATEGORY_BLURB: Record<string, string> = {
 
 // Categories that have expandable detail content. Adding a category here
 // means we need a matching loader + renderer below.
-const EXPANDABLE = new Set(['internal_transfer']);
+const EXPANDABLE = new Set(['internal_transfer', 'income']);
 
 export default function CategoriesPage() {
   const api = useApiClient();
@@ -92,6 +115,8 @@ export default function CategoriesPage() {
   const [internalTransfers, setInternalTransfers] =
     useState<InternalTransferData | null>(null);
   const [loadingInternalTransfers, setLoadingInternalTransfers] = useState(false);
+  const [income, setIncome] = useState<IncomeData | null>(null);
+  const [loadingIncome, setLoadingIncome] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +151,19 @@ export default function CategoriesPage() {
     }
   }, [api, internalTransfers, loadingInternalTransfers]);
 
+  const ensureIncomeLoaded = useCallback(async () => {
+    if (income || loadingIncome) return;
+    setLoadingIncome(true);
+    try {
+      const data = await api.getFinanceIncome();
+      setIncome(data);
+    } catch {
+      // Soft-fail.
+    } finally {
+      setLoadingIncome(false);
+    }
+  }, [api, income, loadingIncome]);
+
   const toggle = useCallback(
     (category: string) => {
       setExpanded((prev) => {
@@ -135,11 +173,12 @@ export default function CategoriesPage() {
         } else {
           next.add(category);
           if (category === 'internal_transfer') void ensureInternalTransfersLoaded();
+          if (category === 'income') void ensureIncomeLoaded();
         }
         return next;
       });
     },
-    [ensureInternalTransfersLoaded],
+    [ensureInternalTransfersLoaded, ensureIncomeLoaded],
   );
 
   return (
@@ -274,6 +313,9 @@ export default function CategoriesPage() {
                           data={internalTransfers}
                           loading={loadingInternalTransfers}
                         />
+                      )}
+                      {b.category === 'income' && (
+                        <IncomePanel data={income} loading={loadingIncome} />
                       )}
                     </div>
                   )}
@@ -479,6 +521,144 @@ function InternalTransfersPanel({
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function IncomePanel({
+  data,
+  loading,
+}: {
+  data: IncomeData | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Loading income…
+      </p>
+    );
+  }
+  if (!data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Couldn&apos;t load income detail.
+      </p>
+    );
+  }
+  if (data.subtypes.length === 0) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        No income detected yet. Salary, investment income, and government benefits will land
+        here once classification finds them.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {data.subtypes.map((sub) => (
+        <section key={sub.subtype}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              margin: '0 0 8px',
+            }}
+          >
+            <h4
+              style={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                color: 'var(--text-dim)',
+                margin: 0,
+              }}
+            >
+              {sub.label}
+            </h4>
+            <span
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--text-mid)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {formatMoney(sub.total)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {sub.streams.map((s) => (
+              <div
+                key={s.brandSlug}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 12px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '8px',
+                }}
+              >
+                {s.logoUrl ? (
+                  <img
+                    src={s.logoUrl}
+                    alt=""
+                    width={28}
+                    height={28}
+                    style={{ borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'var(--card-hover)',
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: '0.88rem',
+                      fontWeight: 500,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {s.displayName}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: '2px',
+                      fontSize: '0.7rem',
+                      color: 'var(--text-dim)',
+                    }}
+                  >
+                    {s.cadence} · {s.txnCount} deposit{s.txnCount === 1 ? '' : 's'} ·{' '}
+                    {formatDate(s.firstDate)} → {formatDate(s.lastDate)}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontSize: '0.9rem',
+                    fontWeight: 500,
+                    fontVariantNumeric: 'tabular-nums',
+                    color: '#16a34a',
+                  }}
+                >
+                  {formatMoney(s.total)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
