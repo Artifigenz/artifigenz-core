@@ -478,6 +478,28 @@ export class ApiClient {
     }>('/api/finance/categories');
   }
 
+  async getFinanceMiscellaneous() {
+    return this.get<{
+      subtypes: Array<{
+        subtype: string;
+        label: string;
+        total: number;
+        brands: Array<{
+          brandSlug: string;
+          displayName: string;
+          logoUrl: string | null;
+          txnCount: number;
+          total: number;
+          avgAmount: number;
+          firstDate: string;
+          lastDate: string;
+          sampleDescriptions: string[];
+        }>;
+      }>;
+      total: number;
+    }>('/api/finance/categories/miscellaneous');
+  }
+
   async getFinanceVariableRecurring() {
     return this.get<{
       brands: Array<{

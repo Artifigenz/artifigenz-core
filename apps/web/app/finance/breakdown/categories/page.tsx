@@ -125,6 +125,30 @@ interface VarRecurringData {
   total: number;
 }
 
+interface MiscBrand {
+  brandSlug: string;
+  displayName: string;
+  logoUrl: string | null;
+  txnCount: number;
+  total: number;
+  avgAmount: number;
+  firstDate: string;
+  lastDate: string;
+  sampleDescriptions: string[];
+}
+
+interface MiscSubtype {
+  subtype: string;
+  label: string;
+  total: number;
+  brands: MiscBrand[];
+}
+
+interface MiscData {
+  subtypes: MiscSubtype[];
+  total: number;
+}
+
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -163,6 +187,7 @@ const EXPANDABLE = new Set([
   'fee_interest',
   'loan_emi',
   'variable_recurring',
+  'miscellaneous',
 ]);
 
 export default function CategoriesPage() {
@@ -188,6 +213,8 @@ export default function CategoriesPage() {
   const [loadingLoanEmi, setLoadingLoanEmi] = useState(false);
   const [varRecurring, setVarRecurring] = useState<VarRecurringData | null>(null);
   const [loadingVarRecurring, setLoadingVarRecurring] = useState(false);
+  const [misc, setMisc] = useState<MiscData | null>(null);
+  const [loadingMisc, setLoadingMisc] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,6 +314,19 @@ export default function CategoriesPage() {
     }
   }, [api, varRecurring, loadingVarRecurring]);
 
+  const ensureMiscLoaded = useCallback(async () => {
+    if (misc || loadingMisc) return;
+    setLoadingMisc(true);
+    try {
+      const data = await api.getFinanceMiscellaneous();
+      setMisc(data);
+    } catch {
+      // Soft-fail.
+    } finally {
+      setLoadingMisc(false);
+    }
+  }, [api, misc, loadingMisc]);
+
   const toggle = useCallback(
     (category: string) => {
       setExpanded((prev) => {
@@ -301,6 +341,7 @@ export default function CategoriesPage() {
           if (category === 'fee_interest') void ensureFeeInterestLoaded();
           if (category === 'loan_emi') void ensureLoanEmiLoaded();
           if (category === 'variable_recurring') void ensureVarRecurringLoaded();
+          if (category === 'miscellaneous') void ensureMiscLoaded();
         }
         return next;
       });
@@ -312,6 +353,7 @@ export default function CategoriesPage() {
       ensureFeeInterestLoaded,
       ensureLoanEmiLoaded,
       ensureVarRecurringLoaded,
+      ensureMiscLoaded,
     ],
   );
 
@@ -483,6 +525,9 @@ export default function CategoriesPage() {
                           errorText="Couldn't load detail."
                           emptyText="No variable recurring spend detected yet. Utility, telecom, insurance, grocery, and similar variable-amount recurring outflows will land here once classification finds them."
                         />
+                      )}
+                      {b.category === 'miscellaneous' && (
+                        <MiscPanel data={misc} loading={loadingMisc} />
                       )}
                     </div>
                   )}
@@ -1123,6 +1168,150 @@ function BrandSampleListPanel({
             {formatMoney(b.total)}
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function MiscBrandRow({ b }: { b: MiscBrand }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '10px 12px',
+        background: 'var(--bg)',
+        border: '1px solid var(--border-light)',
+        borderRadius: '8px',
+      }}
+    >
+      {b.logoUrl ? (
+        <img
+          src={b.logoUrl}
+          alt=""
+          width={28}
+          height={28}
+          style={{ borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
+        />
+      ) : (
+        <div
+          style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '6px',
+            background: 'var(--card-hover)',
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '0.88rem',
+            fontWeight: 500,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {b.displayName}
+        </div>
+        <div
+          style={{
+            marginTop: '2px',
+            fontSize: '0.7rem',
+            color: 'var(--text-dim)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {b.txnCount} charge{b.txnCount === 1 ? '' : 's'} · avg{' '}
+          {formatMoney(b.avgAmount)} · last on {formatDate(b.lastDate)}
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: '0.9rem',
+          fontWeight: 500,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {formatMoney(b.total)}
+      </div>
+    </div>
+  );
+}
+
+function MiscPanel({
+  data,
+  loading,
+}: {
+  data: MiscData | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Loading miscellaneous…
+      </p>
+    );
+  }
+  if (!data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Couldn&apos;t load miscellaneous detail.
+      </p>
+    );
+  }
+  if (data.subtypes.length === 0) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Nothing in miscellaneous yet.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {data.subtypes.map((sub) => (
+        <section key={sub.subtype}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              margin: '0 0 8px',
+            }}
+          >
+            <h4
+              style={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                color: 'var(--text-dim)',
+                margin: 0,
+              }}
+            >
+              {sub.label} ({sub.brands.length})
+            </h4>
+            <span
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--text-mid)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {formatMoney(sub.total)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {sub.brands.map((b) => (
+              <MiscBrandRow key={b.brandSlug} b={b} />
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
