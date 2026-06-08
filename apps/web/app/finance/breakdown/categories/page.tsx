@@ -69,6 +69,30 @@ interface IncomeData {
   total: number;
 }
 
+interface SubscriptionStream {
+  brandSlug: string;
+  displayName: string;
+  logoUrl: string | null;
+  txnCount: number;
+  total: number;
+  avgAmount: number;
+  firstDate: string;
+  lastDate: string;
+  cadence: string;
+}
+
+interface SubscriptionSubtype {
+  subtype: string;
+  label: string;
+  total: number;
+  streams: SubscriptionStream[];
+}
+
+interface SubscriptionData {
+  subtypes: SubscriptionSubtype[];
+  total: number;
+}
+
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -100,7 +124,7 @@ const CATEGORY_BLURB: Record<string, string> = {
 
 // Categories that have expandable detail content. Adding a category here
 // means we need a matching loader + renderer below.
-const EXPANDABLE = new Set(['internal_transfer', 'income']);
+const EXPANDABLE = new Set(['internal_transfer', 'income', 'subscription']);
 
 export default function CategoriesPage() {
   const api = useApiClient();
@@ -117,6 +141,8 @@ export default function CategoriesPage() {
   const [loadingInternalTransfers, setLoadingInternalTransfers] = useState(false);
   const [income, setIncome] = useState<IncomeData | null>(null);
   const [loadingIncome, setLoadingIncome] = useState(false);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionData | null>(null);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,6 +190,19 @@ export default function CategoriesPage() {
     }
   }, [api, income, loadingIncome]);
 
+  const ensureSubscriptionsLoaded = useCallback(async () => {
+    if (subscriptions || loadingSubscriptions) return;
+    setLoadingSubscriptions(true);
+    try {
+      const data = await api.getFinanceSubscriptions();
+      setSubscriptions(data);
+    } catch {
+      // Soft-fail.
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  }, [api, subscriptions, loadingSubscriptions]);
+
   const toggle = useCallback(
     (category: string) => {
       setExpanded((prev) => {
@@ -174,11 +213,12 @@ export default function CategoriesPage() {
           next.add(category);
           if (category === 'internal_transfer') void ensureInternalTransfersLoaded();
           if (category === 'income') void ensureIncomeLoaded();
+          if (category === 'subscription') void ensureSubscriptionsLoaded();
         }
         return next;
       });
     },
-    [ensureInternalTransfersLoaded, ensureIncomeLoaded],
+    [ensureInternalTransfersLoaded, ensureIncomeLoaded, ensureSubscriptionsLoaded],
   );
 
   return (
@@ -316,6 +356,12 @@ export default function CategoriesPage() {
                       )}
                       {b.category === 'income' && (
                         <IncomePanel data={income} loading={loadingIncome} />
+                      )}
+                      {b.category === 'subscription' && (
+                        <SubscriptionsPanel
+                          data={subscriptions}
+                          loading={loadingSubscriptions}
+                        />
                       )}
                     </div>
                   )}
@@ -650,6 +696,143 @@ function IncomePanel({
                     fontWeight: 500,
                     fontVariantNumeric: 'tabular-nums',
                     color: '#16a34a',
+                  }}
+                >
+                  {formatMoney(s.total)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function SubscriptionsPanel({
+  data,
+  loading,
+}: {
+  data: SubscriptionData | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Loading subscriptions…
+      </p>
+    );
+  }
+  if (!data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Couldn&apos;t load subscription detail.
+      </p>
+    );
+  }
+  if (data.subtypes.length === 0) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        No subscriptions detected yet. Streaming, SaaS, memberships, and other
+        recurring fixed-fee charges will land here once classification finds them.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {data.subtypes.map((sub) => (
+        <section key={sub.subtype}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              margin: '0 0 8px',
+            }}
+          >
+            <h4
+              style={{
+                fontSize: '0.7rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                color: 'var(--text-dim)',
+                margin: 0,
+              }}
+            >
+              {sub.label}
+            </h4>
+            <span
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--text-mid)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {formatMoney(sub.total)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {sub.streams.map((s) => (
+              <div
+                key={s.brandSlug}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 12px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '8px',
+                }}
+              >
+                {s.logoUrl ? (
+                  <img
+                    src={s.logoUrl}
+                    alt=""
+                    width={28}
+                    height={28}
+                    style={{ borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'var(--card-hover)',
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: '0.88rem',
+                      fontWeight: 500,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {s.displayName}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: '2px',
+                      fontSize: '0.7rem',
+                      color: 'var(--text-dim)',
+                    }}
+                  >
+                    {formatMoney(s.avgAmount)} · {s.cadence} · {s.txnCount} charge
+                    {s.txnCount === 1 ? '' : 's'} · last on {formatDate(s.lastDate)}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontSize: '0.9rem',
+                    fontWeight: 500,
+                    fontVariantNumeric: 'tabular-nums',
                   }}
                 >
                   {formatMoney(s.total)}

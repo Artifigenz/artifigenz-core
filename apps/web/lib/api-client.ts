@@ -478,6 +478,28 @@ export class ApiClient {
     }>('/api/finance/categories');
   }
 
+  async getFinanceSubscriptions() {
+    return this.get<{
+      subtypes: Array<{
+        subtype: string;
+        label: string;
+        total: number;
+        streams: Array<{
+          brandSlug: string;
+          displayName: string;
+          logoUrl: string | null;
+          txnCount: number;
+          total: number;
+          avgAmount: number;
+          firstDate: string;
+          lastDate: string;
+          cadence: string;
+        }>;
+      }>;
+      total: number;
+    }>('/api/finance/categories/subscriptions');
+  }
+
   async getFinanceIncome() {
     return this.get<{
       subtypes: Array<{

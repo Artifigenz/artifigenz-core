@@ -27,6 +27,7 @@ import { advanceUploadsForConnection } from "../agents/finance/ingest/upload-ing
 import { resolveMissingBrands } from "../agents/finance/enrich/resolver-pipeline";
 import { detectInternalTransfers } from "../agents/finance/categorize/internal-transfer";
 import { detectIncome } from "../agents/finance/categorize/income";
+import { detectSubscriptions } from "../agents/finance/categorize/subscription";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
@@ -113,8 +114,43 @@ async function maybeDetectIncome(agentInstanceId: string): Promise<void> {
           `cache=${stats.cacheHits} errors=${stats.llmErrors.length} ${sub}`,
       );
     }
+    // Subscriptions run after income — they look at outflows, income
+    // looks at inflows, so no overlap, but downstream Subscription
+    // Radar treats subscriptions as its primary data, so we want them
+    // landed by the time the brief generates.
+    void maybeDetectSubscriptions(agentInstanceId);
   } catch (err) {
     console.error(`[income] failed for ${agentInstanceId}:`, err);
+  }
+}
+
+const SUBSCRIPTION_THROTTLE_MS = 10 * 60_000;
+const lastSubscriptionAt = new Map<string, number>();
+
+async function maybeDetectSubscriptions(
+  agentInstanceId: string,
+): Promise<void> {
+  const last = lastSubscriptionAt.get(agentInstanceId) ?? 0;
+  if (Date.now() - last < SUBSCRIPTION_THROTTLE_MS) return;
+  lastSubscriptionAt.set(agentInstanceId, Date.now());
+  try {
+    const stats = await detectSubscriptions(agentInstanceId);
+    if (
+      stats.classifiedAsSubscription > 0 ||
+      stats.cacheHits > 0 ||
+      stats.llmErrors.length > 0
+    ) {
+      const sub = Object.entries(stats.bySubtype)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ");
+      console.log(
+        `[subscription] ${agentInstanceId}: ` +
+          `sub=${stats.classifiedAsSubscription} not=${stats.classifiedAsNotSubscription} ` +
+          `cache=${stats.cacheHits} errors=${stats.llmErrors.length} ${sub}`,
+      );
+    }
+  } catch (err) {
+    console.error(`[subscription] failed for ${agentInstanceId}:`, err);
   }
 }
 
@@ -736,6 +772,152 @@ app.get("/categories/income", async (c) => {
   }
 
   const ordering = ["salary", "investment_income", "gov_benefit", "other"];
+  const subtypes = Array.from(subtypeMap.values())
+    .map((s) => ({ ...s, total: Math.round(s.total * 100) / 100 }))
+    .sort((a, b) => ordering.indexOf(a.subtype) - ordering.indexOf(b.subtype));
+
+  const total = subtypes.reduce((s, sub) => s + sub.total, 0);
+  return c.json({
+    subtypes,
+    total: Math.round(total * 100) / 100,
+  });
+});
+
+/**
+ * GET /api/finance/categories/subscriptions
+ *   Subscriptions grouped by subtype, each subtype lists per-brand
+ *   streams. Subscription Radar (Stage 4) reads lastDate + cadence to
+ *   surface "Netflix charges tomorrow" and "Adobe just raised the
+ *   price"; the cluster page only shows the static breakdown.
+ */
+app.get("/categories/subscriptions", async (c) => {
+  const user = c.get("user");
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) {
+    return c.json({ subtypes: [], total: 0 });
+  }
+
+  const rows = await db.execute<{
+    brand_slug: string | null;
+    display_name: string | null;
+    logo_url: string | null;
+    system_category: string | null;
+    txn_count: number;
+    total: string;
+    avg_amount: string;
+    first_date: string;
+    last_date: string;
+    distinct_dates: number;
+    span_days: number;
+  }>(sql`
+    SELECT
+      mb.brand_slug,
+      mb.display_name,
+      mb.logo_url,
+      ft.system_category,
+      COUNT(*)::int AS txn_count,
+      ABS(SUM(ft.amount::numeric))::text AS total,
+      ABS(AVG(ft.amount::numeric))::text AS avg_amount,
+      MIN(ft.transaction_date)::text AS first_date,
+      MAX(ft.transaction_date)::text AS last_date,
+      COUNT(DISTINCT ft.transaction_date)::int AS distinct_dates,
+      GREATEST(MAX(ft.transaction_date) - MIN(ft.transaction_date), 1)::int AS span_days
+    FROM finance_transactions ft
+    LEFT JOIN merchant_brands mb
+      ON ft.merchant_normalized = mb.merchant_normalized
+    WHERE ft.agent_instance_id = ${instance.id}
+      AND ft.category = 'subscription'
+    GROUP BY mb.brand_slug, mb.display_name, mb.logo_url, ft.system_category
+    ORDER BY ft.system_category, ABS(SUM(ft.amount::numeric)) DESC
+  `);
+
+  interface Stream {
+    brandSlug: string;
+    displayName: string;
+    logoUrl: string | null;
+    txnCount: number;
+    total: number;
+    avgAmount: number;
+    firstDate: string;
+    lastDate: string;
+    cadence: string;
+  }
+  const subtypeMap = new Map<
+    string,
+    { subtype: string; label: string; total: number; streams: Stream[] }
+  >();
+
+  const SUBTYPE_LABELS: Record<string, string> = {
+    streaming: "Streaming",
+    software_saas: "Software & SaaS",
+    membership: "Memberships",
+    news_media: "News & media",
+    cloud_storage: "Cloud storage",
+    entertainment: "Entertainment",
+    other_subscription: "Other subscriptions",
+  };
+
+  const cadenceFor = (
+    distinctDates: number,
+    spanDays: number,
+    txnCount: number,
+  ): string => {
+    if (txnCount <= 1) return "one-off";
+    const gap = distinctDates > 1 ? spanDays / (distinctDates - 1) : 0;
+    if (gap >= 6 && gap <= 8) return "weekly";
+    if (gap >= 12 && gap <= 16) return "biweekly";
+    if (gap >= 27 && gap <= 33) return "monthly";
+    if (gap >= 85 && gap <= 95) return "quarterly";
+    if (gap >= 350 && gap <= 380) return "annual";
+    return "irregular";
+  };
+
+  for (const r of rows) {
+    const subtype = r.system_category ?? "other_subscription";
+    let bucket = subtypeMap.get(subtype);
+    if (!bucket) {
+      bucket = {
+        subtype,
+        label: SUBTYPE_LABELS[subtype] ?? subtype,
+        total: 0,
+        streams: [],
+      };
+      subtypeMap.set(subtype, bucket);
+    }
+    const total = parseFloat(r.total);
+    bucket.total += total;
+    bucket.streams.push({
+      brandSlug: r.brand_slug ?? "unknown",
+      displayName: r.display_name ?? r.brand_slug ?? "Unknown",
+      logoUrl: r.logo_url,
+      txnCount: r.txn_count,
+      total: Math.round(total * 100) / 100,
+      avgAmount: Math.round(parseFloat(r.avg_amount) * 100) / 100,
+      firstDate: r.first_date,
+      lastDate: r.last_date,
+      cadence: cadenceFor(r.distinct_dates, r.span_days, r.txn_count),
+    });
+  }
+
+  const ordering = [
+    "streaming",
+    "software_saas",
+    "membership",
+    "news_media",
+    "cloud_storage",
+    "entertainment",
+    "other_subscription",
+  ];
   const subtypes = Array.from(subtypeMap.values())
     .map((s) => ({ ...s, total: Math.round(s.total * 100) / 100 }))
     .sort((a, b) => ordering.indexOf(a.subtype) - ordering.indexOf(b.subtype));
