@@ -27,6 +27,105 @@ const FINANCE_PREVIEW_INSIGHTS: string[] = [
   "Groceries trending high: $612 vs. $480 average",
 ];
 
+const CATEGORY_LABEL: Record<string, string> = {
+  subscription: 'Subscriptions',
+  loan_emi: 'Loans & EMI',
+  fee_interest: 'Fees & interest',
+  variable_recurring: 'Recurring bills',
+  miscellaneous: 'Discretionary spend',
+};
+
+function fmt(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1000) return `$${Math.round(abs / 100) / 10}K`;
+  return `$${Math.round(abs)}`;
+}
+
+/**
+ * Turn the brief's ranked signals + headline numbers into a small array
+ * of short, glanceable insight strings the home card can rotate through.
+ * Order matters — earlier entries cycle first.
+ */
+interface BriefForCard {
+  headline: string;
+  numbers: { income: number; outflow: number; leftover: number };
+  signals: {
+    ranked: Array<Record<string, unknown> & { type: string }>;
+  };
+}
+
+function derivedInsights(brief: BriefForCard): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (s: string) => {
+    const trimmed = s.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  };
+
+  // Leftover headline number first — it's the single most-glanceable fact.
+  const { income, outflow, leftover } = brief.numbers;
+  if (leftover > 0) {
+    push(`${fmt(leftover)} left so far this month`);
+  } else if (leftover < 0 && income > 0) {
+    push(`Spending exceeds income by ${fmt(leftover)} this month`);
+  }
+
+  for (const sig of brief.signals.ranked) {
+    switch (sig.type) {
+      case 'new_subscription': {
+        const brands = ((sig as { brands?: string[] }).brands ?? []).slice(0, 2);
+        if (brands.length === 1) push(`New subscription: ${brands[0]}`);
+        else if (brands.length > 1)
+          push(`New subscriptions: ${brands.join(', ')}`);
+        break;
+      }
+      case 'potentially_cancelled_subscription': {
+        const brands = ((sig as { brands?: string[] }).brands ?? []).slice(0, 2);
+        if (brands.length === 1)
+          push(`${brands[0]} didn't post this month — paused?`);
+        else if (brands.length > 1)
+          push(`${brands.join(', ')} didn't post this month`);
+        break;
+      }
+      case 'mom_spend_change': {
+        const d = (sig as unknown as { deltaPercent: number }).deltaPercent;
+        if (Math.abs(d) >= 8) {
+          const dir = d > 0 ? 'up' : 'down';
+          push(`Total spend ${dir} ${Math.abs(d)}% vs. last month`);
+        }
+        break;
+      }
+      case 'category_mover': {
+        const cat = (sig as unknown as { category: string }).category;
+        const d = (sig as unknown as { deltaPercent: number }).deltaPercent;
+        const label = CATEGORY_LABEL[cat] ?? cat;
+        const dir = d > 0 ? 'up' : 'down';
+        push(`${label} ${dir} ${Math.abs(d)}% vs. last month`);
+        break;
+      }
+      case 'surplus': {
+        const pct = (sig as unknown as { percent: number }).percent;
+        push(`On pace to save ${pct}% of income`);
+        break;
+      }
+      case 'deficit':
+        // Already covered by the leftover headline; skip to avoid dupe.
+        break;
+    }
+  }
+
+  // Always have something in the rotation. If signals are sparse,
+  // fall back to a generic verdict line drawn from the headline.
+  if (out.length < 2 && brief.headline) {
+    push(brief.headline);
+  }
+
+  return out;
+}
+
 const ICON_MAP: Record<string, ReactNode> = {
   Finance: <Icons.FinanceIcon />,
   Travel: <Icons.TravelIcon />,
@@ -131,26 +230,31 @@ export default function AgentGrid() {
   const [ticks, setTicks] = useState<number[]>([]);
   const [financeData, setFinanceData] = useState<FinanceData>({ verdict: null, insights: [] });
 
-  // Fetch finance brief and insights
+  // Pull the current-month brief and derive rotating micro-insights from
+  // its ranked signals. Falls back to the previous month if there's no
+  // current-month data yet, and to All if neither exists. Pure derivation
+  // — no separate insight feed call.
   useEffect(() => {
     if (!slugs.includes('finance')) return;
     let cancelled = false;
 
     (async () => {
       try {
-        const [brief, feed] = await Promise.all([
-          api.getCurrentBrief().catch(() => null),
-          api.getInsights({ limit: 5 }).catch(() => ({ insights: [] })),
-        ]);
+        const { scopes } = await api.getFinanceBriefScopes();
         if (cancelled) return;
-
-        const insights = feed.insights?.map((i: { title: string }) => i.title) ?? [];
+        if (scopes.length === 0) return;
+        const preferred =
+          scopes.find((s) => s.kind === 'current') ??
+          scopes.find((s) => s.kind === 'previous') ??
+          scopes.find((s) => s.kind === 'all')!;
+        const brief = await api.getFinanceBrief(preferred.scope);
+        if (cancelled) return;
         setFinanceData({
-          verdict: brief?.verdict ?? null,
-          insights,
+          verdict: brief.headline ?? null,
+          insights: derivedInsights(brief),
         });
       } catch {
-        // ignore
+        // Soft-fail. The card still renders with the placeholder insights.
       }
     })();
 

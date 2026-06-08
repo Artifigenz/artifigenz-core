@@ -1350,9 +1350,14 @@ export default function FinanceBriefPage() {
                                   border: activeCompleted
                                     ? '1px solid var(--text)'
                                     : '1px solid var(--border-light)',
-                                  background: activeCompleted
+                                  backgroundColor: activeCompleted
                                     ? 'var(--text)'
                                     : 'transparent',
+                                  backgroundImage: activeCompleted
+                                    ? "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")"
+                                    : "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")",
+                                  backgroundRepeat: 'no-repeat',
+                                  backgroundPosition: 'right 10px center',
                                   color: activeCompleted
                                     ? 'var(--bg)'
                                     : 'var(--text-mid)',
@@ -1361,11 +1366,6 @@ export default function FinanceBriefPage() {
                                   cursor: 'pointer',
                                   transition: 'all 0.15s ease',
                                   appearance: 'none',
-                                  backgroundImage: activeCompleted
-                                    ? "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")"
-                                    : "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")",
-                                  backgroundRepeat: 'no-repeat',
-                                  backgroundPosition: 'right 10px center',
                                 }}
                               >
                                 {!activeCompleted && (
