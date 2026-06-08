@@ -12,6 +12,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentInstances, dataSourceConnections, users } from "./platform";
 
 // ─── Normalized Transactions ───────────────────────────────────────
@@ -328,6 +329,49 @@ export const financeBriefs = pgTable(
       table.agentInstanceId,
       table.generatedAt,
     ),
+  ],
+);
+
+// ─── Monthly briefs (per-month + "all" cache for headline & signals) ───
+//
+// One row per (agent_instance, month) holds the LLM-generated headline
+// plus the deterministic signals it was anchored on. month = NULL is the
+// "all" averaged view. Numbers (income, outflow, per-category totals,
+// top brands) are NOT stored — they're cheap to recompute via SQL and
+// staying recomputed avoids any cache-invalidation puzzle around new
+// transactions arriving. Only the LLM output is worth caching.
+//
+// `lastTxnDateAtGeneration` lets us decide whether to regenerate: if a
+// later transaction has landed within the month's window since this row
+// was written, the headline is stale.
+
+export const financeMonthlyBriefs = pgTable(
+  "finance_monthly_briefs",
+  {
+    agentInstanceId: uuid("agent_instance_id")
+      .notNull()
+      .references(() => agentInstances.id, { onDelete: "cascade" }),
+    // YYYY-MM-01 for a specific month, NULL for the averaged "all" view.
+    month: date("month"),
+    headline: text("headline").notNull(),
+    signals: jsonb("signals").notNull(), // { ranked: [...], used: [...] }
+    confidence: decimal("confidence", { precision: 3, scale: 2 }),
+    lastTxnDateAtGeneration: date("last_txn_date_at_generation"),
+    generatedAt: timestamp("generated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // The "all" row has month = NULL, so the uniqueness needs to treat
+    // NULL as a distinct value — Postgres does that natively with a
+    // partial-index pair. Keep the regular unique index for non-null
+    // months (the common path) and a partial unique for the all-row.
+    uniqueIndex("idx_finance_monthly_briefs_month")
+      .on(table.agentInstanceId, table.month)
+      .where(sql`month IS NOT NULL`),
+    uniqueIndex("idx_finance_monthly_briefs_all")
+      .on(table.agentInstanceId)
+      .where(sql`month IS NULL`),
   ],
 );
 

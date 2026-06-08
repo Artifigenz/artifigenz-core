@@ -165,6 +165,105 @@ function buildPlaceholderInsights(): Insight[] {
   ];
 }
 
+// Convert the new `/api/finance/brief` payload into the legacy `Brief`
+// shape the existing card layout already knows how to render. We group
+// the categories into "Subscriptions" / "Loans & EMI" / "Other recurring"
+// to match the card design, and build the sublabel from the top brands.
+function adaptBriefView(view: {
+  scope: string;
+  label: string;
+  numbers: {
+    income: number;
+    outflow: number;
+    leftover: number;
+    byCategory: Array<{
+      category: string;
+      total: number;
+      txnCount: number;
+      topBrands: Array<{ displayName: string; total: number }>;
+    }>;
+  };
+  headline: string;
+  generatedAt: string;
+}): Brief {
+  const byCat = new Map(view.numbers.byCategory.map((c) => [c.category, c]));
+  const sub = byCat.get('subscription');
+  const loan = byCat.get('loan_emi');
+  const vr = byCat.get('variable_recurring');
+  const fee = byCat.get('fee_interest');
+
+  // "Other recurring" lumps variable_recurring + fee_interest for the
+  // home card. Detail page already breaks them out individually.
+  const otherTotal = (vr?.total ?? 0) + (fee?.total ?? 0);
+  const otherTxnCount = (vr?.txnCount ?? 0) + (fee?.txnCount ?? 0);
+  const otherBrands = [
+    ...(vr?.topBrands ?? []),
+    ...(fee?.topBrands ?? []),
+  ].sort((a, b) => b.total - a.total);
+
+  const breakdown: BreakdownItem[] = [];
+  if (sub && sub.total > 0) {
+    breakdown.push({
+      id: 'subscriptions',
+      label: 'Subscriptions',
+      sublabel:
+        sub.topBrands
+          .slice(0, 4)
+          .map((b) => b.displayName)
+          .join(', ') || `${sub.txnCount} charge${sub.txnCount === 1 ? '' : 's'}`,
+      amount: sub.total,
+      count: sub.topBrands.length,
+    });
+  }
+  if (loan && loan.total > 0) {
+    breakdown.push({
+      id: 'loans',
+      label: 'Loans & EMI',
+      sublabel:
+        loan.topBrands
+          .slice(0, 3)
+          .map((b) => `${b.displayName} ${formatMoneyShort(b.total)}`)
+          .join(' · ') ||
+        `${loan.txnCount} payment${loan.txnCount === 1 ? '' : 's'}`,
+      amount: loan.total,
+      count: loan.topBrands.length,
+    });
+  }
+  if (otherTotal > 0) {
+    breakdown.push({
+      id: 'other',
+      label: 'Other recurring',
+      sublabel:
+        otherBrands
+          .slice(0, 4)
+          .map((b) => b.displayName)
+          .join(', ') ||
+        `${otherTxnCount} charge${otherTxnCount === 1 ? '' : 's'}`,
+      amount: otherTotal,
+    });
+  }
+
+  return {
+    id: view.scope,
+    verdict: view.headline,
+    numbers: [],
+    paragraph: '',
+    summary: {
+      income: view.numbers.income,
+      outflow: view.numbers.outflow,
+      leftover: view.numbers.leftover,
+      breakdown,
+    },
+    data_scope: `Data for ${view.label}`,
+    generated_at: view.generatedAt,
+  };
+}
+
+function formatMoneyShort(n: number): string {
+  if (n >= 1000) return `$${Math.round(n / 100) / 10}K`;
+  return `$${Math.round(n)}`;
+}
+
 function toTitleCase(str: string): string {
   return str
     .toLowerCase()
@@ -336,6 +435,13 @@ export default function FinanceBriefPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(true);
+
+  // Brief scope (period selector). `null` = haven't loaded scopes yet.
+  // Default selection is the most recent complete month. "all" is also
+  // available as a tab. Numbers + headline both refresh on scope change.
+  const [scopes, setScopes] = useState<Array<{ scope: string; label: string }> | null>(null);
+  const [scope, setScope] = useState<string | null>(null);
+  const [scopeLoading, setScopeLoading] = useState(false);
   // Dev-mode (Challenge 1): no real brief is generated. We populate a
   // placeholder brief from agent-status counts so the verdict / cards /
   // insights panel all render with dummy content.
@@ -442,8 +548,26 @@ export default function FinanceBriefPage() {
           (sum, c) => sum + c.accountCount,
           0,
         );
-        // Dummy brief — visual scaffold while categorization is paused.
-        setBrief(buildPlaceholderBrief(accountCount, status.totalTransactions));
+        // Pull the period list so we can render the pill tabs. If the
+        // user has no complete months yet (just connected today), fall
+        // back to the placeholder so the home page still looks alive.
+        try {
+          const { scopes: fetched } = await api.getFinanceBriefScopes();
+          if (cancelled) return;
+          if (fetched.length === 0) {
+            setBrief(buildPlaceholderBrief(accountCount, status.totalTransactions));
+            return;
+          }
+          setScopes(fetched);
+          // Default to the most recent complete month (first non-"all" entry).
+          const defaultScope =
+            fetched.find((s) => s.scope !== 'all')?.scope ?? 'all';
+          setScope(defaultScope);
+        } catch {
+          // Brief endpoints unavailable — fall back to placeholder rather
+          // than break the page.
+          setBrief(buildPlaceholderBrief(accountCount, status.totalTransactions));
+        }
       } catch (err) {
         if (cancelled) return;
         setError(
@@ -456,6 +580,33 @@ export default function FinanceBriefPage() {
       cancelled = true;
     };
   }, [api, router, shouldRegen]);
+
+  // Fetch the brief whenever the selected scope changes. The headline
+  // generation can take a few seconds on cache miss; we show the
+  // existing brief in the meantime and swap it in when the new one
+  // resolves so the page doesn't flash empty.
+  useEffect(() => {
+    if (!scope) return;
+    let cancelled = false;
+    setScopeLoading(true);
+    (async () => {
+      try {
+        const data = await api.getFinanceBrief(scope);
+        if (cancelled) return;
+        setBrief(adaptBriefView(data));
+      } catch (err) {
+        if (cancelled) return;
+        // Don't blow away the existing brief on transient failures —
+        // just surface a short message.
+        console.error('Brief fetch failed', err);
+      } finally {
+        if (!cancelled) setScopeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, scope]);
 
   // While any bank is still syncing, re-poll status every 5s so the
   // "Syncing N bank(s)…" indicator clears itself when ingestion completes.
@@ -1029,6 +1180,68 @@ export default function FinanceBriefPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Period selector — pills below the three cards. */}
+                  {scopes && scopes.length > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                        marginTop: '16px',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.12em',
+                          color: 'var(--text-dim)',
+                          marginRight: '4px',
+                        }}
+                      >
+                        Period
+                      </span>
+                      {scopes.map((s) => {
+                        const active = s.scope === scope;
+                        return (
+                          <button
+                            key={s.scope}
+                            type="button"
+                            onClick={() => setScope(s.scope)}
+                            disabled={scopeLoading && !active}
+                            style={{
+                              padding: '5px 11px',
+                              borderRadius: '999px',
+                              border: active
+                                ? '1px solid var(--text)'
+                                : '1px solid var(--border-light)',
+                              background: active ? 'var(--text)' : 'transparent',
+                              color: active ? 'var(--bg)' : 'var(--text-mid)',
+                              fontSize: '0.78rem',
+                              fontWeight: active ? 500 : 400,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {s.label}
+                          </button>
+                        );
+                      })}
+                      {scopeLoading && (
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            color: 'var(--text-dim)',
+                            marginLeft: '4px',
+                          }}
+                        >
+                          loading…
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* View Details Link */}
                   <div className={styles.detailsLink}>

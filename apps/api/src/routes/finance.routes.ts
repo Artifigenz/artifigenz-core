@@ -32,6 +32,7 @@ import { detectFeeInterest } from "../agents/finance/categorize/fee-interest";
 import { detectLoanEmi } from "../agents/finance/categorize/loan-emi";
 import { detectVariableRecurring } from "../agents/finance/categorize/variable-recurring";
 import { detectMiscellaneous } from "../agents/finance/categorize/miscellaneous";
+import { getBrief, listBriefScopes } from "../agents/finance/brief";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
@@ -1607,6 +1608,64 @@ app.get("/categories/miscellaneous", async (c) => {
     subtypes,
     total: Math.round(total * 100) / 100,
   });
+});
+
+/**
+ * GET /api/finance/brief/scopes
+ *   List the periods this user has data for. The UI uses this to render
+ *   the pill tabs (All time · May 2026 · Apr 2026 · …). Current month is
+ *   intentionally excluded — partial-month verdicts read weird.
+ */
+app.get("/brief/scopes", async (c) => {
+  const user = c.get("user");
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) return c.json({ scopes: [] });
+  const { scopes } = await listBriefScopes(instance.id);
+  return c.json({ scopes });
+});
+
+/**
+ * GET /api/finance/brief?scope=all | YYYY-MM-01
+ *   Returns the verdict headline + numbers + signals for the requested
+ *   scope. Numbers are recomputed every call (cheap); headline is cached
+ *   and only re-generated when the underlying transaction data changes.
+ */
+app.get("/brief", async (c) => {
+  const user = c.get("user");
+  const scope = c.req.query("scope") ?? "";
+  if (!scope) {
+    return c.json({ error: "scope query parameter required" }, 400);
+  }
+  // Validate shape: "all" or YYYY-MM-01.
+  if (scope !== "all" && !/^\d{4}-\d{2}-01$/.test(scope)) {
+    return c.json({ error: "scope must be 'all' or YYYY-MM-01" }, 400);
+  }
+
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) return c.json({ error: "no finance agent" }, 404);
+
+  const brief = await getBrief(instance.id, scope);
+  return c.json(brief);
 });
 
 app.get("/agent-status", async (c) => {

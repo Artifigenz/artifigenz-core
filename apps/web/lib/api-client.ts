@@ -478,6 +478,44 @@ export class ApiClient {
     }>('/api/finance/categories');
   }
 
+  async getFinanceBriefScopes() {
+    return this.get<{
+      scopes: Array<{ scope: string; label: string }>;
+    }>('/api/finance/brief/scopes');
+  }
+
+  async getFinanceBrief(scope: string) {
+    return this.get<{
+      scope: string;
+      label: string;
+      numbers: {
+        income: number;
+        outflow: number;
+        leftover: number;
+        byCategory: Array<{
+          category: string;
+          total: number;
+          txnCount: number;
+          topBrands: Array<{
+            brandSlug: string;
+            displayName: string;
+            logoUrl: string | null;
+            total: number;
+            txnCount: number;
+          }>;
+        }>;
+        scope: string;
+        label: string;
+      };
+      signals: {
+        ranked: Array<Record<string, unknown> & { type: string }>;
+      };
+      headline: string;
+      signalsUsed: string[];
+      generatedAt: string;
+    }>(`/api/finance/brief?scope=${encodeURIComponent(scope)}`);
+  }
+
   async getFinanceMiscellaneous() {
     return this.get<{
       subtypes: Array<{
