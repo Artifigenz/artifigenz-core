@@ -437,9 +437,14 @@ export default function FinanceBriefPage() {
   const [insightsLoading, setInsightsLoading] = useState(true);
 
   // Brief scope (period selector). `null` = haven't loaded scopes yet.
-  // Default selection is the most recent complete month. "all" is also
-  // available as a tab. Numbers + headline both refresh on scope change.
-  const [scopes, setScopes] = useState<Array<{ scope: string; label: string }> | null>(null);
+  // The UI shows three primary pills (All / Current / Previous) plus a
+  // dropdown for older completed months. Numbers + headline both refresh
+  // on scope change.
+  const [scopes, setScopes] = useState<Array<{
+    scope: string;
+    label: string;
+    kind: 'all' | 'current' | 'previous' | 'older';
+  }> | null>(null);
   const [scope, setScope] = useState<string | null>(null);
   const [scopeLoading, setScopeLoading] = useState(false);
   // Dev-mode (Challenge 1): no real brief is generated. We populate a
@@ -559,9 +564,12 @@ export default function FinanceBriefPage() {
             return;
           }
           setScopes(fetched);
-          // Default to the most recent complete month (first non-"all" entry).
+          // Default to the current month; if there isn't one, fall back
+          // to previous, then all.
           const defaultScope =
-            fetched.find((s) => s.scope !== 'all')?.scope ?? 'all';
+            fetched.find((s) => s.kind === 'current')?.scope ??
+            fetched.find((s) => s.kind === 'previous')?.scope ??
+            'all';
           setScope(defaultScope);
         } catch {
           // Brief endpoints unavailable — fall back to placeholder rather
@@ -1181,67 +1189,104 @@ export default function FinanceBriefPage() {
                     </div>
                   </div>
 
-                  {/* Period selector — pills below the three cards. */}
-                  {scopes && scopes.length > 0 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '8px',
-                        marginTop: '16px',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span
+                  {/* Period selector — three primary pills (All / Current /
+                      Previous) plus a dropdown for older completed months. */}
+                  {scopes && scopes.length > 0 && (() => {
+                    const primary = scopes.filter(
+                      (s) => s.kind !== 'older',
+                    );
+                    const older = scopes.filter((s) => s.kind === 'older');
+                    const activeOlder = older.find((o) => o.scope === scope);
+                    return (
+                      <div
                         style={{
-                          fontSize: '0.7rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.12em',
-                          color: 'var(--text-dim)',
-                          marginRight: '4px',
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                          marginTop: '16px',
+                          alignItems: 'center',
                         }}
                       >
-                        Period
-                      </span>
-                      {scopes.map((s) => {
-                        const active = s.scope === scope;
-                        return (
-                          <button
-                            key={s.scope}
-                            type="button"
-                            onClick={() => setScope(s.scope)}
-                            disabled={scopeLoading && !active}
+                        {primary.map((s) => {
+                          const active = s.scope === scope;
+                          return (
+                            <button
+                              key={s.scope}
+                              type="button"
+                              onClick={() => setScope(s.scope)}
+                              disabled={scopeLoading && !active}
+                              style={{
+                                padding: '5px 11px',
+                                borderRadius: '999px',
+                                border: active
+                                  ? '1px solid var(--text)'
+                                  : '1px solid var(--border-light)',
+                                background: active ? 'var(--text)' : 'transparent',
+                                color: active ? 'var(--bg)' : 'var(--text-mid)',
+                                fontSize: '0.78rem',
+                                fontWeight: active ? 500 : 400,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              {s.label}
+                            </button>
+                          );
+                        })}
+                        {older.length > 0 && (
+                          <select
+                            value={activeOlder?.scope ?? ''}
+                            onChange={(e) => {
+                              if (e.target.value) setScope(e.target.value);
+                            }}
+                            disabled={scopeLoading}
                             style={{
                               padding: '5px 11px',
                               borderRadius: '999px',
-                              border: active
+                              border: activeOlder
                                 ? '1px solid var(--text)'
                                 : '1px solid var(--border-light)',
-                              background: active ? 'var(--text)' : 'transparent',
-                              color: active ? 'var(--bg)' : 'var(--text-mid)',
+                              background: activeOlder ? 'var(--text)' : 'transparent',
+                              color: activeOlder ? 'var(--bg)' : 'var(--text-mid)',
                               fontSize: '0.78rem',
-                              fontWeight: active ? 500 : 400,
+                              fontWeight: activeOlder ? 500 : 400,
                               cursor: 'pointer',
                               transition: 'all 0.15s ease',
+                              appearance: 'none',
+                              paddingRight: '24px',
+                              backgroundImage: activeOlder
+                                ? "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")"
+                                : "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")",
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'right 10px center',
                             }}
                           >
-                            {s.label}
-                          </button>
-                        );
-                      })}
-                      {scopeLoading && (
-                        <span
-                          style={{
-                            fontSize: '0.7rem',
-                            color: 'var(--text-dim)',
-                            marginLeft: '4px',
-                          }}
-                        >
-                          loading…
-                        </span>
-                      )}
-                    </div>
-                  )}
+                            {!activeOlder && (
+                              <option value="" disabled>
+                                Older months
+                              </option>
+                            )}
+                            {older.map((o) => (
+                              <option key={o.scope} value={o.scope}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {scopeLoading && (
+                          <span
+                            style={{
+                              fontSize: '0.7rem',
+                              color: 'var(--text-dim)',
+                              marginLeft: '4px',
+                            }}
+                          >
+                            loading…
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* View Details Link */}
                   <div className={styles.detailsLink}>

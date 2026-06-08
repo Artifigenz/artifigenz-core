@@ -480,7 +480,11 @@ export class ApiClient {
 
   async getFinanceBriefScopes() {
     return this.get<{
-      scopes: Array<{ scope: string; label: string }>;
+      scopes: Array<{
+        scope: string;
+        label: string;
+        kind: 'all' | 'current' | 'previous' | 'older';
+      }>;
     }>('/api/finance/brief/scopes');
   }
 

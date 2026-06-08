@@ -139,7 +139,10 @@ export async function computeMonthNumbers(
     ORDER BY c.category, b.brand_total DESC NULLS LAST
   `);
 
-  return shapeBriefNumbers(rows, month, formatMonthLabel(month));
+  const label = isCurrentCalendarMonth(month)
+    ? `${formatMonthLabel(month)} (so far)`
+    : formatMonthLabel(month);
+  return shapeBriefNumbers(rows, month, label);
 }
 
 /**
@@ -322,21 +325,27 @@ export async function computeMonthSignals(
     ranked.push({ type: "no_income" });
   }
 
-  // 2. MoM total-spend delta. Prior month is month - 1.
+  // 2. MoM total-spend delta. Skip entirely when this is the
+  //    current (in-progress) month — comparing a partial period against
+  //    a full one is misleading and produces "spending down 60%"
+  //    headlines for the first week of the month.
+  const partialMonth = isCurrentCalendarMonth(month);
   const prevMonth = shiftMonth(month, -1);
-  const prevTotal = await monthOutflow(agentInstanceId, prevMonth);
-  if (prevTotal === null) {
-    ranked.push({ type: "first_full_month" });
-  } else if (prevTotal > 0) {
-    const deltaPct = Math.round(
-      ((numbers.outflow - prevTotal) / prevTotal) * 100,
-    );
-    if (Math.abs(deltaPct) >= 8) {
-      ranked.push({
-        type: "mom_spend_change",
-        deltaPercent: deltaPct,
-        prevMonth,
-      });
+  if (!partialMonth) {
+    const prevTotal = await monthOutflow(agentInstanceId, prevMonth);
+    if (prevTotal === null) {
+      ranked.push({ type: "first_full_month" });
+    } else if (prevTotal > 0) {
+      const deltaPct = Math.round(
+        ((numbers.outflow - prevTotal) / prevTotal) * 100,
+      );
+      if (Math.abs(deltaPct) >= 8) {
+        ranked.push({
+          type: "mom_spend_change",
+          deltaPercent: deltaPct,
+          prevMonth,
+        });
+      }
     }
   }
 
@@ -394,8 +403,12 @@ export async function computeMonthSignals(
   }
 
   // 5. Top category mover (MoM). Skip categories that are <$50 to avoid
-  //    "Gifts up 800%" when going from $5 to $45.
-  if (prevTotal !== null) {
+  //    "Gifts up 800%" when going from $5 to $45. Also skipped for the
+  //    partial current month for the same reason as the total-spend MoM.
+  const prevTotal = partialMonth
+    ? null
+    : await monthOutflow(agentInstanceId, prevMonth);
+  if (!partialMonth && prevTotal !== null) {
     const movers = await db.execute<{
       category: string;
       cur: string;
@@ -516,9 +529,9 @@ function formatMonthLabel(month: string): string {
 }
 
 /**
- * List complete months (with data) for a given instance, newest first.
- * Excludes the current in-progress month so the brief page only shows
- * finished periods. Returns array of "YYYY-MM-01" strings.
+ * List months (with data) for a given instance, newest first. Includes
+ * the current in-progress month — it's the default pill in the UI now.
+ * Returns array of "YYYY-MM-01" strings.
  */
 export async function listAvailableMonths(
   agentInstanceId: string,
@@ -528,10 +541,20 @@ export async function listAvailableMonths(
     FROM finance_transactions
     WHERE agent_instance_id = ${agentInstanceId}
       AND category IS NOT NULL
-      AND DATE_TRUNC('month', transaction_date) < DATE_TRUNC('month', CURRENT_DATE)
     ORDER BY month DESC
   `);
   return rows.map((r) => r.month);
+}
+
+/**
+ * Is this month the calendar-current month? Used to decide whether to
+ * suppress signals that depend on a complete period (MoM comparison) and
+ * whether to label the period as "so far".
+ */
+export function isCurrentCalendarMonth(month: string): boolean {
+  const d = new Date();
+  const cur = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  return month === cur;
 }
 
 /**

@@ -129,18 +129,54 @@ export async function getBrief(
 }
 
 /**
- * What scopes does this instance have available? Returns "all" plus the
- * list of YYYY-MM-01 strings for every complete month with data, newest
- * first. The UI uses this to render the pill tabs.
+ * Available scopes for this instance, kind-tagged so the UI can lay them
+ * out as three primary pills (All / Current / Previous) plus a dropdown
+ * for older completed months. Newest first within each group.
+ *
+ *   - `all`      → averaged across all months
+ *   - `current`  → calendar-current month (month-to-date, partial)
+ *   - `previous` → most recent completed month
+ *   - `older`    → every completed month before that
  */
+export type ScopeKind = "all" | "current" | "previous" | "older";
+
 export async function listBriefScopes(
   agentInstanceId: string,
-): Promise<{ scopes: Array<{ scope: string; label: string }> }> {
+): Promise<{
+  scopes: Array<{ scope: string; label: string; kind: ScopeKind }>;
+}> {
   const months = await listAvailableMonths(agentInstanceId);
-  const scopes = [
-    { scope: "all", label: "All time" },
-    ...months.map((m) => ({ scope: m, label: monthLabel(m) })),
+
+  const today = new Date();
+  const currentMonth = `${today.getUTCFullYear()}-${String(
+    today.getUTCMonth() + 1,
+  ).padStart(2, "0")}-01`;
+
+  const scopes: Array<{ scope: string; label: string; kind: ScopeKind }> = [
+    { scope: "all", label: "All", kind: "all" },
   ];
+
+  const hasCurrent = months.includes(currentMonth);
+  if (hasCurrent) {
+    scopes.push({
+      scope: currentMonth,
+      label: "Current month",
+      kind: "current",
+    });
+  }
+
+  const completedMonths = months.filter((m) => m !== currentMonth);
+  if (completedMonths[0]) {
+    scopes.push({
+      scope: completedMonths[0],
+      label: "Previous month",
+      kind: "previous",
+    });
+  }
+  for (const m of completedMonths.slice(1)) {
+    scopes.push({ scope: m, label: monthLabel(m), kind: "older" });
+  }
+
   return { scopes };
 }
 
