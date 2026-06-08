@@ -86,30 +86,36 @@ export async function getBrief(
   // Generate fresh headline.
   const narrative = await generateHeadline(numbers, signals);
 
-  await db
-    .insert(financeMonthlyBriefs)
-    .values({
+  // Manual upsert. ON CONFLICT can't target a partial unique index, so
+  // we update if the row existed in the read above, otherwise insert.
+  if (cached) {
+    await db
+      .update(financeMonthlyBriefs)
+      .set({
+        headline: narrative.headline,
+        signals: { ranked: signals.ranked, used: narrative.signalsUsed },
+        confidence: narrative.confidence.toFixed(2),
+        lastTxnDateAtGeneration: latestTxn,
+        generatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(financeMonthlyBriefs.agentInstanceId, agentInstanceId),
+          isAll
+            ? isNull(financeMonthlyBriefs.month)
+            : eq(financeMonthlyBriefs.month, scope),
+        ),
+      );
+  } else {
+    await db.insert(financeMonthlyBriefs).values({
       agentInstanceId,
       month: monthValue,
       headline: narrative.headline,
       signals: { ranked: signals.ranked, used: narrative.signalsUsed },
       confidence: narrative.confidence.toFixed(2),
       lastTxnDateAtGeneration: latestTxn,
-    })
-    .onConflictDoUpdate({
-      target: isAll
-        ? [financeMonthlyBriefs.agentInstanceId]
-        : [financeMonthlyBriefs.agentInstanceId, financeMonthlyBriefs.month],
-      // Partial-index conflict targets fire on either index; we set the
-      // same updates regardless of which path matched.
-      set: {
-        headline: narrative.headline,
-        signals: { ranked: signals.ranked, used: narrative.signalsUsed },
-        confidence: narrative.confidence.toFixed(2),
-        lastTxnDateAtGeneration: latestTxn,
-        generatedAt: new Date(),
-      },
     });
+  }
 
   return {
     scope,
