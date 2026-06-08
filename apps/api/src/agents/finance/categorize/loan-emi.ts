@@ -453,7 +453,7 @@ Classify the brand into ONE of these subtypes (set is_loan=true if you tag any m
    Sample descriptions often contain: "PERSONAL LOAN", "PL EMI", "INSTALLMENT LOAN", lender names + "LOAN PMT".
 
 4. "student_loan" — Student / education loan installments.
-   Sample descriptions often contain: "STUDENT LOAN", "EDU LOAN", "EDUCATION LOAN", "NSLSC", "SALLIE MAE", "NELNET", "GREAT LAKES".
+   Sample descriptions often contain student-loan language: "STUDENT LOAN", "EDU LOAN", "EDUCATION LOAN". Recognize national/regional student-loan servicers by your own knowledge; don't rely on a hardcoded list.
 
 5. "credit_card_emi" — Credit-card EMI conversion installments. NOT the full statement payment — specifically the per-month EMI portion when a purchase has been converted to installments.
    Sample descriptions often contain: "EMI", "INSTALLMENT", "CC EMI".
