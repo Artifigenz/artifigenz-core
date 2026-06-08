@@ -1071,8 +1071,37 @@ export default function FinanceBriefPage() {
         ) : brief ? (
           <>
             <h2 className={styles.verdict}>
-              {typedVerdict}
-              {isTyping && <span className={styles.cursor} />}
+              {scopeLoading ? (
+                <>
+                  <span
+                    className={styles.skeleton}
+                    style={{
+                      width: '85%',
+                      height: '1.05em',
+                      display: 'inline-block',
+                    }}
+                  >
+                    &nbsp;
+                  </span>
+                  <br />
+                  <span
+                    className={styles.skeleton}
+                    style={{
+                      width: '60%',
+                      height: '1.05em',
+                      display: 'inline-block',
+                      marginTop: '0.3em',
+                    }}
+                  >
+                    &nbsp;
+                  </span>
+                </>
+              ) : (
+                <>
+                  {typedVerdict}
+                  {isTyping && <span className={styles.cursor} />}
+                </>
+              )}
             </h2>
 
             {brief.summary && (() => {
@@ -1151,7 +1180,18 @@ export default function FinanceBriefPage() {
                     <div className={styles.numCard}>
                       <div className={styles.ncTag}>Income</div>
                       <div className={styles.ncVal}>
-                        {formatMoney(income)}<span className={styles.ncUnit}>/mo</span>
+                        {scopeLoading ? (
+                          <span
+                            className={styles.skeleton}
+                            style={{ width: '6ch', height: '1em' }}
+                          >
+                            &nbsp;
+                          </span>
+                        ) : (
+                          <>
+                            {formatMoney(income)}<span className={styles.ncUnit}>/mo</span>
+                          </>
+                        )}
                       </div>
                       <div className={styles.ncNote}>Salary & deposits</div>
                     </div>
@@ -1159,21 +1199,66 @@ export default function FinanceBriefPage() {
                     {/* Outflow Card - Split */}
                     <div className={styles.numCard}>
                       <div className={styles.ncTag}>
-                        Outflow <span className={styles.ncTagSum}>· {formatMoney(outflow)}/mo</span>
+                        Outflow{' '}
+                        <span className={styles.ncTagSum}>
+                          ·{' '}
+                          {scopeLoading ? (
+                            <span
+                              className={styles.skeleton}
+                              style={{ width: '5ch', height: '0.9em' }}
+                            >
+                              &nbsp;
+                            </span>
+                          ) : (
+                            <>{formatMoney(outflow)}/mo</>
+                          )}
+                        </span>
                       </div>
                       <div className={styles.split}>
-                        {breakdown.map((item, idx) => (
-                          <div key={item.id} className={styles.splitRow}>
-                            <div className={styles.srK}>
-                              <span className={`${styles.sw} ${styles[`s${idx + 1}`]}`} />
-                              {item.label}
-                              <small>{item.sublabel}</small>
-                            </div>
-                            <div className={styles.srV}>
-                              {formatMoney(item.amount)}<span className={styles.ncUnit}>/mo</span>
-                            </div>
-                          </div>
-                        ))}
+                        {scopeLoading
+                          ? // Three skeleton rows so the card height is
+                            // stable while the real rows are being fetched.
+                            [0, 1, 2].map((i) => (
+                              <div key={i} className={styles.splitRow}>
+                                <div className={styles.srK}>
+                                  <span
+                                    className={styles.skeleton}
+                                    style={{
+                                      width: '120px',
+                                      height: '0.9em',
+                                    }}
+                                  >
+                                    &nbsp;
+                                  </span>
+                                </div>
+                                <div className={styles.srV}>
+                                  <span
+                                    className={styles.skeleton}
+                                    style={{
+                                      width: '60px',
+                                      height: '0.9em',
+                                    }}
+                                  >
+                                    &nbsp;
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          : breakdown.map((item, idx) => (
+                              <div key={item.id} className={styles.splitRow}>
+                                <div className={styles.srK}>
+                                  <span
+                                    className={`${styles.sw} ${styles[`s${idx + 1}`]}`}
+                                  />
+                                  {item.label}
+                                  <small>{item.sublabel}</small>
+                                </div>
+                                <div className={styles.srV}>
+                                  {formatMoney(item.amount)}
+                                  <span className={styles.ncUnit}>/mo</span>
+                                </div>
+                              </div>
+                            ))}
                       </div>
                     </div>
 
@@ -1181,7 +1266,20 @@ export default function FinanceBriefPage() {
                     <div className={styles.numCard}>
                       <div className={styles.ncTag}>Leftover</div>
                       <div className={styles.ncVal}>
-                        {leftover < 0 ? '−' : ''}{formatMoney(leftover)}<span className={styles.ncUnit}>/mo</span>
+                        {scopeLoading ? (
+                          <span
+                            className={styles.skeleton}
+                            style={{ width: '6ch', height: '1em' }}
+                          >
+                            &nbsp;
+                          </span>
+                        ) : (
+                          <>
+                            {leftover < 0 ? '−' : ''}
+                            {formatMoney(leftover)}
+                            <span className={styles.ncUnit}>/mo</span>
+                          </>
+                        )}
                       </div>
                       <div className={styles.ncNote}>
                         {leftover < 0 ? 'Covered on credit' : 'Available'}
@@ -1189,119 +1287,164 @@ export default function FinanceBriefPage() {
                     </div>
                   </div>
 
-                  {/* Period selector — three primary pills (All / Current /
-                      Previous) plus a dropdown for older completed months. */}
-                  {scopes && scopes.length > 0 && (() => {
-                    const primary = scopes.filter(
-                      (s) => s.kind !== 'older',
-                    );
-                    const older = scopes.filter((s) => s.kind === 'older');
-                    const activeOlder = older.find((o) => o.scope === scope);
-                    return (
-                      <div
+                  {/* Period pills + detail links share one row below the
+                      three cards. The "Previous months" dropdown collapses
+                      every completed month (previous + older) into one
+                      control so the row stays compact. */}
+                  <div className={styles.periodRow}>
+                    {scopes && scopes.length > 0 ? (
+                      (() => {
+                        const allScope = scopes.find((s) => s.kind === 'all');
+                        const currentScope = scopes.find(
+                          (s) => s.kind === 'current',
+                        );
+                        // "Previous months" merges the previous month with
+                        // every older completed month into one dropdown.
+                        const completed = scopes.filter(
+                          (s) => s.kind === 'previous' || s.kind === 'older',
+                        );
+                        const activeCompleted = completed.find(
+                          (c) => c.scope === scope,
+                        );
+                        const primary = [allScope, currentScope].filter(
+                          (s): s is NonNullable<typeof s> => Boolean(s),
+                        );
+                        return (
+                          <div className={styles.periodPills}>
+                            {primary.map((s) => {
+                              const active = s.scope === scope;
+                              return (
+                                <button
+                                  key={s.scope}
+                                  type="button"
+                                  onClick={() => setScope(s.scope)}
+                                  style={{
+                                    padding: '5px 11px',
+                                    borderRadius: '999px',
+                                    border: active
+                                      ? '1px solid var(--text)'
+                                      : '1px solid var(--border-light)',
+                                    background: active
+                                      ? 'var(--text)'
+                                      : 'transparent',
+                                    color: active ? 'var(--bg)' : 'var(--text-mid)',
+                                    fontSize: '0.78rem',
+                                    fontWeight: active ? 500 : 400,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  {s.label}
+                                </button>
+                              );
+                            })}
+                            {completed.length > 0 && (
+                              <select
+                                value={activeCompleted?.scope ?? ''}
+                                onChange={(e) => {
+                                  if (e.target.value) setScope(e.target.value);
+                                }}
+                                style={{
+                                  padding: '5px 28px 5px 11px',
+                                  borderRadius: '999px',
+                                  border: activeCompleted
+                                    ? '1px solid var(--text)'
+                                    : '1px solid var(--border-light)',
+                                  background: activeCompleted
+                                    ? 'var(--text)'
+                                    : 'transparent',
+                                  color: activeCompleted
+                                    ? 'var(--bg)'
+                                    : 'var(--text-mid)',
+                                  fontSize: '0.78rem',
+                                  fontWeight: activeCompleted ? 500 : 400,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  appearance: 'none',
+                                  backgroundImage: activeCompleted
+                                    ? "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")"
+                                    : "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")",
+                                  backgroundRepeat: 'no-repeat',
+                                  backgroundPosition: 'right 10px center',
+                                }}
+                              >
+                                {!activeCompleted && (
+                                  <option value="" disabled>
+                                    Previous months
+                                  </option>
+                                )}
+                                {completed.map((o) => (
+                                  <option key={o.scope} value={o.scope}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span />
+                    )}
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '24px',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Link
+                        href="/finance/breakdown"
                         style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: '8px',
-                          marginTop: '16px',
+                          display: 'inline-flex',
                           alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          color: 'var(--text-dim)',
+                          textDecoration: 'none',
                         }}
                       >
-                        {primary.map((s) => {
-                          const active = s.scope === scope;
-                          return (
-                            <button
-                              key={s.scope}
-                              type="button"
-                              onClick={() => setScope(s.scope)}
-                              disabled={scopeLoading && !active}
-                              style={{
-                                padding: '5px 11px',
-                                borderRadius: '999px',
-                                border: active
-                                  ? '1px solid var(--text)'
-                                  : '1px solid var(--border-light)',
-                                background: active ? 'var(--text)' : 'transparent',
-                                color: active ? 'var(--bg)' : 'var(--text-mid)',
-                                fontSize: '0.78rem',
-                                fontWeight: active ? 500 : 400,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              {s.label}
-                            </button>
-                          );
-                        })}
-                        {older.length > 0 && (
-                          <select
-                            value={activeOlder?.scope ?? ''}
-                            onChange={(e) => {
-                              if (e.target.value) setScope(e.target.value);
-                            }}
-                            disabled={scopeLoading}
-                            style={{
-                              padding: '5px 11px',
-                              borderRadius: '999px',
-                              border: activeOlder
-                                ? '1px solid var(--text)'
-                                : '1px solid var(--border-light)',
-                              background: activeOlder ? 'var(--text)' : 'transparent',
-                              color: activeOlder ? 'var(--bg)' : 'var(--text-mid)',
-                              fontSize: '0.78rem',
-                              fontWeight: activeOlder ? 500 : 400,
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease',
-                              appearance: 'none',
-                              paddingRight: '24px',
-                              backgroundImage: activeOlder
-                                ? "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")"
-                                : "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>\")",
-                              backgroundRepeat: 'no-repeat',
-                              backgroundPosition: 'right 10px center',
-                            }}
-                          >
-                            {!activeOlder && (
-                              <option value="" disabled>
-                                Older months
-                              </option>
-                            )}
-                            {older.map((o) => (
-                              <option key={o.scope} value={o.scope}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        {scopeLoading && (
-                          <span
-                            style={{
-                              fontSize: '0.7rem',
-                              color: 'var(--text-dim)',
-                              marginLeft: '4px',
-                            }}
-                          >
-                            loading…
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* View Details Link */}
-                  <div className={styles.detailsLink}>
-                    <Link href="/finance/breakdown">
-                      View detailed breakdown
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14M13 5l7 7-7 7" />
-                      </svg>
-                    </Link>
-                    <Link href="/finance/accounts" style={{ marginLeft: '24px' }}>
-                      View accounts
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14M13 5l7 7-7 7" />
-                      </svg>
-                    </Link>
+                        View detailed breakdown
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M5 12h14M13 5l7 7-7 7" />
+                        </svg>
+                      </Link>
+                      <Link
+                        href="/finance/accounts"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          color: 'var(--text-dim)',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        View accounts
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M5 12h14M13 5l7 7-7 7" />
+                        </svg>
+                      </Link>
+                    </div>
                   </div>
                 </>
               );
