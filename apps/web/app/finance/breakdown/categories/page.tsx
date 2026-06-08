@@ -92,6 +92,24 @@ interface SubscriptionData {
   asOf: string | null;
 }
 
+interface FeeInterestBrand {
+  brandSlug: string;
+  displayName: string;
+  logoUrl: string | null;
+  systemCategory: string | null;
+  txnCount: number;
+  total: number;
+  avgAmount: number;
+  firstDate: string;
+  lastDate: string;
+  sampleDescriptions: string[];
+}
+
+interface FeeInterestData {
+  brands: FeeInterestBrand[];
+  total: number;
+}
+
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -123,7 +141,12 @@ const CATEGORY_BLURB: Record<string, string> = {
 
 // Categories that have expandable detail content. Adding a category here
 // means we need a matching loader + renderer below.
-const EXPANDABLE = new Set(['internal_transfer', 'income', 'subscription']);
+const EXPANDABLE = new Set([
+  'internal_transfer',
+  'income',
+  'subscription',
+  'fee_interest',
+]);
 
 export default function CategoriesPage() {
   const api = useApiClient();
@@ -142,6 +165,8 @@ export default function CategoriesPage() {
   const [loadingIncome, setLoadingIncome] = useState(false);
   const [subscriptions, setSubscriptions] = useState<SubscriptionData | null>(null);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [feeInterest, setFeeInterest] = useState<FeeInterestData | null>(null);
+  const [loadingFeeInterest, setLoadingFeeInterest] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +227,19 @@ export default function CategoriesPage() {
     }
   }, [api, subscriptions, loadingSubscriptions]);
 
+  const ensureFeeInterestLoaded = useCallback(async () => {
+    if (feeInterest || loadingFeeInterest) return;
+    setLoadingFeeInterest(true);
+    try {
+      const data = await api.getFinanceFeeInterest();
+      setFeeInterest(data);
+    } catch {
+      // Soft-fail.
+    } finally {
+      setLoadingFeeInterest(false);
+    }
+  }, [api, feeInterest, loadingFeeInterest]);
+
   const toggle = useCallback(
     (category: string) => {
       setExpanded((prev) => {
@@ -213,11 +251,17 @@ export default function CategoriesPage() {
           if (category === 'internal_transfer') void ensureInternalTransfersLoaded();
           if (category === 'income') void ensureIncomeLoaded();
           if (category === 'subscription') void ensureSubscriptionsLoaded();
+          if (category === 'fee_interest') void ensureFeeInterestLoaded();
         }
         return next;
       });
     },
-    [ensureInternalTransfersLoaded, ensureIncomeLoaded, ensureSubscriptionsLoaded],
+    [
+      ensureInternalTransfersLoaded,
+      ensureIncomeLoaded,
+      ensureSubscriptionsLoaded,
+      ensureFeeInterestLoaded,
+    ],
   );
 
   return (
@@ -360,6 +404,12 @@ export default function CategoriesPage() {
                         <SubscriptionsPanel
                           data={subscriptions}
                           loading={loadingSubscriptions}
+                        />
+                      )}
+                      {b.category === 'fee_interest' && (
+                        <FeeInterestPanel
+                          data={feeInterest}
+                          loading={loadingFeeInterest}
                         />
                       )}
                     </div>
@@ -890,6 +940,114 @@ function SubscriptionsPanel({
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function FeeInterestPanel({
+  data,
+  loading,
+}: {
+  data: FeeInterestData | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Loading fees & interest…
+      </p>
+    );
+  }
+  if (!data) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        Couldn&apos;t load fee detail.
+      </p>
+    );
+  }
+  if (data.brands.length === 0) {
+    return (
+      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+        No fees or interest charges detected yet. Overdraft, monthly
+        maintenance, ATM, interest charges, and similar bank-levied amounts
+        will land here once classification finds them.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      {data.brands.map((b) => (
+        <div
+          key={b.brandSlug}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            background: 'var(--bg)',
+            border: '1px solid var(--border-light)',
+            borderRadius: '8px',
+          }}
+        >
+          {b.logoUrl ? (
+            <img
+              src={b.logoUrl}
+              alt=""
+              width={28}
+              height={28}
+              style={{ borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
+            />
+          ) : (
+            <div
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '6px',
+                background: 'var(--card-hover)',
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: '0.88rem',
+                fontWeight: 500,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {b.displayName}
+            </div>
+            <div
+              style={{
+                marginTop: '2px',
+                fontSize: '0.7rem',
+                color: 'var(--text-dim)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {b.txnCount} charge{b.txnCount === 1 ? '' : 's'} · avg{' '}
+              {formatMoney(b.avgAmount)} · last on {formatDate(b.lastDate)}
+              {b.sampleDescriptions.length > 0 &&
+                ` · "${b.sampleDescriptions[0]}"`}
+            </div>
+          </div>
+          <div
+            style={{
+              fontSize: '0.9rem',
+              fontWeight: 500,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatMoney(b.total)}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
