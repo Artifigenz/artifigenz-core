@@ -474,6 +474,15 @@ Classify.`;
 
 // ─── Apply ───────────────────────────────────────────────────────
 
+// Description-level signal-word filter. When the brand resolver collapses
+// unrelated merchants under one brand_slug (Plaid sometimes does this for
+// generic terms like "purchase interest" or "utility"), the LLM's verdict
+// is correct for the dominant descriptions but the UPDATE shouldn't sweep
+// up unrelated rows. Require each tagged row to actually mention a fee or
+// interest signal word.
+const FEE_DESCRIPTION_REGEX =
+  "\\y(fee|charge|interest|nsf|overdraft|overlimit|maintenance|annual|wire|atm|finance|return|service)\\y";
+
 async function applyFeeToBrand(
   agentInstanceId: string,
   brandSlug: string,
@@ -498,6 +507,7 @@ async function applyFeeToBrand(
         sql`${financeTransactions.merchantNormalized} IN (
           SELECT merchant_normalized FROM merchant_brands WHERE brand_slug = ${brandSlug}
         )`,
+        sql`LOWER(${financeTransactions.description}) ~ ${FEE_DESCRIPTION_REGEX}`,
       ),
     )
     .returning({ id: financeTransactions.id });
