@@ -480,23 +480,36 @@ export class ApiClient {
 
   async getFinanceSubscriptions() {
     return this.get<{
-      subtypes: Array<{
-        subtype: string;
-        label: string;
+      active: Array<{
+        brandSlug: string;
+        displayName: string;
+        logoUrl: string | null;
+        txnCount: number;
         total: number;
-        streams: Array<{
-          brandSlug: string;
-          displayName: string;
-          logoUrl: string | null;
-          txnCount: number;
-          total: number;
-          avgAmount: number;
-          firstDate: string;
-          lastDate: string;
-          cadence: string;
-        }>;
+        avgAmount: number;
+        firstDate: string;
+        lastDate: string;
+        cadence: string;
+        daysSinceLast: number;
+        active: boolean;
       }>;
+      potentiallyCancelled: Array<{
+        brandSlug: string;
+        displayName: string;
+        logoUrl: string | null;
+        txnCount: number;
+        total: number;
+        avgAmount: number;
+        firstDate: string;
+        lastDate: string;
+        cadence: string;
+        daysSinceLast: number;
+        active: boolean;
+      }>;
+      activeTotal: number;
+      cancelledTotal: number;
       total: number;
+      asOf: string | null;
     }>('/api/finance/categories/subscriptions');
   }
 

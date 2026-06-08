@@ -69,7 +69,7 @@ interface IncomeData {
   total: number;
 }
 
-interface SubscriptionStream {
+interface SubscriptionBrand {
   brandSlug: string;
   displayName: string;
   logoUrl: string | null;
@@ -79,18 +79,17 @@ interface SubscriptionStream {
   firstDate: string;
   lastDate: string;
   cadence: string;
-}
-
-interface SubscriptionSubtype {
-  subtype: string;
-  label: string;
-  total: number;
-  streams: SubscriptionStream[];
+  daysSinceLast: number;
+  active: boolean;
 }
 
 interface SubscriptionData {
-  subtypes: SubscriptionSubtype[];
+  active: SubscriptionBrand[];
+  potentiallyCancelled: SubscriptionBrand[];
+  activeTotal: number;
+  cancelledTotal: number;
   total: number;
+  asOf: string | null;
 }
 
 function formatMoney(amount: number): string {
@@ -709,6 +708,75 @@ function IncomePanel({
   );
 }
 
+function SubscriptionBrandRow({ s }: { s: SubscriptionBrand }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '10px 12px',
+        background: 'var(--bg)',
+        border: '1px solid var(--border-light)',
+        borderRadius: '8px',
+      }}
+    >
+      {s.logoUrl ? (
+        <img
+          src={s.logoUrl}
+          alt=""
+          width={28}
+          height={28}
+          style={{ borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
+        />
+      ) : (
+        <div
+          style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '6px',
+            background: 'var(--card-hover)',
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '0.88rem',
+            fontWeight: 500,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {s.displayName}
+        </div>
+        <div
+          style={{
+            marginTop: '2px',
+            fontSize: '0.7rem',
+            color: 'var(--text-dim)',
+          }}
+        >
+          {formatMoney(s.avgAmount)} · {s.cadence} · last charged{' '}
+          {formatDate(s.lastDate)}
+          {s.daysSinceLast > 0 && ` (${s.daysSinceLast}d ago)`}
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: '0.9rem',
+          fontWeight: 500,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {formatMoney(s.total)}
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionsPanel({
   data,
   loading,
@@ -730,19 +798,62 @@ function SubscriptionsPanel({
       </p>
     );
   }
-  if (data.subtypes.length === 0) {
+  if (data.active.length === 0 && data.potentiallyCancelled.length === 0) {
     return (
       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
-        No subscriptions detected yet. Streaming, SaaS, memberships, and other
-        recurring fixed-fee charges will land here once classification finds them.
+        No subscriptions detected yet. Recurring fixed-fee charges will land
+        here once classification finds them.
       </p>
     );
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {data.subtypes.map((sub) => (
-        <section key={sub.subtype}>
+      <section>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            margin: '0 0 8px',
+          }}
+        >
+          <h4
+            style={{
+              fontSize: '0.7rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              color: 'var(--text-dim)',
+              margin: 0,
+            }}
+          >
+            Active ({data.active.length})
+          </h4>
+          <span
+            style={{
+              fontSize: '0.78rem',
+              color: 'var(--text-mid)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatMoney(data.activeTotal)}
+          </span>
+        </div>
+        {data.active.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+            No active subscriptions.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {data.active.map((s) => (
+              <SubscriptionBrandRow key={s.brandSlug} s={s} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {data.potentiallyCancelled.length > 0 && (
+        <section>
           <div
             style={{
               display: 'flex',
@@ -760,7 +871,7 @@ function SubscriptionsPanel({
                 margin: 0,
               }}
             >
-              {sub.label}
+              Potentially cancelled ({data.potentiallyCancelled.length})
             </h4>
             <span
               style={{
@@ -769,79 +880,16 @@ function SubscriptionsPanel({
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {formatMoney(sub.total)}
+              {formatMoney(data.cancelledTotal)}
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {sub.streams.map((s) => (
-              <div
-                key={s.brandSlug}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '10px 12px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-light)',
-                  borderRadius: '8px',
-                }}
-              >
-                {s.logoUrl ? (
-                  <img
-                    src={s.logoUrl}
-                    alt=""
-                    width={28}
-                    height={28}
-                    style={{ borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '6px',
-                      background: 'var(--card-hover)',
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: '0.88rem',
-                      fontWeight: 500,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {s.displayName}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: '2px',
-                      fontSize: '0.7rem',
-                      color: 'var(--text-dim)',
-                    }}
-                  >
-                    {formatMoney(s.avgAmount)} · {s.cadence} · {s.txnCount} charge
-                    {s.txnCount === 1 ? '' : 's'} · last on {formatDate(s.lastDate)}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.9rem',
-                    fontWeight: 500,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {formatMoney(s.total)}
-                </div>
-              </div>
+            {data.potentiallyCancelled.map((s) => (
+              <SubscriptionBrandRow key={s.brandSlug} s={s} />
             ))}
           </div>
         </section>
-      ))}
+      )}
     </div>
   );
 }

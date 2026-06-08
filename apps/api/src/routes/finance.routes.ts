@@ -785,10 +785,11 @@ app.get("/categories/income", async (c) => {
 
 /**
  * GET /api/finance/categories/subscriptions
- *   Subscriptions grouped by subtype, each subtype lists per-brand
- *   streams. Subscription Radar (Stage 4) reads lastDate + cadence to
- *   surface "Netflix charges tomorrow" and "Adobe just raised the
- *   price"; the cluster page only shows the static breakdown.
+ *   Flat list of subscription brands with an active / potentially-cancelled
+ *   split. A subscription is "potentially cancelled" when its last charge
+ *   falls outside the expected cadence window measured from the freshest
+ *   transaction date in the instance (so this works for both live Plaid
+ *   data and historical statement uploads).
  */
 app.get("/categories/subscriptions", async (c) => {
   const user = c.get("user");
@@ -804,14 +805,30 @@ app.get("/categories/subscriptions", async (c) => {
     .orderBy(agentInstances.createdAt)
     .limit(1);
   if (!instance) {
-    return c.json({ subtypes: [], total: 0 });
+    return c.json({
+      active: [],
+      potentiallyCancelled: [],
+      activeTotal: 0,
+      cancelledTotal: 0,
+      total: 0,
+      asOf: null,
+    });
   }
+
+  // Reference date for "is this still active?" — the freshest transaction
+  // in the instance. Using actual today would break statement-only users
+  // whose data ends weeks ago.
+  const [asOfRow] = await db.execute<{ as_of: string | null }>(sql`
+    SELECT MAX(transaction_date)::text AS as_of
+    FROM finance_transactions
+    WHERE agent_instance_id = ${instance.id}
+  `);
+  const asOf = asOfRow?.as_of ?? null;
 
   const rows = await db.execute<{
     brand_slug: string | null;
     display_name: string | null;
     logo_url: string | null;
-    system_category: string | null;
     txn_count: number;
     total: string;
     avg_amount: string;
@@ -824,7 +841,6 @@ app.get("/categories/subscriptions", async (c) => {
       mb.brand_slug,
       mb.display_name,
       mb.logo_url,
-      ft.system_category,
       COUNT(*)::int AS txn_count,
       ABS(SUM(ft.amount::numeric))::text AS total,
       ABS(AVG(ft.amount::numeric))::text AS avg_amount,
@@ -837,35 +853,9 @@ app.get("/categories/subscriptions", async (c) => {
       ON ft.merchant_normalized = mb.merchant_normalized
     WHERE ft.agent_instance_id = ${instance.id}
       AND ft.category = 'subscription'
-    GROUP BY mb.brand_slug, mb.display_name, mb.logo_url, ft.system_category
-    ORDER BY ft.system_category, ABS(SUM(ft.amount::numeric)) DESC
+    GROUP BY mb.brand_slug, mb.display_name, mb.logo_url
+    ORDER BY ABS(SUM(ft.amount::numeric)) DESC
   `);
-
-  interface Stream {
-    brandSlug: string;
-    displayName: string;
-    logoUrl: string | null;
-    txnCount: number;
-    total: number;
-    avgAmount: number;
-    firstDate: string;
-    lastDate: string;
-    cadence: string;
-  }
-  const subtypeMap = new Map<
-    string,
-    { subtype: string; label: string; total: number; streams: Stream[] }
-  >();
-
-  const SUBTYPE_LABELS: Record<string, string> = {
-    streaming: "Streaming",
-    software_saas: "Software & SaaS",
-    membership: "Memberships",
-    news_media: "News & media",
-    cloud_storage: "Cloud storage",
-    entertainment: "Entertainment",
-    other_subscription: "Other subscriptions",
-  };
 
   const cadenceFor = (
     distinctDates: number,
@@ -882,50 +872,83 @@ app.get("/categories/subscriptions", async (c) => {
     return "irregular";
   };
 
-  for (const r of rows) {
-    const subtype = r.system_category ?? "other_subscription";
-    let bucket = subtypeMap.get(subtype);
-    if (!bucket) {
-      bucket = {
-        subtype,
-        label: SUBTYPE_LABELS[subtype] ?? subtype,
-        total: 0,
-        streams: [],
-      };
-      subtypeMap.set(subtype, bucket);
+  // Grace = cadence period + small buffer. If the next expected charge
+  // hasn't landed by then, it's potentially cancelled.
+  const graceFor = (cadence: string): number => {
+    switch (cadence) {
+      case "weekly":
+        return 10;
+      case "biweekly":
+        return 20;
+      case "monthly":
+        return 40;
+      case "quarterly":
+        return 100;
+      case "annual":
+        return 380;
+      case "one-off":
+      case "irregular":
+      default:
+        return 40;
     }
-    const total = parseFloat(r.total);
-    bucket.total += total;
-    bucket.streams.push({
+  };
+
+  const daysBetween = (a: string, b: string): number => {
+    const ms = new Date(a + "T00:00:00").getTime() - new Date(b + "T00:00:00").getTime();
+    return Math.round(ms / 86_400_000);
+  };
+
+  interface Brand {
+    brandSlug: string;
+    displayName: string;
+    logoUrl: string | null;
+    txnCount: number;
+    total: number;
+    avgAmount: number;
+    firstDate: string;
+    lastDate: string;
+    cadence: string;
+    daysSinceLast: number;
+    active: boolean;
+  }
+
+  const active: Brand[] = [];
+  const cancelled: Brand[] = [];
+
+  for (const r of rows) {
+    const cadence = cadenceFor(r.distinct_dates, r.span_days, r.txn_count);
+    const grace = graceFor(cadence);
+    const daysSinceLast = asOf ? daysBetween(asOf, r.last_date) : 0;
+    const isActive = daysSinceLast <= grace;
+    const brand: Brand = {
       brandSlug: r.brand_slug ?? "unknown",
       displayName: r.display_name ?? r.brand_slug ?? "Unknown",
       logoUrl: r.logo_url,
       txnCount: r.txn_count,
-      total: Math.round(total * 100) / 100,
+      total: Math.round(parseFloat(r.total) * 100) / 100,
       avgAmount: Math.round(parseFloat(r.avg_amount) * 100) / 100,
       firstDate: r.first_date,
       lastDate: r.last_date,
-      cadence: cadenceFor(r.distinct_dates, r.span_days, r.txn_count),
-    });
+      cadence,
+      daysSinceLast,
+      active: isActive,
+    };
+    (isActive ? active : cancelled).push(brand);
   }
 
-  const ordering = [
-    "streaming",
-    "software_saas",
-    "membership",
-    "news_media",
-    "cloud_storage",
-    "entertainment",
-    "other_subscription",
-  ];
-  const subtypes = Array.from(subtypeMap.values())
-    .map((s) => ({ ...s, total: Math.round(s.total * 100) / 100 }))
-    .sort((a, b) => ordering.indexOf(a.subtype) - ordering.indexOf(b.subtype));
+  active.sort((a, b) => b.avgAmount - a.avgAmount);
+  cancelled.sort((a, b) => a.daysSinceLast - b.daysSinceLast);
 
-  const total = subtypes.reduce((s, sub) => s + sub.total, 0);
+  const activeTotal = active.reduce((s, b) => s + b.total, 0);
+  const cancelledTotal = cancelled.reduce((s, b) => s + b.total, 0);
+
   return c.json({
-    subtypes,
-    total: Math.round(total * 100) / 100,
+    active,
+    potentiallyCancelled: cancelled,
+    activeTotal: Math.round(activeTotal * 100) / 100,
+    cancelledTotal: Math.round(cancelledTotal * 100) / 100,
+    total: Math.round((activeTotal + cancelledTotal) * 100) / 100,
+    asOf,
   });
 });
 
