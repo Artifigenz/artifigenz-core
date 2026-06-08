@@ -478,6 +478,24 @@ export class ApiClient {
     }>('/api/finance/categories');
   }
 
+  async getFinanceLoanEmi() {
+    return this.get<{
+      brands: Array<{
+        brandSlug: string;
+        displayName: string;
+        logoUrl: string | null;
+        systemCategory: string | null;
+        txnCount: number;
+        total: number;
+        avgAmount: number;
+        firstDate: string;
+        lastDate: string;
+        sampleDescriptions: string[];
+      }>;
+      total: number;
+    }>('/api/finance/categories/loan-emi');
+  }
+
   async getFinanceFeeInterest() {
     return this.get<{
       brands: Array<{

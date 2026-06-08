@@ -110,6 +110,14 @@ interface FeeInterestData {
   total: number;
 }
 
+// Loan-EMI panel uses the exact same row shape as fee-interest, so we
+// reuse the brand type and the renderer below.
+type LoanEmiBrand = FeeInterestBrand;
+interface LoanEmiData {
+  brands: LoanEmiBrand[];
+  total: number;
+}
+
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -146,6 +154,7 @@ const EXPANDABLE = new Set([
   'income',
   'subscription',
   'fee_interest',
+  'loan_emi',
 ]);
 
 export default function CategoriesPage() {
@@ -167,6 +176,8 @@ export default function CategoriesPage() {
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
   const [feeInterest, setFeeInterest] = useState<FeeInterestData | null>(null);
   const [loadingFeeInterest, setLoadingFeeInterest] = useState(false);
+  const [loanEmi, setLoanEmi] = useState<LoanEmiData | null>(null);
+  const [loadingLoanEmi, setLoadingLoanEmi] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,6 +251,19 @@ export default function CategoriesPage() {
     }
   }, [api, feeInterest, loadingFeeInterest]);
 
+  const ensureLoanEmiLoaded = useCallback(async () => {
+    if (loanEmi || loadingLoanEmi) return;
+    setLoadingLoanEmi(true);
+    try {
+      const data = await api.getFinanceLoanEmi();
+      setLoanEmi(data);
+    } catch {
+      // Soft-fail.
+    } finally {
+      setLoadingLoanEmi(false);
+    }
+  }, [api, loanEmi, loadingLoanEmi]);
+
   const toggle = useCallback(
     (category: string) => {
       setExpanded((prev) => {
@@ -252,6 +276,7 @@ export default function CategoriesPage() {
           if (category === 'income') void ensureIncomeLoaded();
           if (category === 'subscription') void ensureSubscriptionsLoaded();
           if (category === 'fee_interest') void ensureFeeInterestLoaded();
+          if (category === 'loan_emi') void ensureLoanEmiLoaded();
         }
         return next;
       });
@@ -261,6 +286,7 @@ export default function CategoriesPage() {
       ensureIncomeLoaded,
       ensureSubscriptionsLoaded,
       ensureFeeInterestLoaded,
+      ensureLoanEmiLoaded,
     ],
   );
 
@@ -407,9 +433,21 @@ export default function CategoriesPage() {
                         />
                       )}
                       {b.category === 'fee_interest' && (
-                        <FeeInterestPanel
+                        <BrandSampleListPanel
                           data={feeInterest}
                           loading={loadingFeeInterest}
+                          loadingText="Loading fees & interest…"
+                          errorText="Couldn't load fee detail."
+                          emptyText="No fees or interest charges detected yet. Overdraft, monthly maintenance, ATM, interest charges, and similar bank-levied amounts will land here once classification finds them."
+                        />
+                      )}
+                      {b.category === 'loan_emi' && (
+                        <BrandSampleListPanel
+                          data={loanEmi}
+                          loading={loadingLoanEmi}
+                          loadingText="Loading loan EMIs…"
+                          errorText="Couldn't load loan detail."
+                          emptyText="No loan repayments detected yet. Mortgages, auto loans, personal loans, student loans, and credit-card EMIs will land here once classification finds them."
                         />
                       )}
                     </div>
@@ -944,33 +982,37 @@ function SubscriptionsPanel({
   );
 }
 
-function FeeInterestPanel({
+function BrandSampleListPanel({
   data,
   loading,
+  loadingText,
+  errorText,
+  emptyText,
 }: {
-  data: FeeInterestData | null;
+  data: { brands: FeeInterestBrand[]; total: number } | null;
   loading: boolean;
+  loadingText: string;
+  errorText: string;
+  emptyText: string;
 }) {
   if (loading && !data) {
     return (
       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
-        Loading fees & interest…
+        {loadingText}
       </p>
     );
   }
   if (!data) {
     return (
       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
-        Couldn&apos;t load fee detail.
+        {errorText}
       </p>
     );
   }
   if (data.brands.length === 0) {
     return (
       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-mid)' }}>
-        No fees or interest charges detected yet. Overdraft, monthly
-        maintenance, ATM, interest charges, and similar bank-levied amounts
-        will land here once classification finds them.
+        {emptyText}
       </p>
     );
   }
