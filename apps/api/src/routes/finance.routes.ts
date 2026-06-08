@@ -30,6 +30,7 @@ import { detectIncome } from "../agents/finance/categorize/income";
 import { detectSubscriptions } from "../agents/finance/categorize/subscription";
 import { detectFeeInterest } from "../agents/finance/categorize/fee-interest";
 import { detectLoanEmi } from "../agents/finance/categorize/loan-emi";
+import { detectVariableRecurring } from "../agents/finance/categorize/variable-recurring";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
@@ -217,8 +218,42 @@ async function maybeDetectLoanEmi(agentInstanceId: string): Promise<void> {
           `cache=${stats.cacheHits} errors=${stats.llmErrors.length} ${sub}`,
       );
     }
+    // Variable recurring runs last among the typed detectors. Everything
+    // that has a place to land has now been classified — leftovers stay
+    // uncategorized and become "miscellaneous" by default.
+    void maybeDetectVariableRecurring(agentInstanceId);
   } catch (err) {
     console.error(`[loan-emi] failed for ${agentInstanceId}:`, err);
+  }
+}
+
+const VAR_RECURRING_THROTTLE_MS = 10 * 60_000;
+const lastVarRecurringAt = new Map<string, number>();
+
+async function maybeDetectVariableRecurring(
+  agentInstanceId: string,
+): Promise<void> {
+  const last = lastVarRecurringAt.get(agentInstanceId) ?? 0;
+  if (Date.now() - last < VAR_RECURRING_THROTTLE_MS) return;
+  lastVarRecurringAt.set(agentInstanceId, Date.now());
+  try {
+    const stats = await detectVariableRecurring(agentInstanceId);
+    if (
+      stats.classifiedAsVarRecurring > 0 ||
+      stats.cacheHits > 0 ||
+      stats.llmErrors.length > 0
+    ) {
+      const sub = Object.entries(stats.bySubtype)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ");
+      console.log(
+        `[variable-recurring] ${agentInstanceId}: ` +
+          `var=${stats.classifiedAsVarRecurring} not=${stats.classifiedAsNot} ` +
+          `cache=${stats.cacheHits} errors=${stats.llmErrors.length} ${sub}`,
+      );
+    }
+  } catch (err) {
+    console.error(`[variable-recurring] failed for ${agentInstanceId}:`, err);
   }
 }
 
@@ -1189,6 +1224,120 @@ app.get("/categories/loan-emi", async (c) => {
         ON ft.merchant_normalized = mb.merchant_normalized
       WHERE ft.agent_instance_id = ${instance.id}
         AND ft.category = 'loan_emi'
+    ),
+    desc_freq AS (
+      SELECT
+        brand_slug,
+        description,
+        COUNT(*)::int AS n,
+        ROW_NUMBER() OVER (PARTITION BY brand_slug ORDER BY COUNT(*) DESC) AS rn
+      FROM base
+      GROUP BY brand_slug, description
+    ),
+    top_descs AS (
+      SELECT brand_slug, ARRAY_AGG(description ORDER BY n DESC) AS sample_descriptions
+      FROM desc_freq
+      WHERE rn <= 3
+      GROUP BY brand_slug
+    )
+    SELECT
+      b.brand_slug,
+      MAX(b.display_name) AS display_name,
+      MAX(b.logo_url) AS logo_url,
+      MAX(b.system_category) AS system_category,
+      COUNT(*)::int AS txn_count,
+      ABS(SUM(b.amount::numeric))::text AS total,
+      ABS(AVG(b.amount::numeric))::text AS avg_amount,
+      MIN(b.transaction_date)::text AS first_date,
+      MAX(b.transaction_date)::text AS last_date,
+      td.sample_descriptions
+    FROM base b
+    LEFT JOIN top_descs td USING (brand_slug)
+    GROUP BY b.brand_slug, td.sample_descriptions
+    ORDER BY ABS(SUM(b.amount::numeric)) DESC
+  `);
+
+  interface Brand {
+    brandSlug: string;
+    displayName: string;
+    logoUrl: string | null;
+    systemCategory: string | null;
+    txnCount: number;
+    total: number;
+    avgAmount: number;
+    firstDate: string;
+    lastDate: string;
+    sampleDescriptions: string[];
+  }
+
+  const brands: Brand[] = rows.map((r) => ({
+    brandSlug: r.brand_slug ?? "unknown",
+    displayName: r.display_name ?? r.brand_slug ?? "Unknown",
+    logoUrl: r.logo_url,
+    systemCategory: r.system_category,
+    txnCount: r.txn_count,
+    total: Math.round(parseFloat(r.total) * 100) / 100,
+    avgAmount: Math.round(parseFloat(r.avg_amount) * 100) / 100,
+    firstDate: r.first_date,
+    lastDate: r.last_date,
+    sampleDescriptions: r.sample_descriptions ?? [],
+  }));
+
+  const total = brands.reduce((s, b) => s + b.total, 0);
+  return c.json({
+    brands,
+    total: Math.round(total * 100) / 100,
+  });
+});
+
+/**
+ * GET /api/finance/categories/variable-recurring
+ *   Flat list of brands where the user has recurring variable-amount spend
+ *   (utilities, telecom, groceries, etc.).
+ */
+app.get("/categories/variable-recurring", async (c) => {
+  const user = c.get("user");
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) {
+    return c.json({ brands: [], total: 0 });
+  }
+
+  const rows = await db.execute<{
+    brand_slug: string | null;
+    display_name: string | null;
+    logo_url: string | null;
+    system_category: string | null;
+    txn_count: number;
+    total: string;
+    avg_amount: string;
+    first_date: string;
+    last_date: string;
+    sample_descriptions: string[] | null;
+  }>(sql`
+    WITH base AS (
+      SELECT
+        mb.brand_slug,
+        mb.display_name,
+        mb.logo_url,
+        ft.system_category,
+        ft.description,
+        ft.amount,
+        ft.transaction_date
+      FROM finance_transactions ft
+      LEFT JOIN merchant_brands mb
+        ON ft.merchant_normalized = mb.merchant_normalized
+      WHERE ft.agent_instance_id = ${instance.id}
+        AND ft.category = 'variable_recurring'
     ),
     desc_freq AS (
       SELECT

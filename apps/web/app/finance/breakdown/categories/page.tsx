@@ -118,6 +118,13 @@ interface LoanEmiData {
   total: number;
 }
 
+// Variable recurring shares the same row shape too.
+type VarRecurringBrand = FeeInterestBrand;
+interface VarRecurringData {
+  brands: VarRecurringBrand[];
+  total: number;
+}
+
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -155,6 +162,7 @@ const EXPANDABLE = new Set([
   'subscription',
   'fee_interest',
   'loan_emi',
+  'variable_recurring',
 ]);
 
 export default function CategoriesPage() {
@@ -178,6 +186,8 @@ export default function CategoriesPage() {
   const [loadingFeeInterest, setLoadingFeeInterest] = useState(false);
   const [loanEmi, setLoanEmi] = useState<LoanEmiData | null>(null);
   const [loadingLoanEmi, setLoadingLoanEmi] = useState(false);
+  const [varRecurring, setVarRecurring] = useState<VarRecurringData | null>(null);
+  const [loadingVarRecurring, setLoadingVarRecurring] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,6 +274,19 @@ export default function CategoriesPage() {
     }
   }, [api, loanEmi, loadingLoanEmi]);
 
+  const ensureVarRecurringLoaded = useCallback(async () => {
+    if (varRecurring || loadingVarRecurring) return;
+    setLoadingVarRecurring(true);
+    try {
+      const data = await api.getFinanceVariableRecurring();
+      setVarRecurring(data);
+    } catch {
+      // Soft-fail.
+    } finally {
+      setLoadingVarRecurring(false);
+    }
+  }, [api, varRecurring, loadingVarRecurring]);
+
   const toggle = useCallback(
     (category: string) => {
       setExpanded((prev) => {
@@ -277,6 +300,7 @@ export default function CategoriesPage() {
           if (category === 'subscription') void ensureSubscriptionsLoaded();
           if (category === 'fee_interest') void ensureFeeInterestLoaded();
           if (category === 'loan_emi') void ensureLoanEmiLoaded();
+          if (category === 'variable_recurring') void ensureVarRecurringLoaded();
         }
         return next;
       });
@@ -287,6 +311,7 @@ export default function CategoriesPage() {
       ensureSubscriptionsLoaded,
       ensureFeeInterestLoaded,
       ensureLoanEmiLoaded,
+      ensureVarRecurringLoaded,
     ],
   );
 
@@ -448,6 +473,15 @@ export default function CategoriesPage() {
                           loadingText="Loading loan EMIs…"
                           errorText="Couldn't load loan detail."
                           emptyText="No loan repayments detected yet. Mortgages, auto loans, personal loans, student loans, and credit-card EMIs will land here once classification finds them."
+                        />
+                      )}
+                      {b.category === 'variable_recurring' && (
+                        <BrandSampleListPanel
+                          data={varRecurring}
+                          loading={loadingVarRecurring}
+                          loadingText="Loading recurring bills…"
+                          errorText="Couldn't load detail."
+                          emptyText="No variable recurring spend detected yet. Utility, telecom, insurance, grocery, and similar variable-amount recurring outflows will land here once classification finds them."
                         />
                       )}
                     </div>
