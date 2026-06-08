@@ -385,8 +385,6 @@ const VAR_SUBTYPES = [
   "utility",
   "telecom",
   "insurance",
-  "groceries",
-  "fuel_transport",
   "household_services",
   "other_variable_recurring",
 ] as const;
@@ -405,7 +403,9 @@ interface VarClassification {
   reasoning: string;
 }
 
-const SYSTEM_PROMPT = `You are a transaction classifier deciding which (if any) merchants under a brand represent VARIABLE RECURRING SPEND — outflows that happen on a regular cadence but whose amounts vary cycle-to-cycle. The canonical examples are utility bills, telecom / internet bills, insurance premiums, habitual grocery and fuel spend, and other regularly-billed household services.
+const SYSTEM_PROMPT = `You are a transaction classifier deciding which (if any) merchants under a brand represent VARIABLE RECURRING BILLS — CONTRACTED recurring charges from a service provider that vary in amount cycle-to-cycle.
+
+The key word is CONTRACTED. The user has an account / agreement with this provider, the provider bills them on a schedule, and the user owes them. Utilities, telecom, insurance, and similar household-services accounts are the canonical examples.
 
 You will be given:
 - A brand (display_name + brand_slug)
@@ -420,20 +420,23 @@ WHAT GOES HERE (set is_variable_recurring=true if you tag any streams):
 
 3. "insurance" — Home, auto, life, health insurance premiums charged directly to the user. Monthly or quarterly cadence. Variance from rate changes or coverage adjustments.
 
-4. "groceries" — Habitual repeat spend at a grocery store / supermarket. Cadence visible (weekly or biweekly), brand identity is a grocery merchant. Amounts vary widely with basket size.
+4. "household_services" — Ongoing contracted services billed on a schedule: cleaning, lawn care, pest control, pool service, security monitoring, property management fees.
 
-5. "fuel_transport" — Regular fuel / charging spend or recurring transit (transit-card top-ups, monthly transit pass). Cadence visible.
-
-6. "household_services" — Recurring service charges: cleaning, lawn care, pest control, pool service, security monitoring (the ongoing monitoring fee, not the alarm subscription brand).
-
-7. "other_variable_recurring" — Clearly a variable recurring bill / spend but doesn't fit the six above. Use sparingly.
+5. "other_variable_recurring" — Clearly a CONTRACTED variable recurring bill that doesn't fit the four above (e.g., usage-based cloud infrastructure bills like AWS / Vercel / Neon where the user has an account that bills monthly with variable usage). Use sparingly.
 
 WHAT DOES NOT GO HERE (return is_variable_recurring=false):
 
 - Fixed-amount recurring charges → those are "subscription", already classified upstream.
 - Internal transfers, income, fees / interest, loan EMIs → already classified.
 - Genuinely one-off purchases (only 1-2 occurrences with no cadence).
-- Discretionary shopping at non-habitual merchants (a restaurant visited 3 times in a year doesn't make it "recurring spend").
+- HABITUAL DISCRETIONARY SPENDING at the same merchant. This is the most common false positive — the user buys gas at the same brand every couple of weeks, or grocery-shops at the same store, or eats at the same restaurant chain frequently. The recurring CADENCE is a behavioral pattern, not a bill. There's no contract, no scheduled debit, no provider sending an invoice. These belong in miscellaneous, not here.
+  Examples that look recurring but are NOT variable_recurring:
+    • Gas stations (fuel purchases at retail) — even if visited monthly
+    • Grocery stores / supermarkets — even if visited weekly
+    • Restaurants / coffee shops / fast food
+    • Retail stores (clothing, hardware, etc.)
+    • Pharmacies, convenience stores
+    • Ride-share (Uber/Lyft) — pay-per-trip, not contracted billing
 - Hotel stays, travel bookings, large appliance / electronics purchases.
 
 STREAM-LEVEL TAGGING:
@@ -444,11 +447,11 @@ STREAM-LEVEL TAGGING:
 For most variable_recurring merchants, amount=null is correct (all charges are the same bill, just different magnitudes).
 
 DECISION RULES — BE CONSERVATIVE:
-- Require visible cadence: 3+ charges spread over enough time (the avg gap should fit one of the standard cadences: weekly, biweekly, monthly, quarterly, annual). Irregular cadence with high variance is NOT variable recurring — that's discretionary spending.
-- Trust brand identity. If the brand is clearly a utility, telecom, or insurance company, lean toward tagging even if amounts vary 30%+.
-- For groceries / fuel: only tag if the brand is the user's habitual recurring spot — visible weekly/biweekly cadence over several months. A grocery brand with 3 random visits scattered across a year is NOT a recurring grocery bill, it's miscellaneous shopping.
-- If unsure, DO NOT tag. Miscellaneous is the right default for ambiguous spending.
-- The descriptions are a strong signal. "BILL PAYMENT", "AUTOPAY", "UTILITIES", "INSURANCE PREMIUM" lean toward variable_recurring. Generic merchant POS receipts lean toward not.
+- The single test: would this merchant send the user an INVOICE / STATEMENT on a schedule that the user is contractually obligated to pay? If yes → variable_recurring. If no (the user just chose to buy from them) → miscellaneous.
+- Trust brand identity. If the brand is clearly a utility, telecom, insurance, or services provider in a known contracted category, lean toward tagging even if amounts vary 30%+.
+- Visible cadence is necessary but not sufficient. A user buying gas every two weeks has a cadence, but no contract — not variable_recurring.
+- Descriptions are a strong signal. "BILL PAYMENT", "AUTOPAY", "PREAUTHORIZED", "PREMIUM", "UTILITIES", "INVOICE", "AUTO-DEBIT" lean toward variable_recurring. Generic POS / purchase descriptions lean toward NOT.
+- When in doubt, DO NOT tag. Miscellaneous is the right default for habitual but discretionary spending.
 
 GUIDANCE:
 - The amount_distribution helps you spot whether the variance is around one bill-shaped distribution or multiple distinct patterns.
@@ -457,7 +460,7 @@ GUIDANCE:
 Reply with ONLY JSON, no markdown:
 {
   "is_variable_recurring": boolean,
-  "subtype": "utility" | "telecom" | "insurance" | "groceries" | "fuel_transport" | "household_services" | "other_variable_recurring" | "other",
+  "subtype": "utility" | "telecom" | "insurance" | "household_services" | "other_variable_recurring" | "other",
   "tagged_streams": [
     { "merchant_normalized": "<key>", "amount": null }
     // or { "merchant_normalized": "<key>", "amount": 132.50 }
