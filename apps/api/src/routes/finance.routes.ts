@@ -920,6 +920,12 @@ app.get("/categories/subscriptions", async (c) => {
     const grace = graceFor(cadence);
     const daysSinceLast = asOf ? daysBetween(asOf, r.last_date) : 0;
     const isActive = daysSinceLast <= grace;
+
+    // A single charge >grace days old isn't a "cancelled subscription" —
+    // it's almost certainly a one-off purchase the classifier mislabeled.
+    // Hide it from the panel entirely rather than surfacing noise.
+    if (r.txn_count <= 1 && !isActive) continue;
+
     const brand: Brand = {
       brandSlug: r.brand_slug ?? "unknown",
       displayName: r.display_name ?? r.brand_slug ?? "Unknown",
