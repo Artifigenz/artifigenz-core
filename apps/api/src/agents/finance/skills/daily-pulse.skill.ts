@@ -79,14 +79,16 @@ export const dailyPulseSkill: SkillDefinition = {
 
     const { agentInstance } = ctx;
 
-    // 1. Balance ── sum currentBalance across the user's accounts.
-    //    Account balances can be NULL if Plaid hasn't synced them yet
-    //    (e.g., file-upload-only). In that case we skip the balance line
-    //    rather than guess.
+    // 1. Balance ── split assets (cash) from liabilities (credit / loan).
+    //    Plaid reports credit card `current_balance` as what the user
+    //    OWES, not what they have — summing it as cash inflates the
+    //    headline. We treat depository accounts as cash and credit /
+    //    loan as owed.
     const accounts = await db
       .select({
         id: financeAccounts.id,
         name: financeAccounts.name,
+        type: financeAccounts.type,
         balance: financeAccounts.currentBalance,
         last4: financeAccounts.accountLast4,
         currency: financeAccounts.isoCurrencyCode,
@@ -94,18 +96,47 @@ export const dailyPulseSkill: SkillDefinition = {
       .from(financeAccounts)
       .where(eq(financeAccounts.agentInstanceId, agentInstance.id));
 
-    const knownBalances = accounts.filter(
-      (a) => a.balance !== null && a.balance !== undefined,
+    const cashAccounts = accounts.filter(
+      (a) =>
+        a.balance !== null &&
+        a.balance !== undefined &&
+        (a.type === "depository" || a.type === null),
     );
-    const balanceTotal = knownBalances.reduce(
+    const owedAccounts = accounts.filter(
+      (a) =>
+        a.balance !== null &&
+        a.balance !== undefined &&
+        (a.type === "credit" || a.type === "loan"),
+    );
+    const cashTotal = cashAccounts.reduce(
       (sum, a) => sum + parseFloat(a.balance as string),
       0,
     );
+    const owedTotal = owedAccounts.reduce(
+      (sum, a) => sum + parseFloat(a.balance as string),
+      0,
+    );
+    const hasAnyBalance =
+      cashAccounts.length + owedAccounts.length > 0;
 
-    // 2. Yesterday recap. "Yesterday" = the calendar day before today, in
-    //    the user's TZ. We exclude internal transfers since they're a
-    //    wash, and group by category for the description.
+    // 2. Recap of "the last day with data". Plaid lags 1-2 days; if
+    //    yesterday hasn't synced yet, saying "yesterday was quiet" is
+    //    flat-out wrong. We use the freshest transaction_date as the
+    //    recap window instead, and flag explicitly when that's older
+    //    than yesterday so the headline can say "last activity Fri Jun 5"
+    //    rather than gaslight the user.
     const yesterdayKey = shiftDateKey(todayKey, -1);
+    const latestRows = await db.execute<{ d: string | null }>(sql`
+      SELECT MAX(transaction_date)::text AS d
+      FROM finance_transactions
+      WHERE agent_instance_id = ${agentInstance.id}
+    `);
+    const latestTxnDate = latestRows[0]?.d ?? null;
+    const recapDate =
+      latestTxnDate && latestTxnDate < yesterdayKey
+        ? latestTxnDate
+        : yesterdayKey;
+    const recapIsStale = recapDate !== yesterdayKey;
 
     const yesterdayRows = await db.execute<{
       category: string | null;
@@ -123,7 +154,7 @@ export const dailyPulseSkill: SkillDefinition = {
         LEFT JOIN merchant_brands mb
           ON ft.merchant_normalized = mb.merchant_normalized
         WHERE ft.agent_instance_id = ${agentInstance.id}
-          AND ft.transaction_date = ${yesterdayKey}::date
+          AND ft.transaction_date = ${recapDate}::date
           AND ft.direction = 'out'
           AND (ft.category IS NULL OR ft.category <> 'internal_transfer')
       )
@@ -170,7 +201,7 @@ export const dailyPulseSkill: SkillDefinition = {
       LEFT JOIN merchant_brands mb
         ON ft.merchant_normalized = mb.merchant_normalized
       WHERE ft.agent_instance_id = ${agentInstance.id}
-        AND ft.transaction_date = ${yesterdayKey}::date
+        AND ft.transaction_date = ${recapDate}::date
         AND ft.direction = 'out'
         AND (ft.category IS NULL OR ft.category <> 'internal_transfer')
         AND mb.display_name IS NOT NULL
@@ -274,19 +305,30 @@ export const dailyPulseSkill: SkillDefinition = {
     const expectedTotal = expectedToday.reduce((s, e) => s + e.amount, 0);
 
     // ── Compose copy ──────────────────────────────────────────────
-    const currency = (knownBalances[0]?.currency as string | null) ?? "USD";
+    const currency =
+      ((cashAccounts[0]?.currency ??
+        owedAccounts[0]?.currency) as string | null) ?? "USD";
     const money = (n: number) => formatMoney(n, currency);
 
-    const balancePart =
-      knownBalances.length > 0
-        ? `Balance ${money(balanceTotal)} across ${knownBalances.length} account${
-            knownBalances.length === 1 ? "" : "s"
-          }`
-        : "Balance: not yet synced";
+    const balancePart = !hasAnyBalance
+      ? "Balance: not yet synced"
+      : cashAccounts.length > 0 && owedTotal >= 50
+      ? `Cash ${money(cashTotal)} · ${money(owedTotal)} owed`
+      : cashAccounts.length > 0
+      ? `Cash ${money(cashTotal)} across ${cashAccounts.length} account${
+          cashAccounts.length === 1 ? "" : "s"
+        }`
+      : `${money(owedTotal)} owed across ${owedAccounts.length} account${
+          owedAccounts.length === 1 ? "" : "s"
+        }`;
 
-    const yesterdayPart =
+    const recapLabel = recapIsStale
+      ? `Last activity ${formatDayLabel(recapDate)}`
+      : "Yesterday";
+
+    const recapPart =
       yesterdayCount > 0
-        ? `Yesterday: ${yesterdayCount} charge${yesterdayCount === 1 ? "" : "s"} totaling ${money(
+        ? `${recapLabel}: ${yesterdayCount} charge${yesterdayCount === 1 ? "" : "s"} totaling ${money(
             yesterdayTotal,
           )}${
             yesterdayTopBrands.length > 0
@@ -296,6 +338,8 @@ export const dailyPulseSkill: SkillDefinition = {
                   .join(", ")})`
               : ""
           }`
+        : recapIsStale
+        ? `Plaid hasn't synced yesterday yet — last data point ${formatDayLabel(recapDate)}`
         : "Yesterday was quiet — no out-flow activity";
 
     const todayPart =
@@ -306,7 +350,7 @@ export const dailyPulseSkill: SkillDefinition = {
         : "Today: nothing predictable on the calendar";
 
     const title = `${formatDayLabel(todayKey)} · ${balancePart}`;
-    const description = `${yesterdayPart}. ${todayPart}.`;
+    const description = `${recapPart}. ${todayPart}.`;
 
     const out: InsightOutput = {
       insightTypeId: "finance.daily-pulse.morning",
@@ -316,17 +360,27 @@ export const dailyPulseSkill: SkillDefinition = {
         date: todayKey,
         timezone: tz,
         balance: {
-          total: Math.round(balanceTotal * 100) / 100,
+          cashTotal: Math.round(cashTotal * 100) / 100,
+          owedTotal: Math.round(owedTotal * 100) / 100,
           currency,
-          accounts: knownBalances.map((a) => ({
+          cashAccounts: cashAccounts.map((a) => ({
             id: a.id,
             name: a.name,
+            type: a.type,
+            last4: a.last4,
+            balance: Math.round(parseFloat(a.balance as string) * 100) / 100,
+          })),
+          owedAccounts: owedAccounts.map((a) => ({
+            id: a.id,
+            name: a.name,
+            type: a.type,
             last4: a.last4,
             balance: Math.round(parseFloat(a.balance as string) * 100) / 100,
           })),
         },
-        yesterday: {
-          date: yesterdayKey,
+        recap: {
+          date: recapDate,
+          isStale: recapIsStale,
           count: yesterdayCount,
           total: Math.round(yesterdayTotal * 100) / 100,
           byCategory: yesterdayByCategory,
