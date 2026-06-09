@@ -665,8 +665,9 @@ export default function FinanceBriefPage() {
   const typedVerdict = verdictTarget.slice(0, typedChars);
   const isTyping = typedChars < verdictTarget.length;
 
-  // Fetch insights. In Challenge 1 dev mode there are none — fall back to
-  // placeholders so the insight panel renders with example content.
+  // Fetch insights produced by registered skills (Daily Pulse + future).
+  // Empty array stays empty — the feed renders a real empty state instead
+  // of dummy placeholders so the user can see whether the skill has run.
   useEffect(() => {
     let cancelled = false;
 
@@ -674,12 +675,12 @@ export default function FinanceBriefPage() {
       try {
         const feed = await api.getInsights({ limit: 20 });
         if (!cancelled) {
-          setInsights(feed.insights.length > 0 ? feed.insights : buildPlaceholderInsights());
+          setInsights(feed.insights ?? []);
           setInsightsLoading(false);
         }
       } catch {
         if (!cancelled) {
-          setInsights(buildPlaceholderInsights());
+          setInsights([]);
           setInsightsLoading(false);
         }
       }

@@ -230,31 +230,50 @@ export default function AgentGrid() {
   const [ticks, setTicks] = useState<number[]>([]);
   const [financeData, setFinanceData] = useState<FinanceData>({ verdict: null, insights: [] });
 
-  // Pull the current-month brief and derive rotating micro-insights from
-  // its ranked signals. Falls back to the previous month if there's no
-  // current-month data yet, and to All if neither exists. Pure derivation
-  // — no separate insight feed call.
+  // Card content order of preference:
+  //   1. Skill-produced insights (Daily Pulse + future skills) — they're
+  //      the long-term source of truth and what other delivery channels
+  //      will eventually send.
+  //   2. Brief-derived micro-insights — surfaced until skills have run.
+  // The verdict (current-month headline) always comes from the brief.
   useEffect(() => {
     if (!slugs.includes('finance')) return;
     let cancelled = false;
 
     (async () => {
       try {
-        const { scopes } = await api.getFinanceBriefScopes();
+        const [{ scopes }, feed] = await Promise.all([
+          api.getFinanceBriefScopes(),
+          api.getInsights({ agentTypeId: 'finance', limit: 10 }).catch(() => ({
+            insights: [],
+          })),
+        ]);
         if (cancelled) return;
-        if (scopes.length === 0) return;
-        const preferred =
-          scopes.find((s) => s.kind === 'current') ??
-          scopes.find((s) => s.kind === 'previous') ??
-          scopes.find((s) => s.kind === 'all')!;
-        const brief = await api.getFinanceBrief(preferred.scope);
-        if (cancelled) return;
-        setFinanceData({
-          verdict: brief.headline ?? null,
-          insights: derivedInsights(brief),
-        });
+        let verdict: string | null = null;
+        let derived: string[] = [];
+        if (scopes.length > 0) {
+          const preferred =
+            scopes.find((s) => s.kind === 'current') ??
+            scopes.find((s) => s.kind === 'previous') ??
+            scopes.find((s) => s.kind === 'all')!;
+          const brief = await api.getFinanceBrief(preferred.scope);
+          if (cancelled) return;
+          verdict = brief.headline ?? null;
+          derived = derivedInsights(brief);
+        }
+        const skillInsights = (feed.insights ?? [])
+          .map((i) => i.title)
+          .filter((t): t is string => Boolean(t));
+        // Skill insights first; brief signals fill out the rotation.
+        const merged = [...skillInsights, ...derived];
+        // Dedup while preserving order.
+        const seen = new Set<string>();
+        const dedup = merged.filter((t) =>
+          seen.has(t) ? false : (seen.add(t), true),
+        );
+        setFinanceData({ verdict, insights: dedup });
       } catch {
-        // Soft-fail. The card still renders with the placeholder insights.
+        // Soft-fail — card keeps the preview insights.
       }
     })();
 
