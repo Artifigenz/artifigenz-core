@@ -3,11 +3,13 @@ import {
   db,
   financeAccounts,
   financeTransactions,
+  dataSourceConnections,
 } from "@artifigenz/db";
 import type {
   SkillDefinition,
   InsightOutput,
 } from "../../../platform/registry/types";
+import { ingestPlaidConnection } from "../ingest/plaid-ingest";
 
 /**
  * Daily Pulse — runs every morning in the user's local timezone and
@@ -78,6 +80,57 @@ export const dailyPulseSkill: SkillDefinition = {
     if (!bypassHour && state.lastRunDate === todayKey) return [];
 
     const { agentInstance } = ctx;
+
+    // 0. Refresh data. The pulse is supposed to be the freshest read of
+    //    the user's accounts, so we trigger sync for every active Plaid
+    //    connection before reading. Idempotent and cheap (Plaid's cursor
+    //    returns empty when nothing new). Failures are captured so the
+    //    pulse can surface broken connections (typically ITEM_LOGIN_-
+    //    REQUIRED, which silently freezes the data until the user
+    //    re-authenticates via Plaid Link's update mode).
+    const plaidConns = await db
+      .select({
+        id: dataSourceConnections.id,
+        displayName: dataSourceConnections.displayName,
+        status: dataSourceConnections.status,
+      })
+      .from(dataSourceConnections)
+      .where(
+        and(
+          eq(dataSourceConnections.agentInstanceId, agentInstance.id),
+          eq(dataSourceConnections.dataSourceTypeId, "plaid"),
+          eq(dataSourceConnections.status, "active"),
+        ),
+      );
+
+    const brokenConnections: string[] = [];
+    let syncedConnections = 0;
+    for (const conn of plaidConns) {
+      try {
+        const result = await ingestPlaidConnection(conn.id);
+        if (result.ingestionState === "needs_auth") {
+          brokenConnections.push(conn.displayName || "a connection");
+        } else {
+          syncedConnections++;
+        }
+      } catch (err) {
+        // Catch-all so one bad connection doesn't sink the whole pulse.
+        // Don't flag as broken on a transient sync error — only the
+        // explicit needs_auth state is reliably user-actionable.
+        console.warn(
+          `[daily-pulse] sync failed for ${conn.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    console.log(
+      `[daily-pulse] synced ${syncedConnections}/${plaidConns.length} Plaid connections for ${agentInstance.id}${
+        brokenConnections.length > 0
+          ? ` (needs_auth: ${brokenConnections.join(", ")})`
+          : ""
+      }`,
+    );
 
     // 1. Balance ── split assets (cash) from liabilities (credit / loan).
     //    Plaid reports credit card `current_balance` as what the user
@@ -349,8 +402,13 @@ export const dailyPulseSkill: SkillDefinition = {
           )}) — ${expectedToday.map((e) => e.displayName).join(", ")}`
         : "Today: nothing predictable on the calendar";
 
+    const authPart =
+      brokenConnections.length > 0
+        ? ` Reconnect needed: ${brokenConnections.join(", ")}.`
+        : "";
+
     const title = `${formatDayLabel(todayKey)} · ${balancePart}`;
-    const description = `${recapPart}. ${todayPart}.`;
+    const description = `${recapPart}. ${todayPart}.${authPart}`;
 
     const out: InsightOutput = {
       insightTypeId: "finance.daily-pulse.morning",
@@ -393,8 +451,13 @@ export const dailyPulseSkill: SkillDefinition = {
           expected: expectedToday,
           expectedTotal: Math.round(expectedTotal * 100) / 100,
         },
+        sync: {
+          attempted: plaidConns.length,
+          succeeded: syncedConnections,
+          brokenConnections,
+        },
       },
-      critical: false,
+      critical: brokenConnections.length > 0,
     };
 
     await ctx.setSkillState<SkillState>({ lastRunDate: todayKey });
