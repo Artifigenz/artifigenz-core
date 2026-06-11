@@ -349,6 +349,323 @@ interface InsightData {
   [key: string]: unknown;
 }
 
+// ── Daily Pulse data shape (matches what the skill writes to data) ──
+interface PulseBrand {
+  brandSlug?: string | null;
+  displayName?: string | null;
+  logoUrl?: string | null;
+  total?: number;
+}
+interface PulseExpected {
+  brandSlug?: string;
+  displayName?: string;
+  logoUrl?: string | null;
+  amount?: number;
+  expectedDate?: string;
+}
+interface PulseData {
+  date?: string;
+  balance?: {
+    cashTotal?: number;
+    owedTotal?: number;
+    currency?: string;
+  };
+  recap?: {
+    date?: string;
+    isStale?: boolean;
+    count?: number;
+    total?: number;
+    topBrands?: PulseBrand[];
+  };
+  today?: {
+    expected?: PulseExpected[];
+    expectedTotal?: number;
+  };
+  sync?: { brokenConnections?: string[] };
+}
+
+function formatMoneyWithCurrency(n: number, currency: string | undefined): string {
+  const code = (currency || 'USD').toUpperCase();
+  const abs = Math.abs(n);
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(abs);
+  } catch {
+    return `$${Math.round(abs).toLocaleString('en-US')}`;
+  }
+}
+
+function formatShortDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return isoDate;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function PulseBrandRow({
+  logoUrl,
+  name,
+  trailing,
+}: {
+  logoUrl?: string | null;
+  name: string;
+  trailing: string;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '7px 0',
+      }}
+    >
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt=""
+          width={22}
+          height={22}
+          style={{ borderRadius: '5px', flexShrink: 0, objectFit: 'cover' }}
+        />
+      ) : (
+        <div
+          style={{
+            width: '22px',
+            height: '22px',
+            borderRadius: '5px',
+            background: 'var(--card-hover)',
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: '0.85rem',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {name}
+      </div>
+      <div
+        style={{
+          fontSize: '0.85rem',
+          fontVariantNumeric: 'tabular-nums',
+          color: 'var(--text-mid)',
+        }}
+      >
+        {trailing}
+      </div>
+    </div>
+  );
+}
+
+function DailyPulseCard({
+  insight,
+}: {
+  insight: Insight;
+}) {
+  const data = (insight.data ?? {}) as PulseData;
+  const currency = data.balance?.currency;
+  const money = (n?: number) => (n == null ? '' : formatMoneyWithCurrency(n, currency));
+  const broken = data.sync?.brokenConnections ?? [];
+  const recapLabel =
+    data.recap?.isStale && data.recap.date
+      ? `Last activity ${formatShortDate(data.recap.date)}`
+      : 'Yesterday';
+  const expected = data.today?.expected ?? [];
+  const topBrands = data.recap?.topBrands ?? [];
+
+  return (
+    <article
+      className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''}`}
+    >
+      <header className={styles.insightHeader}>
+        <span className={styles.insightSkill}>
+          <i className={styles.insightSkillDot} />
+          Daily Pulse
+        </span>
+        <time className={styles.insightTime}>
+          {new Date(insight.createdAt).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          })}
+        </time>
+      </header>
+
+      <h3 className={styles.insightTitle} style={{ marginBottom: '4px' }}>
+        {insight.title}
+      </h3>
+
+      {/* Balance badges row */}
+      {(data.balance?.cashTotal !== undefined || data.balance?.owedTotal !== undefined) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+          {data.balance?.cashTotal !== undefined && data.balance.cashTotal > 0 && (
+            <span
+              style={{
+                fontSize: '0.78rem',
+                padding: '4px 10px',
+                borderRadius: '999px',
+                background: 'rgba(47,122,62,0.10)',
+                color: '#2f7a3e',
+                fontVariantNumeric: 'tabular-nums',
+                fontWeight: 500,
+              }}
+            >
+              💰 Cash {money(data.balance.cashTotal)}
+            </span>
+          )}
+          {data.balance?.owedTotal !== undefined && data.balance.owedTotal > 0 && (
+            <span
+              style={{
+                fontSize: '0.78rem',
+                padding: '4px 10px',
+                borderRadius: '999px',
+                background: 'rgba(193,67,47,0.10)',
+                color: '#c1432f',
+                fontVariantNumeric: 'tabular-nums',
+                fontWeight: 500,
+              }}
+            >
+              💳 Owed {money(data.balance.owedTotal)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Yesterday recap section */}
+      {data.recap && (
+        <section style={{ marginTop: '14px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              fontSize: '0.72rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              color: 'var(--text-dim)',
+            }}
+          >
+            <span>{recapLabel}</span>
+            {(data.recap.count ?? 0) > 0 && (
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {data.recap.count} charge{data.recap.count === 1 ? '' : 's'} · {money(data.recap.total)}
+              </span>
+            )}
+          </div>
+          {(data.recap.count ?? 0) === 0 ? (
+            <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+              Quiet — no out-flow activity.
+            </p>
+          ) : (
+            <div style={{ marginTop: '6px' }}>
+              {topBrands.slice(0, 4).map((b, i) => (
+                <PulseBrandRow
+                  key={`${b.brandSlug ?? b.displayName ?? i}`}
+                  logoUrl={b.logoUrl}
+                  name={b.displayName ?? '—'}
+                  trailing={money(b.total)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Today expected section */}
+      {data.today && (
+        <section style={{ marginTop: '14px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              fontSize: '0.72rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              color: 'var(--text-dim)',
+            }}
+          >
+            <span>Today expected</span>
+            {expected.length > 0 && (
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {expected.length} · {money(data.today.expectedTotal)}
+              </span>
+            )}
+          </div>
+          {expected.length === 0 ? (
+            <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: 'var(--text-mid)' }}>
+              Nothing predictable on the calendar.
+            </p>
+          ) : (
+            <div style={{ marginTop: '6px' }}>
+              {expected.map((e, i) => (
+                <PulseBrandRow
+                  key={`${e.brandSlug ?? e.displayName ?? i}`}
+                  logoUrl={e.logoUrl}
+                  name={e.displayName ?? '—'}
+                  trailing={money(e.amount)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Broken connection alert + actions */}
+      {broken.length > 0 && (
+        <div
+          style={{
+            marginTop: '14px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            background: 'rgba(193,67,47,0.08)',
+            border: '1px solid rgba(193,67,47,0.20)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: '0.85rem', color: '#c1432f' }}>
+            ⚠️ Reconnect needed: <strong>{broken.join(', ')}</strong>
+          </span>
+          <Link
+            href="/finance/accounts"
+            style={{
+              fontSize: '0.8rem',
+              padding: '5px 12px',
+              borderRadius: '999px',
+              background: '#c1432f',
+              color: '#fff',
+              textDecoration: 'none',
+              fontWeight: 500,
+            }}
+          >
+            Reconnect
+          </Link>
+        </div>
+      )}
+    </article>
+  );
+}
+
 function renderInsightTitle(
   typeId: string,
   title: string,
@@ -1489,28 +1806,37 @@ export default function FinanceBriefPage() {
                       Today · {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }).toUpperCase()}
                     </h4>
                     <div className={styles.insightsStream}>
-                      {insights.map((insight) => (
-                        <article
-                          key={insight.id}
-                          className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
-                        >
-                          <header className={styles.insightHeader}>
-                            <span className={styles.insightSkill}>
-                              <i className={styles.insightSkillDot} />
-                              Subscriptions
-                            </span>
-                            <time className={styles.insightTime}>
-                              {new Date(insight.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                            </time>
-                          </header>
-                          <h3 className={styles.insightTitle}>
-                            {renderInsightTitle(insight.insightTypeId, insight.title, insight.data as InsightData)}
-                          </h3>
-                          {insight.description && (
-                            <p className={styles.insightDescription}>{insight.description}</p>
-                          )}
-                        </article>
-                      ))}
+                      {insights.map((insight) => {
+                        // Daily Pulse gets a rich layout (balance badges,
+                        // sectioned yesterday + today, merchant logos,
+                        // reconnect CTA). Other insights stay with the
+                        // generic card while their own renderers land.
+                        if (insight.insightTypeId === 'finance.daily-pulse.morning') {
+                          return <DailyPulseCard key={insight.id} insight={insight} />;
+                        }
+                        return (
+                          <article
+                            key={insight.id}
+                            className={`${styles.insightCard} ${insight.isCritical ? styles.critical : ''} ${insight.isRead ? styles.read : ''}`}
+                          >
+                            <header className={styles.insightHeader}>
+                              <span className={styles.insightSkill}>
+                                <i className={styles.insightSkillDot} />
+                                Subscriptions
+                              </span>
+                              <time className={styles.insightTime}>
+                                {new Date(insight.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                              </time>
+                            </header>
+                            <h3 className={styles.insightTitle}>
+                              {renderInsightTitle(insight.insightTypeId, insight.title, insight.data as InsightData)}
+                            </h3>
+                            {insight.description && (
+                              <p className={styles.insightDescription}>{insight.description}</p>
+                            )}
+                          </article>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

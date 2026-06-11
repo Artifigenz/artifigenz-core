@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, deliveryPreferences } from "@artifigenz/db";
 import type { DeliveryChannel } from "./channel.interface";
 import type { FormattedMessage, DeliveryResult, InsightForDelivery } from "../types";
+import { tryRenderDailyPulseTelegram } from "../renderers/daily-pulse";
 
 function getBotToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -9,11 +10,26 @@ function getBotToken(): string {
   return token;
 }
 
+function getWebAppBaseUrl(): string | null {
+  return (
+    process.env.PUBLIC_WEB_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.WEB_URL ??
+    null
+  );
+}
+
 export const telegramChannel: DeliveryChannel = {
   id: "telegram",
 
   format(insight: InsightForDelivery): FormattedMessage {
-    // Telegram supports simple HTML: <b>, <i>, <a>, etc.
+    // Insight-type specific renderers take precedence so we can ship
+    // genuinely rich layouts (emoji icons, bullet lists, inline keyboard)
+    // without polluting the generic path.
+    const rich = tryRenderDailyPulseTelegram(insight, getWebAppBaseUrl());
+    if (rich) return rich;
+
+    // Fallback: plain title + description with HTML escaping.
     const title = `<b>${escapeHtml(insight.title)}</b>`;
     const description = insight.description ? `\n\n${escapeHtml(insight.description)}` : "";
     const body = `${title}${description}`;
@@ -43,6 +59,10 @@ export const telegramChannel: DeliveryChannel = {
             chat_id: prefs.telegramChatId,
             text: message.body,
             parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...(message.inlineKeyboard
+              ? { reply_markup: { inline_keyboard: message.inlineKeyboard } }
+              : {}),
           }),
         },
       );

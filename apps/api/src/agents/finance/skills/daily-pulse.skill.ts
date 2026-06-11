@@ -247,13 +247,19 @@ export const dailyPulseSkill: SkillDefinition = {
       }
     }
 
-    // Top yesterday merchants (for richer copy when there's room).
+    // Top yesterday merchants. Pull display_name AND logo_url so the
+    // rich UI renderers (web card, Telegram next iteration) can render
+    // an avatar per brand.
     const yesterdayTopBrands = await db.execute<{
+      brand_slug: string | null;
       display_name: string | null;
+      logo_url: string | null;
       total: string;
     }>(sql`
       SELECT
+        MAX(mb.brand_slug) AS brand_slug,
         mb.display_name,
+        MAX(mb.logo_url) AS logo_url,
         ABS(SUM(ft.amount::numeric))::text AS total
       FROM finance_transactions ft
       LEFT JOIN merchant_brands mb
@@ -265,7 +271,7 @@ export const dailyPulseSkill: SkillDefinition = {
         AND mb.display_name IS NOT NULL
       GROUP BY mb.display_name
       ORDER BY ABS(SUM(ft.amount::numeric)) DESC
-      LIMIT 3
+      LIMIT 4
     `);
 
     // 3. Today's expected charges. Strict criteria — only brands we trust
@@ -283,6 +289,7 @@ export const dailyPulseSkill: SkillDefinition = {
     const todayRows = await db.execute<{
       brand_slug: string;
       display_name: string;
+      logo_url: string | null;
       avg_amount: string;
       variance_pct: number;
       avg_gap: number;
@@ -294,6 +301,7 @@ export const dailyPulseSkill: SkillDefinition = {
         SELECT
           mb.brand_slug,
           MAX(mb.display_name) AS display_name,
+          MAX(mb.logo_url) AS logo_url,
           AVG(ABS(ft.amount::numeric))::text AS avg_amount_text,
           COALESCE(
             STDDEV_SAMP(ABS(ft.amount::numeric)) / NULLIF(AVG(ABS(ft.amount::numeric)), 0),
@@ -316,6 +324,7 @@ export const dailyPulseSkill: SkillDefinition = {
       SELECT
         brand_slug,
         display_name,
+        logo_url,
         avg_amount_text AS avg_amount,
         (variance_ratio * 100)::int AS variance_pct,
         CASE
@@ -357,6 +366,7 @@ export const dailyPulseSkill: SkillDefinition = {
       .map((r) => ({
         brandSlug: r.brand_slug,
         displayName: r.display_name,
+        logoUrl: r.logo_url,
         amount: Math.round(parseFloat(r.avg_amount) * 100) / 100,
         expectedDate: r.expected_date,
       }));
@@ -448,7 +458,9 @@ export const dailyPulseSkill: SkillDefinition = {
           total: Math.round(yesterdayTotal * 100) / 100,
           byCategory: yesterdayByCategory,
           topBrands: yesterdayTopBrands.map((b) => ({
+            brandSlug: b.brand_slug,
             displayName: b.display_name,
+            logoUrl: b.logo_url,
             total: Math.round(parseFloat(b.total) * 100) / 100,
           })),
         },
