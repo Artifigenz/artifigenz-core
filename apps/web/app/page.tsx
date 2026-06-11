@@ -409,6 +409,8 @@ export default function AppHome() {
                 if (typeof data.conversationId === 'string') {
                   setConversationId(data.conversationId);
                 }
+                break;
+              case 'title':
                 if (typeof data.title === 'string') {
                   setConversationTitle(data.title);
                 }

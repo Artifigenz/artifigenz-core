@@ -119,9 +119,14 @@ export class ChatService {
       isNewConversation = true;
     }
 
+    // Don't surface the title here for new conversations — it's just the
+    // user's first-message slice (a placeholder until autoTitleConversation
+    // runs at end-of-turn). The frontend would otherwise paint the raw
+    // prompt in the topbar. The real title arrives via the "title" event
+    // emitted after auto-titling completes.
     onEvent({
       type: "conversation",
-      data: { conversationId, title: isNewConversation ? message.slice(0, 60) : undefined },
+      data: { conversationId },
     });
 
     // ─── 2b. Edit/regenerate: truncate from the target message onward ──
@@ -493,10 +498,14 @@ export class ChatService {
     // runs once per conversation; user renames later are never overwritten
     // (the trigger is gated on isNewConversation, not on title equality).
     if (isNewConversation) {
-      void autoTitleConversation({
+      // Await so we can emit the resolved title before the SSE stream
+      // closes — Haiku is fast (~1s) and the user has already seen the
+      // assistant's full reply, so a brief post-turn pause is fine.
+      await autoTitleConversation({
         conversationId,
         userText: message,
         assistantText: assistantContent,
+        onEvent,
       });
     }
   }
@@ -678,6 +687,7 @@ async function autoTitleConversation(params: {
   conversationId: string;
   userText: string;
   assistantText: string;
+  onEvent?: (event: SSEEvent) => void;
 }): Promise<void> {
   try {
     const client = getClaudeClient();
@@ -707,6 +717,10 @@ async function autoTitleConversation(params: {
       .update(conversations)
       .set({ title })
       .where(eq(conversations.id, params.conversationId));
+    params.onEvent?.({
+      type: "title",
+      data: { conversationId: params.conversationId, title },
+    });
   } catch {
     // Silent — keep the placeholder title (first user message slice).
   }

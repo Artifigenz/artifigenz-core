@@ -62,6 +62,7 @@ export interface ChatCitation {
 
 export type SSEEvent =
   | { type: "conversation"; data: { conversationId: string; title?: string } }
+  | { type: "title"; data: { conversationId: string; title: string } }
   | { type: "user_message"; data: { messageId: string } }
   | { type: "delta"; data: { content: string } }
   | { type: "tool_use"; data: { tool: string; input: Record<string, unknown> } }

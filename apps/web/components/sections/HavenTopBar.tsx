@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
 import { useTheme } from '@/components/ThemeProvider';
@@ -31,8 +32,20 @@ export default function HavenTopBar({
 }: HavenTopBarProps) {
   const { user, isLoaded } = useUser();
   const { theme, setTheme } = useTheme();
+  const [titleVisible, setTitleVisible] = useState(true);
 
   const isDark = theme === 'dark';
+
+  // Fade the conversation title out once the user starts scrolling so it
+  // doesn't visibly overlap the chat content (the topbar is transparent
+  // and fixed). Re-appears when scrolled back to the top.
+  useEffect(() => {
+    if (!title) return;
+    const onScroll = () => setTitleVisible(window.scrollY < 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [title]);
 
   const initial =
     user?.firstName?.[0]?.toUpperCase() ||
@@ -47,7 +60,13 @@ export default function HavenTopBar({
         {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
       </Link>
 
-      {title && <div className={styles.title}>{title}</div>}
+      {title && (
+        <div
+          className={`${styles.title} ${titleVisible ? '' : styles.titleHidden}`}
+        >
+          {title}
+        </div>
+      )}
 
       <div className={styles.right}>
         {onHistory && (
