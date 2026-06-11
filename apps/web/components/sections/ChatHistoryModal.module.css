@@ -229,21 +229,23 @@
 /* Inter-group spacing lives OUTSIDE the .group box (margin) so the
    sticky header has no transparent strip above it inside its container
    for rows to bleed into. */
-.group + .group { margin-top: 20px; }
+/* Thin hairline divider between groups + tight spacing — per the
+   Haven History design notes. The previous "big breath" between groups
+   read as too much empty air. */
+.group + .group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--v3-hairline-strong);
+}
 
 .groupHead {
   position: sticky;
   top: 0;
-  display: grid;
-  grid-template-columns: auto auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px 14px;
+  padding: 6px 16px 10px;
   background: var(--v3-paper);
   z-index: 5;
-  /* Defensive shield: solid box-shadow extending 24px above the header so
-     no row content can visually leak into the seam between search and list,
-     even during sub-pixel scroll transitions. */
   box-shadow: 0 -24px 0 var(--v3-paper);
 }
 .groupLabel {
@@ -266,13 +268,16 @@
   background: var(--v3-hairline-strong);
 }
 
-/* ── Row ────────────────────────────────────────────────────── */
+/* ── Row ──────────────────────────────────────────────────────
+   Simplified Haven row: just the title on the left, optional pin in
+   a fixed right-edge column, hover-revealed actions slide in over the
+   pin. Tighter padding than the legacy row since there's no meta line. */
 .row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 14px;
-  padding: 16px 14px;
+  padding: 14px 14px;
   border-radius: var(--v3-radius-inner);
   transition: background 0.2s var(--v3-ease), transform 0.2s var(--v3-ease);
   cursor: pointer;
@@ -344,6 +349,25 @@
   color: var(--v3-accent);
   flex: 0 0 auto;
   display: inline-flex;
+}
+
+/* Pin glyph in a consistent right-edge column. Fades out as the hover
+   actions slide in so the row never has the pin colliding with the
+   More + Continue cluster. */
+.pinSlot {
+  color: var(--v3-text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s var(--v3-ease);
+}
+.row:hover .pinSlot,
+.row:focus-within .pinSlot {
+  opacity: 0;
 }
 
 .renameInput {

@@ -295,10 +295,6 @@ export default function ChatHistoryModal({
                 <section key={bucket} className={styles.group}>
                   <div className={styles.groupHead}>
                     <span className={styles.groupLabel}>{BUCKET_LABEL[bucket]}</span>
-                    <span className={styles.groupCount}>
-                      {String(items.length).padStart(2, '0')}
-                    </span>
-                    <span className={styles.groupRule} aria-hidden />
                   </div>
                   {items.map((c) => {
                     const i = globalIdx++;
@@ -352,22 +348,6 @@ export default function ChatHistoryModal({
             });
           })()}
         </div>
-
-        <footer className={styles.footer}>
-          <span className={styles.footerGroup}>
-            <kbd>↑</kbd><kbd>↓</kbd> navigate
-          </span>
-          <span className={styles.footerGroup}>
-            <kbd>↵</kbd> open
-          </span>
-          <span className={styles.footerGroup}>
-            <kbd>/</kbd> search
-          </span>
-          <span className={styles.footerSpacer} />
-          <span className={styles.footerGroup}>
-            <kbd>esc</kbd> close
-          </span>
-        </footer>
       </div>
     </div>
     <ShareConversationModal
@@ -477,38 +457,21 @@ function Row({
               placeholder="Untitled chat"
             />
           ) : (
-            <>
-              <span className={styles.rowTitle}>
-                {conv.title?.trim() || 'Untitled chat'}
-              </span>
-              {conv.pinned && (
-                <span className={styles.pinMark} aria-label="Pinned">
-                  <PinIcon filled size={12} />
-                </span>
-              )}
-            </>
-          )}
-        </div>
-        <div className={styles.rowMeta}>
-          {modelLabel && <span>{modelLabel}</span>}
-          {modelLabel && <span className={styles.metaDot} />}
-          <span>{count} {count === 1 ? 'message' : 'messages'}</span>
-          {conv.updatedAt && (
-            <>
-              <span className={styles.metaDot} />
-              <span>{formatDate(conv.updatedAt)}</span>
-            </>
-          )}
-          {conv.hasAttachments && (
-            <>
-              <span className={styles.metaDot} />
-              <span className={styles.metaAttach} aria-label="Has attachments">
-                <AttachIcon /> file
-              </span>
-            </>
+            <span className={styles.rowTitle}>
+              {conv.title?.trim() || 'Untitled chat'}
+            </span>
           )}
         </div>
       </div>
+
+      {/* Pin glyph sits in the right-edge column. Fades out as the
+          hover actions slide in so a pinned row never has the pin
+          collide with the More + Continue cluster. */}
+      {conv.pinned && (
+        <span className={styles.pinSlot} aria-label="Pinned">
+          <PinIcon filled size={14} />
+        </span>
+      )}
 
       <div
         className={`${styles.actions} ${actionsForce ? styles.actionsForce : ''}`}
