@@ -46,6 +46,7 @@
 }
 
 .composer.multi {
+  border-radius: 28px;
   grid-template-areas:
     'input input input'
     'plus  .     tools';
