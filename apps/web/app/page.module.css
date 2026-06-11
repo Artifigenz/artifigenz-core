@@ -16,51 +16,38 @@
   padding: 0 40px 60px;
 }
 
-/* Intro state — fill the viewport, vertically centered. Push the
-   composer toward the bottom so the greeting + suggestions sit in the
-   upper-middle band, matching the Haven Home rhythm. */
+/* Intro state — single vertically-centered group containing greeting,
+   composer, and suggestions. The Haven design wants them stacked tight
+   together, not the greeting-top + composer-bottom split we had before. */
 .mainIntro {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding-bottom: 120px;
-  padding-top: 76px; /* clear the fixed Header */
-  gap: 40px;
+  align-items: center;
+  padding-top: 76px; /* clear the fixed top bar */
+  padding-bottom: 80px;
+}
+
+.havenStage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.composerSlot {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  justify-content: center;
 }
 
 .mainInChat {
   padding-top: 76px;
 }
 
-.introWrap {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.introWrap > .intro {
-  min-height: 0;
-  overflow: hidden;
-  transform: translateY(0);
-  opacity: 1;
-  transition:
-    transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.3s ease;
-}
-
-.introWrapHidden {
-  grid-template-rows: 0fr;
-}
-
-.introWrapHidden > .intro {
-  transform: translateY(-24px);
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* Quiet brand tagline anchored to the bottom of the home page. Only
-   shown on the intro state — once a conversation starts the chat
-   thread takes over and the tagline gets out of the way. */
+/* Quiet brand tagline anchored to the bottom of the home page in the
+   intro state. */
 .tagline {
   position: fixed;
   left: 0;
@@ -81,7 +68,6 @@
   }
   .mainIntro {
     padding-top: 60px;
-    padding-bottom: 100px;
-    gap: 24px;
+    padding-bottom: 64px;
   }
 }

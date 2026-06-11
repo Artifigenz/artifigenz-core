@@ -1,13 +1,8 @@
-/* Haven intro — centered greeting + suggestions.
-   Adapted from the Haven Home design (claude.ai/design handoff). */
+/* Haven intro — greeting block + suggestions list (split components). */
 
-.stage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.greetingBlock {
   text-align: center;
-  padding: 0 24px;
+  margin-bottom: 36px;
 }
 
 .greeting {
@@ -16,19 +11,20 @@
   letter-spacing: -0.022em;
   margin: 0 0 10px;
   color: var(--text);
+  line-height: 1.1;
 }
 
 .greetingSub {
   font-size: 16px;
   color: var(--text-dim);
-  margin: 0 0 48px;
+  margin: 0;
   font-weight: 400;
 }
 
 .suggestions {
   width: 100%;
   max-width: 620px;
-  margin-top: 40px;
+  margin: 36px auto 0;
   display: flex;
   flex-direction: column;
 }
@@ -70,17 +66,15 @@
   color: var(--text);
 }
 
-/* Entry animation — calm fadeUp, staggered.
-   Respect prefers-reduced-motion: the keyframe runs only when the user
-   hasn't explicitly opted out. */
+/* Entry animations — calm fadeUp, staggered. */
 .enter,
-.enter2 {
+.enter3 {
   opacity: 0;
   transform: translateY(20px);
   animation: havenFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.enter2 {
+.enter3 {
   animation-delay: 0.24s;
 }
 
@@ -97,7 +91,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .enter,
-  .enter2 {
+  .enter3 {
     animation: none;
     opacity: 1;
     transform: none;
@@ -108,8 +102,8 @@
   .greeting {
     font-size: 32px;
   }
-  .greetingSub {
-    margin-bottom: 32px;
+  .greetingBlock {
+    margin-bottom: 24px;
   }
   .suggestions {
     margin-top: 24px;

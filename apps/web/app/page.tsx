@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { DEFAULT_MODEL_ID } from '@artifigenz/shared';
-import Header from '@/components/layout/Header';
-import HavenIntro from '@/components/sections/HavenIntro';
+import { HavenGreeting, HavenSuggestions } from '@/components/sections/HavenIntro';
 import HavenAura from '@/components/effects/HavenAura';
+import HavenTopBar from '@/components/sections/HavenTopBar';
+import HavenComposer from '@/components/sections/HavenComposer';
 import AgentGrid from '@/components/sections/AgentGrid';
 import { useDevtools } from '@/lib/devtools-context';
 import ChatInput, { type ChatAttachmentDraft, type PasteSnippetDraft } from '@/components/sections/ChatInput';
@@ -657,7 +658,7 @@ export default function AppHome() {
   return (
     <div className={styles.page}>
       <HavenAura />
-      <Header onLogoClick={inChat ? newChat : undefined} />
+      <HavenTopBar onHistory={() => setHistoryOpen(true)} />
       <ChatHistoryModal
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -665,44 +666,56 @@ export default function AppHome() {
         currentConversationId={conversationId}
         onCurrentDeleted={newChat}
       />
-      <main className={`${styles.main} ${inChat ? styles.mainInChat : styles.mainIntro}`}>
-        <div
-          className={`${styles.introWrap} ${inChat ? styles.introWrapHidden : ''}`}
-          aria-hidden={inChat}
-        >
-          <div className={styles.intro}>
-            <HavenIntro onSuggestion={(text) => runSend(text)} />
+      <main
+        className={`${styles.main} ${inChat ? styles.mainInChat : styles.mainIntro}`}
+      >
+        {!inChat && (
+          <div className={styles.havenStage}>
+            <HavenGreeting />
+            <div className={styles.composerSlot}>
+              <HavenComposer
+                value={input}
+                onChange={setInput}
+                onSend={sendMessage}
+                modelId={modelId}
+                onModelChange={changeModel}
+                onAddFiles={addAttachmentFiles}
+              />
+            </div>
+            <HavenSuggestions onPick={(text) => runSend(text)} />
             {agentMode && <AgentGrid />}
           </div>
-        </div>
-        {inChat && (
-          <HomeChatMessages
-            messages={messages}
-            streaming={streaming}
-            drainingId={drainingId}
-            toolStatus={toolStatus}
-            onEdit={onEditSubmit}
-            onRegenerate={onRegenerate}
-            onFollowUp={(text) => runSend(text)}
-          />
         )}
-        <ChatInput
-          value={input}
-          onChange={setInput}
-          onSend={sendMessage}
-          streaming={streaming}
-          onStop={stopGenerating}
-          attachments={attachments}
-          onAddFiles={addAttachmentFiles}
-          onRemoveAttachment={removeAttachment}
-          pasteSnippets={pasteSnippets}
-          onAddPasteSnippet={addPasteSnippet}
-          onRemovePasteSnippet={removePasteSnippet}
-          onNewChat={inChat ? newChat : undefined}
-          onShowHistory={() => setHistoryOpen(true)}
-          modelId={modelId}
-          onModelChange={changeModel}
-        />
+        {inChat && (
+          <>
+            <HomeChatMessages
+              messages={messages}
+              streaming={streaming}
+              drainingId={drainingId}
+              toolStatus={toolStatus}
+              onEdit={onEditSubmit}
+              onRegenerate={onRegenerate}
+              onFollowUp={(text) => runSend(text)}
+            />
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSend={sendMessage}
+              streaming={streaming}
+              onStop={stopGenerating}
+              attachments={attachments}
+              onAddFiles={addAttachmentFiles}
+              onRemoveAttachment={removeAttachment}
+              pasteSnippets={pasteSnippets}
+              onAddPasteSnippet={addPasteSnippet}
+              onRemovePasteSnippet={removePasteSnippet}
+              onNewChat={newChat}
+              onShowHistory={() => setHistoryOpen(true)}
+              modelId={modelId}
+              onModelChange={changeModel}
+            />
+          </>
+        )}
       </main>
       {!inChat && <div className={styles.tagline}>agents. building. agents.</div>}
     </div>
