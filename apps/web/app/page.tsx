@@ -689,6 +689,7 @@ export default function AppHome() {
                 modelId={modelId}
                 onModelChange={changeModel}
                 onAddFiles={addAttachmentFiles}
+                homeStage
               />
             </div>
             <HavenSuggestions onPick={(text) => runSend(text)} />

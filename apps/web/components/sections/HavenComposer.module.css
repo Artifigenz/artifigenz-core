@@ -17,8 +17,33 @@
   align-items: center;
   gap: 10px;
   transition:
+    width 0.34s cubic-bezier(0.16, 1, 0.3, 1),
     background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    border-radius 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    border-radius 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Home stage — narrower resting pill that widens a touch on focus.
+   Only applied in the intro state; the docked composer keeps 760px. */
+.composer.homeStage {
+  width: min(680px, 92vw);
+}
+.composer.homeStage.focus,
+.composer.homeStage.multi {
+  width: min(724px, 92vw);
+}
+
+/* Focus state — subtle shadow lift. Works in both home and dock. */
+.composer.focus {
+  box-shadow:
+    0 14px 44px rgba(20, 14, 50, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer {
+    transition: background-color 0.2s linear;
+  }
 }
 
 .composer.multi {

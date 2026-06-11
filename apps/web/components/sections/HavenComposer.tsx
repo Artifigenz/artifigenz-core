@@ -31,6 +31,12 @@ interface HavenComposerProps {
   disabled?: boolean;
   /** Override default placeholder. */
   placeholder?: string;
+  /**
+   * When true, the composer sits in the home intro stage: narrower
+   * resting pill (680px), gentle widen-on-focus to 724px, soft shadow
+   * lift. When false (dock under a thread), keeps a fixed 760px width.
+   */
+  homeStage?: boolean;
 }
 
 export default function HavenComposer({
@@ -42,22 +48,42 @@ export default function HavenComposer({
   onAddFiles,
   disabled,
   placeholder = 'Ask anything or give a task...',
+  homeStage = false,
 }: HavenComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [multi, setMulti] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Mirror of `multi` so the autogrow effect can read the current value
+  // without re-running every time it flips — that re-run is what caused
+  // the size jitter (toggle multi → width changes → scrollHeight changes
+  // → toggle flips back).
+  const multiRef = useRef(false);
 
-  // Autogrow + single↔multi swap.
+  // Autogrow + single↔multi swap with hysteresis.
+  //   - Enter multi on a real newline OR scrollHeight > 44.
+  //   - Stay multi until the field is empty — never flip mid-typing.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     const sc = el.scrollHeight;
-    const isMulti = value.indexOf('\n') !== -1 || sc > 40;
-    setMulti(isMulti);
-    el.style.height = isMulti ? `${Math.min(sc, 200)}px` : '36px';
+    let next = multiRef.current;
+    if (!next) {
+      if (value.indexOf('\n') !== -1 || sc > 44) next = true;
+    } else if (value.length === 0) {
+      next = false;
+    }
+    if (next !== multiRef.current) {
+      multiRef.current = next;
+      // The layout class needs to track the measured state; this fires at
+      // most once per multi-line transition, not on every keystroke.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMulti(next);
+    }
+    el.style.height = next ? `${Math.min(el.scrollHeight, 240)}px` : '36px';
   }, [value]);
 
   // Click-outside closes the model menu.
@@ -83,11 +109,17 @@ export default function HavenComposer({
     }
   };
 
+  const classes = [
+    styles.composer,
+    multi ? styles.multi : '',
+    focused ? styles.focus : '',
+    homeStage ? styles.homeStage : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div
-      ref={wrapRef}
-      className={`${styles.composer} ${multi ? styles.multi : ''}`}
-    >
+    <div ref={wrapRef} className={classes}>
       <input
         ref={fileInputRef}
         type="file"
@@ -123,6 +155,8 @@ export default function HavenComposer({
           onChange(e.target.value)
         }
         onKeyDown={onKey}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         autoFocus
       />
 
