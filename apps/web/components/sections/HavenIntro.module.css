@@ -1,0 +1,117 @@
+/* Haven intro — centered greeting + suggestions.
+   Adapted from the Haven Home design (claude.ai/design handoff). */
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.greeting {
+  font-size: 42px;
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  margin: 0 0 10px;
+  color: var(--text);
+}
+
+.greetingSub {
+  font-size: 16px;
+  color: var(--text-dim);
+  margin: 0 0 48px;
+  font-weight: 400;
+}
+
+.suggestions {
+  width: 100%;
+  max-width: 620px;
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 6px;
+  font-size: 14.5px;
+  color: var(--text-mid);
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.suggestion:last-child {
+  border-bottom: none;
+}
+
+.suggestion svg {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.suggestion:hover {
+  color: var(--text);
+}
+
+.suggestion:hover svg {
+  transform: translateX(4px);
+  color: var(--text);
+}
+
+/* Entry animation — calm fadeUp, staggered.
+   Respect prefers-reduced-motion: the keyframe runs only when the user
+   hasn't explicitly opted out. */
+.enter,
+.enter2 {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: havenFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.enter2 {
+  animation-delay: 0.24s;
+}
+
+@keyframes havenFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .enter2 {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .greeting {
+    font-size: 32px;
+  }
+  .greetingSub {
+    margin-bottom: 32px;
+  }
+  .suggestions {
+    margin-top: 24px;
+  }
+}

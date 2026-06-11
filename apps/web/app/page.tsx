@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { DEFAULT_MODEL_ID } from '@artifigenz/shared';
 import Header from '@/components/layout/Header';
-import Hero from '@/components/sections/Hero';
+import HavenIntro from '@/components/sections/HavenIntro';
+import HavenAura from '@/components/effects/HavenAura';
 import AgentGrid from '@/components/sections/AgentGrid';
 import { useDevtools } from '@/lib/devtools-context';
 import ChatInput, { type ChatAttachmentDraft, type PasteSnippetDraft } from '@/components/sections/ChatInput';
@@ -655,6 +656,7 @@ export default function AppHome() {
 
   return (
     <div className={styles.page}>
+      <HavenAura />
       <Header onLogoClick={inChat ? newChat : undefined} />
       <ChatHistoryModal
         open={historyOpen}
@@ -663,13 +665,13 @@ export default function AppHome() {
         currentConversationId={conversationId}
         onCurrentDeleted={newChat}
       />
-      <main className={styles.main}>
+      <main className={`${styles.main} ${inChat ? styles.mainInChat : styles.mainIntro}`}>
         <div
           className={`${styles.introWrap} ${inChat ? styles.introWrapHidden : ''}`}
           aria-hidden={inChat}
         >
           <div className={styles.intro}>
-            <Hero />
+            <HavenIntro onSuggestion={(text) => runSend(text)} />
             {agentMode && <AgentGrid />}
           </div>
         </div>
@@ -702,6 +704,7 @@ export default function AppHome() {
           onModelChange={changeModel}
         />
       </main>
+      {!inChat && <div className={styles.tagline}>agents. building. agents.</div>}
     </div>
   );
 }

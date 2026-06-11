@@ -7,11 +7,29 @@
 }
 
 .main {
+  position: relative;
+  z-index: 1;
   flex: 1;
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 40px 60px;
+}
+
+/* Intro state — fill the viewport, vertically centered. Push the
+   composer toward the bottom so the greeting + suggestions sit in the
+   upper-middle band, matching the Haven Home rhythm. */
+.mainIntro {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-bottom: 120px;
+  padding-top: 76px; /* clear the fixed Header */
+  gap: 40px;
+}
+
+.mainInChat {
+  padding-top: 76px;
 }
 
 .introWrap {
@@ -40,8 +58,30 @@
   pointer-events: none;
 }
 
+/* Quiet brand tagline anchored to the bottom of the home page. Only
+   shown on the intro state — once a conversation starts the chat
+   thread takes over and the tagline gets out of the way. */
+.tagline {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  z-index: 1;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  opacity: 0.7;
+  pointer-events: none;
+  letter-spacing: 0.01em;
+}
+
 @media (max-width: 600px) {
   .main {
     padding: 0 20px 40px;
+  }
+  .mainIntro {
+    padding-top: 60px;
+    padding-bottom: 100px;
+    gap: 24px;
   }
 }
