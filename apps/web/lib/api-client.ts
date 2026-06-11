@@ -478,6 +478,19 @@ export class ApiClient {
     }>('/api/finance/categories');
   }
 
+  async runDailyPulseNow() {
+    return this.post<{
+      generated: number;
+      insight: {
+        id: string;
+        title: string;
+        description: string | null;
+        data: Record<string, unknown>;
+        createdAt: string;
+      } | null;
+    }>('/api/finance/skills/daily-pulse/run-now');
+  }
+
   async getFinanceBriefScopes() {
     return this.get<{
       scopes: Array<{

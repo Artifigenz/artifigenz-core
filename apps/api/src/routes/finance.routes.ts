@@ -33,6 +33,8 @@ import { detectLoanEmi } from "../agents/finance/categorize/loan-emi";
 import { detectVariableRecurring } from "../agents/finance/categorize/variable-recurring";
 import { detectMiscellaneous } from "../agents/finance/categorize/miscellaneous";
 import { getBrief, listBriefScopes } from "../agents/finance/brief";
+import { SkillExecutor } from "../platform/execution/skill-executor";
+import { registry as agentRegistry } from "../bootstrap";
 
 // How long between successive opportunistic Plaid syncs for a single
 // connection. The frontend polls /agent-status every 3s during onboarding;
@@ -1666,6 +1668,57 @@ app.get("/brief", async (c) => {
 
   const brief = await getBrief(instance.id, scope);
   return c.json(brief);
+});
+
+/**
+ * POST /api/finance/skills/daily-pulse/run-now
+ *   Dev / simulation trigger. Runs the Daily Pulse skill immediately
+ *   for the caller's finance agent regardless of the time-of-day gate
+ *   and the daily-idempotency gate. Returns the freshly produced
+ *   insight (or the cached one if generation produced nothing).
+ *
+ *   The skill itself reads DAILY_PULSE_BYPASS_HOUR=1 from process env,
+ *   so we set it inline just for the duration of this call.
+ */
+app.post("/skills/daily-pulse/run-now", async (c) => {
+  const user = c.get("user");
+  const [instance] = await db
+    .select({ id: agentInstances.id })
+    .from(agentInstances)
+    .where(
+      and(
+        eq(agentInstances.userId, user.id),
+        eq(agentInstances.agentTypeId, "finance"),
+      ),
+    )
+    .orderBy(agentInstances.createdAt)
+    .limit(1);
+  if (!instance) return c.json({ error: "no finance agent" }, 404);
+
+  const prev = process.env.DAILY_PULSE_BYPASS_HOUR;
+  process.env.DAILY_PULSE_BYPASS_HOUR = "1";
+  try {
+    const executor = new SkillExecutor(agentRegistry);
+    const result = await executor.execute({
+      agentInstanceId: instance.id,
+      skillId: "finance.daily-pulse",
+    });
+    const [latest] = await db
+      .select()
+      .from(insights)
+      .where(
+        and(
+          eq(insights.agentInstanceId, instance.id),
+          eq(insights.insightTypeId, "finance.daily-pulse.morning"),
+        ),
+      )
+      .orderBy(desc(insights.createdAt))
+      .limit(1);
+    return c.json({ generated: result.insightIds.length, insight: latest });
+  } finally {
+    if (prev === undefined) delete process.env.DAILY_PULSE_BYPASS_HOUR;
+    else process.env.DAILY_PULSE_BYPASS_HOUR = prev;
+  }
 });
 
 app.get("/agent-status", async (c) => {

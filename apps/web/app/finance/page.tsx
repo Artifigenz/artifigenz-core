@@ -316,7 +316,7 @@ interface DeliveryPrefs {
   whatsapp: { enabled: boolean; number: string | null };
 }
 
-type SettingsTab = 'accounts' | 'upload' | 'delivery';
+type SettingsTab = 'accounts' | 'upload' | 'delivery' | 'dev';
 
 function formatSince(iso: number): string {
   if (!iso) return '';
@@ -465,6 +465,8 @@ export default function FinanceBriefPage() {
   const [plaidBusy, setPlaidBusy] = useState(false);
   const [resettingSkill, setResettingSkill] = useState(false);
   const [clearingInsights, setClearingInsights] = useState(false);
+  const [triggeringPulse, setTriggeringPulse] = useState(false);
+  const [pulseResult, setPulseResult] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<{
     transactionCount: number;
     insightCount: number;
@@ -847,6 +849,32 @@ export default function FinanceBriefPage() {
   async function handleRegenerate() {
     setSettingsOpen(false);
     window.location.href = '/finance?regen=1';
+  }
+
+  async function handleTriggerDailyPulse() {
+    setTriggeringPulse(true);
+    setPulseResult(null);
+    try {
+      const res = await api.runDailyPulseNow();
+      setPulseResult(
+        res.insight
+          ? `Generated: ${res.insight.title}`
+          : 'Skill ran but produced no new insight (already up-to-date for today).',
+      );
+      // Refresh the feed so the new insight shows immediately.
+      try {
+        const feed = await api.getInsights({ limit: 20 });
+        setInsights(feed.insights ?? []);
+      } catch {
+        // soft-fail
+      }
+    } catch (err) {
+      setPulseResult(
+        `Failed: ${(err as { message?: string })?.message ?? 'unknown error'}`,
+      );
+    } finally {
+      setTriggeringPulse(false);
+    }
   }
 
   async function handleResetSkillState() {
@@ -1532,6 +1560,12 @@ export default function FinanceBriefPage() {
                 >
                   Delivery
                 </button>
+                <button
+                  className={`${styles.navItem} ${settingsTab === 'dev' ? styles.navItemActive : ''}`}
+                  onClick={() => setSettingsTab('dev')}
+                >
+                  Dev
+                </button>
               </nav>
 
               <div className={styles.modalContent}>
@@ -1766,6 +1800,78 @@ export default function FinanceBriefPage() {
                     ) : (
                       <p className={styles.emptyState}>Unable to load preferences.</p>
                     )}
+                  </div>
+                )}
+
+                {settingsTab === 'dev' && (
+                  <div className={styles.deliveryTab}>
+                    <p className={styles.tabDescription}>
+                      Manual triggers for development and testing. These bypass the normal time / idempotency gates.
+                    </p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '14px 16px',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: '10px',
+                          background: 'var(--bg)',
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.92rem', fontWeight: 500 }}>
+                            Generate Daily Pulse now
+                          </div>
+                          <div
+                            style={{
+                              marginTop: '2px',
+                              fontSize: '0.78rem',
+                              color: 'var(--text-dim)',
+                            }}
+                          >
+                            Syncs Plaid, runs the skill, persists an insight, fans out to your enabled channels.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleTriggerDailyPulse}
+                          disabled={triggeringPulse}
+                          style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--text)',
+                            background: 'var(--text)',
+                            color: 'var(--bg)',
+                            fontSize: '0.85rem',
+                            cursor: triggeringPulse ? 'wait' : 'pointer',
+                            opacity: triggeringPulse ? 0.6 : 1,
+                          }}
+                        >
+                          {triggeringPulse ? 'Running…' : 'Trigger'}
+                        </button>
+                      </div>
+
+                      {pulseResult && (
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: '0.82rem',
+                            color: pulseResult.startsWith('Failed')
+                              ? 'var(--accent-red, #c1432f)'
+                              : 'var(--text-mid)',
+                            padding: '8px 12px',
+                            background: 'var(--bg)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: '8px',
+                          }}
+                        >
+                          {pulseResult}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
 

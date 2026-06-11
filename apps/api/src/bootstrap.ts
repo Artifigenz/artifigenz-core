@@ -6,6 +6,12 @@ import { register as registerHealth } from "./agents/health";
 
 const registry = new AgentRegistry();
 
+// Module-level export so routes that don't get the registry passed in
+// (finance.routes.ts is a static Hono app) can still reach it after
+// bootstrap has run. Reading this before bootstrap completes returns
+// an empty registry, so consumers should rely on the lazy import path.
+export { registry };
+
 export function bootstrapAgents(): AgentRegistry {
   registerFinance(registry);
   registerHealth(registry);
