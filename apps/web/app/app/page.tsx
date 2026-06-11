@@ -6,6 +6,7 @@ import { DEFAULT_MODEL_ID } from '@artifigenz/shared';
 import Header from '@/components/layout/Header';
 import Hero from '@/components/sections/Hero';
 import AgentGrid from '@/components/sections/AgentGrid';
+import { useDevtools } from '@/lib/devtools-context';
 import ChatInput, { type ChatAttachmentDraft, type PasteSnippetDraft } from '@/components/sections/ChatInput';
 import HomeChatMessages, { type ChatMessage } from '@/components/sections/HomeChatMessages';
 import ChatHistoryModal from '@/components/sections/ChatHistoryModal';
@@ -24,6 +25,7 @@ const CATCHUP_WORDS_THRESHOLD = 60; // words buffered before speed-up
 
 export default function AppHome() {
   const { getToken } = useAuth();
+  const { agentMode } = useDevtools();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -668,7 +670,7 @@ export default function AppHome() {
         >
           <div className={styles.intro}>
             <Hero />
-            <AgentGrid />
+            {agentMode && <AgentGrid />}
           </div>
         </div>
         {inChat && (

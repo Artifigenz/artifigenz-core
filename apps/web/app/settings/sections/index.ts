@@ -5,3 +5,4 @@ export { SharedChatsSection } from './SharedChatsSection';
 export { MemoriesSection } from './MemoriesSection';
 export { AppearanceSection } from './AppearanceSection';
 export { PrivacySection } from './PrivacySection';
+export { DevToolsSection } from './DevToolsSection';

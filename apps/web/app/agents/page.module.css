@@ -1,0 +1,131 @@
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.main {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 64px 32px 80px;
+}
+
+.hero {
+  margin-bottom: 40px;
+}
+
+.title {
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.subtitle {
+  margin: 10px 0 0;
+  font-size: 1rem;
+  color: var(--text-mid);
+  max-width: 560px;
+  line-height: 1.5;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  border-radius: 14px;
+  border: 1px solid var(--border-light);
+  background: var(--card-bg);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.cardLink:hover {
+  background: var(--card-hover);
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+
+.cardDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  color: var(--text);
+}
+
+.cardName {
+  font-size: 1rem;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+
+.badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  color: var(--text-mid);
+  font-weight: 500;
+}
+
+.badgeActive {
+  background: rgba(47, 122, 62, 0.12);
+  border-color: rgba(47, 122, 62, 0.32);
+  color: #2f7a3e;
+}
+
+.badgeMuted {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.pitch {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-mid);
+  line-height: 1.45;
+}
+
+.skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.skillChip {
+  font-size: 0.7rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  color: var(--text-dim);
+}

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import ProfileMenu from '@/components/layout/ProfileMenu';
 import MobileMenu from '@/components/layout/MobileMenu';
+import { useDevtools } from '@/lib/devtools-context';
 import styles from './Header.module.css';
 
 interface HeaderProps {
@@ -16,6 +17,7 @@ interface HeaderProps {
 }
 
 export default function Header({ onLogoClick }: HeaderProps = {}) {
+  const { agentMode } = useDevtools();
   return (
     <header className={styles.header}>
       <Link
@@ -40,6 +42,11 @@ export default function Header({ onLogoClick }: HeaderProps = {}) {
       </Link>
       <div aria-hidden="true" />
       <div className={styles.actions}>
+        {agentMode && (
+          <Link href="/agents" className={styles.navLink}>
+            Agents
+          </Link>
+        )}
         <ProfileMenu />
       </div>
       <div className={styles.mobileActions}>

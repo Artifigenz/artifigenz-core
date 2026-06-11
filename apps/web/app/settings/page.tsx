@@ -10,6 +10,7 @@ import {
   MemoriesSection,
   AppearanceSection,
   PrivacySection,
+  DevToolsSection,
 } from './sections';
 import styles from './page.module.css';
 
@@ -38,6 +39,7 @@ function SettingsContent() {
           <MemoriesSection />
           <AppearanceSection />
           <PrivacySection />
+          <DevToolsSection />
         </div>
 
       </main>
