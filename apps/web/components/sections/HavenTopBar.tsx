@@ -19,6 +19,13 @@ interface HavenTopBarProps {
   onHistory?: () => void;
   onSettings?: () => void;
   /**
+   * Click handler for the logo. When provided, the brand is rendered as
+   * a button — useful on the home route where we want clicking the logo
+   * to reset to a fresh chat instead of doing a no-op Link nav. Pages
+   * without this just get the default Link → "/" behavior.
+   */
+  onLogoClick?: () => void;
+  /**
    * When set, the bar enters thread mode: wordmark hides and this title
    * is shown centered (matches the Haven Thread design).
    */
@@ -28,6 +35,7 @@ interface HavenTopBarProps {
 export default function HavenTopBar({
   onHistory,
   onSettings,
+  onLogoClick,
   title,
 }: HavenTopBarProps) {
   const { user, isLoaded } = useUser();
@@ -55,10 +63,22 @@ export default function HavenTopBar({
 
   return (
     <header className={styles.bar}>
-      <Link href="/" className={styles.brand} aria-label="Artifigenz home">
-        <Logo size={24} />
-        {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
-      </Link>
+      {onLogoClick ? (
+        <button
+          type="button"
+          onClick={onLogoClick}
+          className={styles.brand}
+          aria-label="Artifigenz home"
+        >
+          <Logo size={24} />
+          {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
+        </button>
+      ) : (
+        <Link href="/" className={styles.brand} aria-label="Artifigenz home">
+          <Logo size={24} />
+          {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
+        </Link>
+      )}
 
       {title && (
         <div

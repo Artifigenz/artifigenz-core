@@ -691,6 +691,7 @@ export default function AppHome() {
       <HavenTopBar
         onHistory={() => setHistoryOpen(true)}
         onSettings={() => setSettingsOpen(true)}
+        onLogoClick={newChat}
         title={inChat ? conversationTitle : null}
       />
       <SettingsModal
