@@ -7,6 +7,7 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { MODELS, findModel } from '@artifigenz/shared';
 import styles from './HavenComposer.module.css';
@@ -187,26 +188,46 @@ export default function HavenComposer({
             </button>
             {modelOpen && (
               <div className={styles.modelMenu} role="menu">
-                {MODELS.map((m) => {
-                  const on = m.id === currentModel.id;
-                  return (
-                    <button
-                      type="button"
-                      key={m.id}
-                      role="menuitem"
-                      className={`${styles.modelItem} ${on ? styles.modelItemOn : ''}`}
-                      onClick={() => {
-                        onModelChange(m.id);
-                        setModelOpen(false);
-                      }}
-                    >
-                      <span>{m.label}</span>
-                      {m.description && (
-                        <span className={styles.modelSub}>{m.description}</span>
-                      )}
-                    </button>
-                  );
-                })}
+                {(() => {
+                  const out: ReactNode[] = [];
+                  let lastFamily: string | null = null;
+                  MODELS.forEach((m) => {
+                    if (m.family !== lastFamily) {
+                      const spaced = lastFamily !== null;
+                      lastFamily = m.family;
+                      out.push(
+                        <div
+                          key={`g-${m.family}`}
+                          className={`${styles.modelGroup} ${spaced ? styles.modelGroupSpaced : ''}`}
+                        >
+                          {m.family}
+                        </div>,
+                      );
+                    }
+                    const on = m.id === currentModel.id;
+                    out.push(
+                      <button
+                        type="button"
+                        key={m.id}
+                        role="menuitem"
+                        className={`${styles.modelItem} ${on ? styles.modelItemOn : ''}`}
+                        onClick={() => {
+                          onModelChange(m.id);
+                          setModelOpen(false);
+                        }}
+                      >
+                        <span className={styles.modelName}>{m.label}</span>
+                        <span className={styles.modelCheck}>
+                          <CheckIcon />
+                        </span>
+                        {m.description && (
+                          <span className={styles.modelSub}>{m.description}</span>
+                        )}
+                      </button>,
+                    );
+                  });
+                  return out;
+                })()}
               </div>
             )}
           </div>
@@ -288,6 +309,24 @@ function ChevronDownIcon() {
       aria-hidden="true"
     >
       <polyline points="6,9 12,15 18,9" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }

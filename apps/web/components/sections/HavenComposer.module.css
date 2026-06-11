@@ -148,27 +148,48 @@
   position: absolute;
   bottom: calc(100% + 10px);
   right: 0;
-  min-width: 220px;
+  width: 288px;
+  max-width: 86vw;
+  max-height: min(300px, 44vh);
+  overflow-y: auto;
   background: var(--menu-bg);
   border: 1px solid var(--menu-border);
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: var(--menu-shadow);
-  padding: 6px;
+  padding: 7px;
   z-index: 60;
+}
+
+.modelGroup {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 9px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  padding: 9px 12px 5px;
+}
+.modelGroup::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+.modelGroupSpaced {
+  margin-top: 7px;
+  padding-top: 9px;
 }
 
 .modelItem {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  width: 100%;
   padding: 9px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  color: var(--text-mid);
+  border-radius: 8px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -178,17 +199,36 @@
 
 .modelItem:hover {
   background: var(--card-hover);
-  color: var(--text);
 }
 
 .modelItemOn {
+  background: var(--card-hover);
+}
+
+.modelName {
+  font-size: 13.5px;
   color: var(--text);
-  font-weight: 500;
+}
+.modelItemOn .modelName {
+  font-weight: 600;
+}
+
+.modelCheck {
+  grid-row: 1;
+  grid-column: 2;
+  color: var(--text);
+  opacity: 0;
+  display: flex;
+}
+.modelItemOn .modelCheck {
+  opacity: 1;
 }
 
 .modelSub {
-  font-size: 11px;
+  grid-column: 1 / -1;
+  font-size: 11.5px;
   color: var(--text-dim);
+  line-height: 1.4;
 }
 
 .send {
