@@ -17,9 +17,14 @@ import styles from './HavenTopBar.module.css';
 
 interface HavenTopBarProps {
   onHistory?: () => void;
+  /**
+   * When set, the bar enters thread mode: wordmark hides and this title
+   * is shown centered (matches the Haven Thread design).
+   */
+  title?: string | null;
 }
 
-export default function HavenTopBar({ onHistory }: HavenTopBarProps) {
+export default function HavenTopBar({ onHistory, title }: HavenTopBarProps) {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const { theme, setTheme } = useTheme();
@@ -47,8 +52,10 @@ export default function HavenTopBar({ onHistory }: HavenTopBarProps) {
     <header className={styles.bar}>
       <Link href="/" className={styles.brand} aria-label="Artifigenz home">
         <Logo size={24} />
-        <span className={styles.wordmark}>ARTIFIGENZ</span>
+        {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
       </Link>
+
+      {title && <div className={styles.title}>{title}</div>}
 
       <div className={styles.right}>
         {onHistory && (

@@ -37,6 +37,7 @@ export default function AppHome() {
   // still being typed out.
   const [drainingId, setDrainingId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
@@ -386,6 +387,9 @@ export default function AppHome() {
                 if (typeof data.conversationId === 'string') {
                   setConversationId(data.conversationId);
                 }
+                if (typeof data.title === 'string') {
+                  setConversationTitle(data.title);
+                }
                 break;
               case 'user_message':
                 if (typeof data.messageId === 'string') {
@@ -560,6 +564,7 @@ export default function AppHome() {
     setMessages([]);
     setInput('');
     setConversationId(null);
+    setConversationTitle(null);
     setStreaming(false);
     setToolStatus(null);
   }, []);
@@ -586,7 +591,7 @@ export default function AppHome() {
         });
         if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
         const data = (await res.json()) as {
-          conversation: { id: string };
+          conversation: { id: string; title?: string };
           messages: Array<{
             id: string;
             role: 'user' | 'assistant';
@@ -601,6 +606,7 @@ export default function AppHome() {
           }>;
         };
         setConversationId(data.conversation.id);
+        setConversationTitle(data.conversation.title ?? null);
         setMessages(
           data.messages.map((m) => ({
             id: `${m.role[0]}-${m.id}`,
@@ -658,7 +664,10 @@ export default function AppHome() {
   return (
     <div className={styles.page}>
       <HavenAura />
-      <HavenTopBar onHistory={() => setHistoryOpen(true)} />
+      <HavenTopBar
+        onHistory={() => setHistoryOpen(true)}
+        title={inChat ? conversationTitle : null}
+      />
       <ChatHistoryModal
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -697,6 +706,7 @@ export default function AppHome() {
               onRegenerate={onRegenerate}
               onFollowUp={(text) => runSend(text)}
             />
+            <div className={styles.fadeBottom} aria-hidden="true" />
             <div className={styles.composerDock}>
               <HavenComposer
                 value={input}
@@ -711,7 +721,7 @@ export default function AppHome() {
           </>
         )}
       </main>
-      {!inChat && <div className={styles.tagline}>agents. building. agents.</div>}
+      {!inChat && <div className={styles.tagline}>ai chat. on steroids.</div>}
     </div>
   );
 }

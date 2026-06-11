@@ -25,6 +25,21 @@
   letter-spacing: 0.14em;
 }
 
+/* Thread mode — centered conversation title, logo-only brand. */
+.title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-dim);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 240px;
+}
+
 .right {
   display: flex;
   align-items: center;
