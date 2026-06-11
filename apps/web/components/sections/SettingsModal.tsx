@@ -1,17 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useUser, useClerk } from '@clerk/nextjs';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useClerk } from '@clerk/nextjs';
 import { MODELS, DEFAULT_MODEL_ID, findModel } from '@artifigenz/shared';
 import { useTheme } from '@/components/ThemeProvider';
 import { useDevtools } from '@/lib/devtools-context';
+import { useApiClient } from '@/hooks/useApiClient';
+import type {
+  ApiError,
+  MemoryRow,
+  MemorySource,
+  ShareRecord,
+} from '@/lib/api-client';
 import styles from './SettingsModal.module.css';
 
 /**
  * Haven Settings modal — ChatGPT-style: left tabs, carded content on the
- * right. Invoked from the avatar on any page; closes via Esc, backdrop,
- * or × without leaving the page. Adapted from the design handoff
- * (settings-modal.js + settings-modal.css).
+ * right. Invoked from the avatar; closes via Esc, backdrop, or ×.
+ *
+ * Real backend wiring for all panes — identity update, custom instructions,
+ * memories (list/add/import/delete), shared chats (list/copy/revoke),
+ * privacy (deletion code flow), appearance (mode + theme), and the
+ * developer agent-mode toggle.
  */
 
 type TabId =
@@ -41,7 +52,6 @@ const TABS: Array<{ id: TabId; label: string }> = [
 ];
 
 const REPLY_KEY = 'artifigenz.settings.replyLength';
-const INSTRUCTIONS_KEY = 'artifigenz.settings.customInstructions';
 const INSTRUCTIONS_MAX = 1500;
 
 export default function SettingsModal({
@@ -54,12 +64,10 @@ export default function SettingsModal({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // One-shot mount flag — gates client-only render (avoids SSR mismatch).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
-  // Esc to close
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -134,25 +142,50 @@ export default function SettingsModal({
   );
 }
 
-// ── Panes ────────────────────────────────────────────────────────────
-
-function PaneHeader({ title, desc }: { title: string; desc: string }) {
-  return (
-    <>
-      <h2 className={styles.paneTitle}>{title}</h2>
-      <p className={styles.paneDesc}>{desc}</p>
-    </>
-  );
-}
+// ── Pane: General ────────────────────────────────────────────────────
 
 function GeneralPane() {
-  const { user, isLoaded } = useUser();
-  const name =
-    user?.firstName ||
-    user?.username ||
-    user?.emailAddresses[0]?.emailAddress?.split('@')[0] ||
-    '';
-  const email = user?.emailAddresses[0]?.emailAddress ?? '';
+  const api = useApiClient();
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getMe()
+      .then((data) => {
+        if (cancelled) return;
+        setEmail(data.email);
+        setName(data.name ?? '');
+      })
+      .catch((err: ApiError) => console.error(err.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const startEdit = () => {
+    setEditValue(name);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      await api.patchMe({ name: editValue.trim() });
+      setName(editValue.trim());
+      setEditing(false);
+    } catch (err) {
+      console.error((err as ApiError).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -167,7 +200,45 @@ function GeneralPane() {
             <div className={styles.sub}>Used by agents in greetings.</div>
           </div>
           <div className={styles.right}>
-            <span className={styles.val}>{isLoaded ? name : ''}</span>
+            {editing ? (
+              <>
+                <input
+                  className={styles.inlineInput}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={saveEdit}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnText}
+                  onClick={() => setEditing(false)}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <span className={styles.val}>
+                  {loading ? '…' : name || 'Not set'}
+                </span>
+                <button
+                  type="button"
+                  className={styles.btnText}
+                  onClick={startEdit}
+                >
+                  Edit
+                </button>
+              </>
+            )}
           </div>
         </div>
         <div className={styles.row}>
@@ -178,8 +249,8 @@ function GeneralPane() {
             </div>
           </div>
           <div className={styles.right}>
-            <span className={styles.val}>{isLoaded ? email : ''}</span>
-            {isLoaded && email && (
+            <span className={styles.val}>{loading ? '…' : email}</span>
+            {!loading && email && (
               <span className={styles.badge}>verified</span>
             )}
           </div>
@@ -189,6 +260,8 @@ function GeneralPane() {
   );
 }
 
+// ── Pane: Chat ───────────────────────────────────────────────────────
+
 function ChatPane({
   modelId,
   onModelChange,
@@ -196,33 +269,52 @@ function ChatPane({
   modelId: string;
   onModelChange: (id: string) => void;
 }) {
+  const api = useApiClient();
   const [instructions, setInstructions] = useState('');
+  const [savedInstructions, setSavedInstructions] = useState('');
+  const [savingInstructions, setSavingInstructions] = useState(false);
   const [reply, setReply] = useState<'concise' | 'balanced' | 'thorough'>(
     'balanced',
   );
 
   useEffect(() => {
+    let cancelled = false;
+    api
+      .getChatInstructions()
+      .then((data) => {
+        if (cancelled) return;
+        const v = data.instructions ?? '';
+        setInstructions(v);
+        setSavedInstructions(v);
+      })
+      .catch((err: ApiError) => console.error(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  useEffect(() => {
     try {
-      const stored = localStorage.getItem(INSTRUCTIONS_KEY);
-      // One-shot hydration on mount — same pattern used by DevtoolsProvider
-      // for client-only persistence; the cascading-render lint doesn't apply.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (stored !== null) setInstructions(stored);
       const r = localStorage.getItem(REPLY_KEY) as typeof reply | null;
       if (r === 'concise' || r === 'balanced' || r === 'thorough') setReply(r);
     } catch {
-      // private mode — ignore
+      // ignore
     }
   }, []);
 
-  const writeInstructions = (v: string) => {
-    setInstructions(v);
+  const saveInstructions = useCallback(async () => {
+    if (instructions === savedInstructions) return;
+    setSavingInstructions(true);
     try {
-      localStorage.setItem(INSTRUCTIONS_KEY, v);
-    } catch {
-      // ignore
+      const trimmed = instructions.trim();
+      await api.updateChatInstructions(trimmed ? trimmed : null);
+      setSavedInstructions(instructions);
+    } catch (err) {
+      console.error((err as ApiError).message);
+    } finally {
+      setSavingInstructions(false);
     }
-  };
+  }, [api, instructions, savedInstructions]);
 
   const writeReply = (v: typeof reply) => {
     setReply(v);
@@ -252,10 +344,18 @@ function ChatPane({
             placeholder="Tell agents how you like to work…"
             style={{ marginTop: 12 }}
             value={instructions}
-            onChange={(e) => writeInstructions(e.target.value)}
+            onChange={(e) => setInstructions(e.target.value)}
+            onBlur={saveInstructions}
           />
           <div className={styles.textareaFoot}>
-            {instructions.length}&nbsp;/&nbsp;{INSTRUCTIONS_MAX}
+            {savingInstructions
+              ? 'Saving…'
+              : instructions !== savedInstructions
+                ? 'Unsaved'
+                : ''}
+            <span style={{ marginLeft: 'auto' }}>
+              {instructions.length}&nbsp;/&nbsp;{INSTRUCTIONS_MAX}
+            </span>
           </div>
         </div>
       </div>
@@ -317,38 +417,596 @@ function ChatPane({
   );
 }
 
+// ── Pane: Memory ─────────────────────────────────────────────────────
+
+const MEMORY_SOURCE_LABELS: Record<MemorySource, string> = {
+  artifigenz_chat: 'From chats',
+  chatgpt_import: 'ChatGPT',
+  claude_import: 'Claude',
+  manual: 'Manual',
+};
+
+const MEMORY_TYPE_LABELS: Record<string, string> = {
+  identity: 'Identity',
+  work: 'Work',
+  person: 'People',
+  preference: 'Preference',
+  goal: 'Goal',
+  fact: 'Fact',
+  quirk: 'Quirk',
+};
+
 function MemoryPane() {
+  const api = useApiClient();
+  const [memories, setMemories] = useState<MemoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | MemorySource>('all');
+  const [adding, setAdding] = useState(false);
+  const [newText, setNewText] = useState('');
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listMemories()
+      .then((data) => {
+        if (!cancelled) setMemories(data.memories);
+      })
+      .catch((err: ApiError) => console.error(err.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: memories.length };
+    for (const m of memories) c[m.source] = (c[m.source] ?? 0) + 1;
+    return c;
+  }, [memories]);
+
+  const visible = useMemo(
+    () =>
+      filter === 'all'
+        ? memories
+        : memories.filter((m) => m.source === filter),
+    [memories, filter],
+  );
+
+  const handleDelete = async (id: string) => {
+    setMemories((prev) => prev.filter((m) => m.id !== id));
+    try {
+      await api.deleteMemory(id);
+    } catch (err) {
+      console.error((err as ApiError).message);
+    }
+  };
+
+  const handleAdd = async () => {
+    const text = newText.trim();
+    if (!text) return;
+    try {
+      const { memory } = await api.createMemory({ text, source: 'manual' });
+      setMemories((prev) => [memory, ...prev]);
+      setNewText('');
+      setAdding(false);
+    } catch (err) {
+      console.error((err as ApiError).message);
+    }
+  };
+
+  const handleImported = (rows: MemoryRow[]) => {
+    setMemories((prev) => [...rows, ...prev]);
+    setImporting(false);
+  };
+
+  const filterOptions: Array<{ key: 'all' | MemorySource; label: string }> = [
+    { key: 'all', label: 'All' },
+    { key: 'artifigenz_chat', label: 'From chats' },
+    { key: 'chatgpt_import', label: 'ChatGPT' },
+    { key: 'claude_import', label: 'Claude' },
+    { key: 'manual', label: 'Manual' },
+  ];
+
   return (
     <>
       <PaneHeader
         title="Memory"
-        desc="What Artifigenz remembers about you across conversations."
+        desc="What Artifigenz remembers about you across conversations. Memories grow automatically from chats; import what ChatGPT or Claude already knows."
       />
+
+      <div className={styles.memHead}>
+        <div className={styles.sub}>
+          <strong>{counts.all ?? 0}</strong>{' '}
+          {counts.all === 1 ? 'memory' : 'memories'} stored
+        </div>
+        <div className={styles.right}>
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => {
+              setAdding(true);
+              setNewText('');
+            }}
+          >
+            Add memory
+          </button>
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => setImporting(true)}
+          >
+            Import
+          </button>
+        </div>
+      </div>
+
+      {adding && (
+        <div className={styles.card} style={{ marginBottom: 14 }}>
+          <div className={`${styles.row} ${styles.rowStack}`}>
+            <div className={styles.label}>Add a memory</div>
+            <div className={styles.sub}>
+              Something durable about you — Artifigenz will use it across every
+              future chat.
+            </div>
+            <textarea
+              className={styles.textarea}
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              placeholder="e.g. I prefer terse answers over long explanations."
+              autoFocus
+              maxLength={2000}
+              style={{ marginTop: 12, minHeight: 80 }}
+            />
+            <div
+              className={styles.right}
+              style={{ justifyContent: 'flex-end', marginTop: 12 }}
+            >
+              <button
+                type="button"
+                className={styles.btnText}
+                onClick={() => setAdding(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={handleAdd}
+                disabled={!newText.trim()}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={styles.chips}>
+        {filterOptions.map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            className={`${styles.chip} ${filter === opt.key ? styles.chipOn : ''}`}
+            onClick={() => setFilter(opt.key)}
+          >
+            {opt.label}{' '}
+            <span className={styles.chipNum}>{counts[opt.key] ?? 0}</span>
+          </button>
+        ))}
+      </div>
+
       <div className={styles.card}>
-        <div className={styles.empty}>
-          Coming soon. Memory will grow automatically from your chats — and
-          you&apos;ll be able to import what ChatGPT or Claude already knows.
+        {loading ? (
+          <div className={styles.empty}>Loading…</div>
+        ) : visible.length === 0 ? (
+          <div className={styles.empty}>
+            {filter === 'all'
+              ? "No memories yet. Start chatting and Artifigenz will learn as you go — or import what another AI already knows."
+              : 'Nothing in this view. Try a different filter.'}
+          </div>
+        ) : (
+          <div className={styles.memList}>
+            {visible.map((m) => (
+              <div key={m.id} className={styles.memItem}>
+                <div className={styles.memBody}>
+                  <div className={styles.memText}>{m.text}</div>
+                  <div className={styles.memMeta}>
+                    <span className={styles.tag}>
+                      {MEMORY_SOURCE_LABELS[m.source] ?? m.source}
+                    </span>
+                    <span className={styles.memCat}>
+                      {MEMORY_TYPE_LABELS[m.type] ?? m.type}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`${styles.btnText} ${styles.memDel}`}
+                  onClick={() => handleDelete(m.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {importing && (
+        <ImportMemoryDialog
+          onClose={() => setImporting(false)}
+          onImported={handleImported}
+        />
+      )}
+    </>
+  );
+}
+
+function ImportMemoryDialog({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void;
+  onImported: (rows: MemoryRow[]) => void;
+}) {
+  const api = useApiClient();
+  const [prompt, setPrompt] = useState('');
+  const [pasted, setPasted] = useState('');
+  const [source, setSource] = useState<MemorySource>('chatgpt_import');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<
+    { kind: 'ok'; msg: string } | { kind: 'err'; msg: string } | null
+  >(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getMemoryImportPrompt()
+      .then((res) => {
+        if (!cancelled) setPrompt(res.prompt);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const chatgptUrl = useMemo(
+    () => `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`,
+    [prompt],
+  );
+  const claudeUrl = useMemo(
+    () => `https://claude.ai/new?q=${encodeURIComponent(prompt)}`,
+    [prompt],
+  );
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleImport = async () => {
+    if (!pasted.trim()) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { imported, memories } = await api.importMemories({
+        source,
+        text: pasted,
+      });
+      if (imported === 0) {
+        setStatus({
+          kind: 'err',
+          msg: "Couldn't pull any memories from that paste. Try the full block.",
+        });
+      } else {
+        setStatus({ kind: 'ok', msg: `Imported ${imported} memories.` });
+        onImported(memories);
+      }
+    } catch (err) {
+      setStatus({ kind: 'err', msg: (err as ApiError).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        className={`${styles.overlay} ${styles.subOverlay} ${styles.open}`}
+        onClick={busy ? undefined : onClose}
+      />
+      <div className={`${styles.subDialog} ${styles.open}`} role="dialog">
+        <div className={styles.subHead}>
+          <div>
+            <h3 className={styles.subTitle}>Import your memories</h3>
+            <p className={styles.subDesc}>
+              Bring everything ChatGPT or Claude already knows about you into
+              Artifigenz. Takes about a minute.
+            </p>
+          </div>
+          <button
+            type="button"
+            className={styles.close}
+            style={{ position: 'static' }}
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className={styles.subBody}>
+          <div className={styles.step}>
+            <div className={styles.stepNum}>1</div>
+            <div className={styles.stepBody}>
+              <div className={styles.stepTitle}>Open ChatGPT or Claude</div>
+              <div className={styles.stepHint}>
+                We&apos;ll deep-link with a prompt that asks for a structured
+                dump of everything they remember. Make sure you&apos;re signed
+                in.
+              </div>
+              <div className={styles.launchers}>
+                <a
+                  className={styles.btn}
+                  href={chatgptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setSource('chatgpt_import')}
+                >
+                  Open in ChatGPT ↗
+                </a>
+                <a
+                  className={styles.btn}
+                  href={claudeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setSource('claude_import')}
+                >
+                  Open in Claude ↗
+                </a>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={copyPrompt}
+                  disabled={!prompt}
+                >
+                  {copied ? 'Copied ✓' : 'Copy prompt'}
+                </button>
+              </div>
+              <button
+                type="button"
+                className={styles.btnText}
+                onClick={() => setShowPrompt((s) => !s)}
+                style={{ marginTop: 6 }}
+              >
+                {showPrompt ? 'Hide the prompt' : 'See the prompt we send'}
+              </button>
+              {showPrompt && prompt && (
+                <pre className={styles.promptPreview}>{prompt}</pre>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.step}>
+            <div className={styles.stepNum}>2</div>
+            <div className={styles.stepBody}>
+              <div className={styles.stepTitle}>Paste the response</div>
+              <div className={styles.stepHint}>
+                Copy the whole memory block from the AI and paste it here.
+                We&apos;ll split it into individual memories automatically.
+              </div>
+              <textarea
+                className={styles.textarea}
+                placeholder="Paste the response from ChatGPT or Claude…"
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                style={{ minHeight: 140, marginTop: 10 }}
+              />
+              <div className={styles.sourcePick}>
+                <span>Source:</span>
+                <select
+                  className={styles.select}
+                  value={source}
+                  onChange={(e) => setSource(e.target.value as MemorySource)}
+                >
+                  <option value="chatgpt_import">ChatGPT</option>
+                  <option value="claude_import">Claude</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.subFooter}>
+          <div
+            className={`${styles.subStatus} ${
+              status?.kind === 'ok'
+                ? styles.subStatusOk
+                : status?.kind === 'err'
+                  ? styles.subStatusErr
+                  : ''
+            }`}
+          >
+            {status?.msg ?? 'Your memories stay private to your account.'}
+          </div>
+          <div className={styles.right}>
+            <button
+              type="button"
+              className={styles.btnText}
+              onClick={onClose}
+              disabled={busy}
+            >
+              {status?.kind === 'ok' ? 'Done' : 'Cancel'}
+            </button>
+            {status?.kind !== 'ok' && (
+              <button
+                type="button"
+                className={styles.btn}
+                onClick={handleImport}
+                disabled={busy || !pasted.trim()}
+              >
+                {busy ? 'Importing…' : 'Import memories'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>
   );
 }
 
+// ── Pane: Shared chats ───────────────────────────────────────────────
+
 function SharedPane() {
+  const api = useApiClient();
+  const [shares, setShares] = useState<ShareRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyToken, setBusyToken] = useState<string | null>(null);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const { shares } = await api.listShares();
+      setShares(shares);
+    } catch (err) {
+      setError((err as ApiError).message ?? 'Failed to load shares');
+    }
+  }, [api]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const copy = async (token: string) => {
+    if (!origin) return;
+    try {
+      await navigator.clipboard.writeText(`${origin}/share/${token}`);
+      setCopiedToken(token);
+      setTimeout(
+        () => setCopiedToken((cur) => (cur === token ? null : cur)),
+        1500,
+      );
+    } catch {
+      setError('Could not copy. Select the URL and copy manually.');
+    }
+  };
+
+  const revoke = async (token: string) => {
+    if (
+      !confirm('Revoke this share? The link will stop working immediately.')
+    )
+      return;
+    setBusyToken(token);
+    try {
+      await api.revokeShare(token);
+      setShares((cur) => (cur ?? []).filter((s) => s.shareToken !== token));
+    } catch (err) {
+      setError((err as ApiError).message ?? 'Failed to revoke');
+    } finally {
+      setBusyToken(null);
+    }
+  };
+
   return (
     <>
       <PaneHeader
         title="Shared chats"
-        desc="Public read-only links to your conversations."
+        desc="Public read-only links to your conversations. Revoke any of them here."
       />
+
       <div className={styles.card}>
-        <div className={styles.empty}>
-          You haven&apos;t shared any chats yet.
-        </div>
+        {error && (
+          <div className={styles.row}>
+            <div>
+              <div className={styles.label}>Error</div>
+              <div className={styles.sub}>{error}</div>
+            </div>
+          </div>
+        )}
+
+        {shares === null && !error && (
+          <div className={styles.empty}>Loading…</div>
+        )}
+
+        {shares?.length === 0 && !error && (
+          <div className={styles.empty}>
+            You haven&apos;t shared any chats yet. Open the history modal, click
+            the menu on any chat, and pick “Share link.”
+          </div>
+        )}
+
+        {shares?.map((s) => {
+          const title = s.title?.trim() || 'Untitled chat';
+          const url = `${origin}/share/${s.shareToken}`;
+          return (
+            <div key={s.id} className={styles.row}>
+              <div>
+                <div className={styles.label}>{title}</div>
+                <div className={styles.sub}>
+                  {s.viewCount} {s.viewCount === 1 ? 'view' : 'views'} ·
+                  &nbsp;shared {formatRelative(s.createdAt)}
+                </div>
+              </div>
+              <div className={styles.right}>
+                <a
+                  className={styles.btnText}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open
+                </a>
+                <button
+                  type="button"
+                  className={styles.btnText}
+                  onClick={() => copy(s.shareToken)}
+                >
+                  {copiedToken === s.shareToken ? 'Copied' : 'Copy link'}
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.btnText} ${styles.dangerText}`}
+                  onClick={() => revoke(s.shareToken)}
+                  disabled={busyToken === s.shareToken}
+                >
+                  Revoke
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </>
   );
 }
+
+function formatRelative(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = Math.max(0, now - then);
+  const min = 60_000;
+  const hr = 60 * min;
+  const day = 24 * hr;
+  if (diff < hr) return `${Math.max(1, Math.round(diff / min))}m ago`;
+  if (diff < day) return `${Math.round(diff / hr)}h ago`;
+  if (diff < 30 * day) return `${Math.round(diff / day)}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+// ── Pane: Appearance ─────────────────────────────────────────────────
 
 function AppearancePane() {
   const { theme, setTheme, visualTheme, setVisualTheme } = useTheme();
@@ -387,7 +1045,6 @@ function AppearancePane() {
           </div>
           <div className={styles.themeGrid}>
             <ThemeTile
-              value="terminal"
               name="Terminal"
               desc="Monospace. Square corners. Black-and-white."
               prevClass={styles.themePrevTerm}
@@ -395,7 +1052,6 @@ function AppearancePane() {
               onClick={() => setVisualTheme('terminal')}
             />
             <ThemeTile
-              value="aura"
               name="Aura"
               desc="Inter. Soft gradients. Glass surfaces."
               prevClass={styles.themePrevAura}
@@ -409,8 +1065,46 @@ function AppearancePane() {
   );
 }
 
+// ── Pane: Privacy & data ─────────────────────────────────────────────
+
 function PrivacyPane() {
+  const api = useApiClient();
   const { signOut } = useClerk();
+  const router = useRouter();
+
+  const [step, setStep] = useState<'idle' | 'confirm' | 'verify'>('idle');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const requestDeletion = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.requestAccountDeletion();
+      setStep('verify');
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDeletion = async () => {
+    if (code.length !== 6) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.confirmAccountDeletion(code);
+      await signOut();
+      router.replace('/');
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <PaneHeader
@@ -420,20 +1114,7 @@ function PrivacyPane() {
       <div className={styles.card}>
         <div className={styles.row}>
           <div>
-            <div className={styles.label}>Export your data</div>
-            <div className={styles.sub}>
-              Every chat as JSON. Delivered by email within 24h.
-            </div>
-          </div>
-          <div className={styles.right}>
-            <button type="button" className={styles.btn} disabled>
-              Request export
-            </button>
-          </div>
-        </div>
-        <div className={styles.row}>
-          <div>
-            <div className={styles.label}>Sign out everywhere</div>
+            <div className={styles.label}>Sign out</div>
             <div className={styles.sub}>
               Revokes this session. You&apos;ll need to sign in again.
             </div>
@@ -462,16 +1143,101 @@ function PrivacyPane() {
             <button
               type="button"
               className={`${styles.btn} ${styles.btnDanger}`}
-              disabled
+              onClick={() => {
+                setStep('confirm');
+                setError(null);
+                setCode('');
+              }}
             >
               Delete account
             </button>
           </div>
         </div>
       </div>
+
+      {step !== 'idle' && (
+        <>
+          <div
+            className={`${styles.overlay} ${styles.subOverlay} ${styles.open}`}
+            onClick={busy ? undefined : () => setStep('idle')}
+          />
+          <div
+            className={`${styles.subDialog} ${styles.subDialogSmall} ${styles.open}`}
+            role="dialog"
+          >
+            {step === 'confirm' ? (
+              <>
+                <h3 className={styles.subTitle}>Delete your account?</h3>
+                <p className={styles.subDesc}>
+                  We&apos;ll send a 6-digit verification code to your email.
+                  You have 10 minutes to enter it.
+                </p>
+                {error && <div className={styles.errText}>{error}</div>}
+                <div className={styles.right} style={{ marginTop: 18 }}>
+                  <button
+                    type="button"
+                    className={styles.btnText}
+                    onClick={() => setStep('idle')}
+                    disabled={busy}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.btn} ${styles.btnDanger}`}
+                    onClick={requestDeletion}
+                    disabled={busy}
+                  >
+                    {busy ? 'Sending code…' : 'Send code'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className={styles.subTitle}>Enter verification code</h3>
+                <p className={styles.subDesc}>
+                  We sent a 6-digit code to your email. Enter it to confirm
+                  deletion. This cannot be undone.
+                </p>
+                <input
+                  className={styles.codeInput}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="6-digit code"
+                  autoFocus
+                />
+                {error && <div className={styles.errText}>{error}</div>}
+                <div className={styles.right} style={{ marginTop: 18 }}>
+                  <button
+                    type="button"
+                    className={styles.btnText}
+                    onClick={() => setStep('idle')}
+                    disabled={busy}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.btn} ${styles.btnDanger}`}
+                    onClick={confirmDeletion}
+                    disabled={busy || code.length !== 6}
+                  >
+                    {busy ? 'Deleting…' : 'Permanently delete'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }
+
+// ── Pane: Developer ──────────────────────────────────────────────────
 
 function DeveloperPane() {
   const { agentMode, setAgentMode, hydrated } = useDevtools();
@@ -507,7 +1273,16 @@ function DeveloperPane() {
   );
 }
 
-// ── Subcomponents ────────────────────────────────────────────────────
+// ── Shared ───────────────────────────────────────────────────────────
+
+function PaneHeader({ title, desc }: { title: string; desc: string }) {
+  return (
+    <>
+      <h2 className={styles.paneTitle}>{title}</h2>
+      <p className={styles.paneDesc}>{desc}</p>
+    </>
+  );
+}
 
 function Segmented<T extends string>({
   value,
@@ -541,7 +1316,6 @@ function ThemeTile({
   on,
   onClick,
 }: {
-  value: string;
   name: string;
   desc: string;
   prevClass: string;

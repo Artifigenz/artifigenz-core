@@ -584,6 +584,321 @@
   line-height: 1.6;
 }
 
+/* Inline name-edit input */
+.inlineInput {
+  font-size: 13.5px;
+  font-family: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+  max-width: 200px;
+}
+.inlineInput:focus {
+  border-color: var(--text-dim);
+}
+
+/* Memory tab */
+.memHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.memHead .sub strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.chip {
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  transition:
+    color 0.2s,
+    background-color 0.2s,
+    border-color 0.2s;
+}
+.chip:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+.chipOn {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.chipNum {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+.chipOn .chipNum {
+  opacity: 0.7;
+}
+
+.memList {
+  display: flex;
+  flex-direction: column;
+}
+.memItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-light);
+}
+.memItem:last-child {
+  border-bottom: none;
+}
+.memBody {
+  min-width: 0;
+  flex: 1;
+}
+.memText {
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.memMeta {
+  margin-top: 7px;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: var(--card-hover);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.memCat {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.memDel {
+  opacity: 0;
+  flex: 0 0 auto;
+  transition: opacity 0.2s;
+}
+.memItem:hover .memDel,
+.memItem:focus-within .memDel {
+  opacity: 1;
+}
+
+/* Sub-dialog (Import memories, Delete confirm) — sits over the main modal */
+.subOverlay {
+  z-index: 140;
+}
+.subDialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -47%) scale(0.99);
+  width: min(680px, calc(100vw - 60px));
+  max-height: 86vh;
+  background: var(--menu-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  overflow: hidden;
+  z-index: 150;
+  box-shadow:
+    0 48px 130px rgba(15, 10, 30, 0.22),
+    0 6px 22px rgba(20, 14, 50, 0.06);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.subDialog.open {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+.subDialogSmall {
+  width: min(440px, calc(100vw - 60px));
+  padding: 24px 22px 20px;
+  display: block;
+  overflow: visible;
+}
+
+.subHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 22px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+.subTitle {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+.subDesc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  margin: 0;
+  max-width: 520px;
+}
+.subBody {
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+.subFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border-light);
+}
+.subStatus {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+}
+.subStatusOk {
+  color: #13794a;
+}
+.subStatusErr {
+  color: #c0392b;
+}
+
+/* Import flow steps */
+.step {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+}
+.step + .step {
+  border-top: 1px solid var(--border-light);
+  margin-top: 4px;
+  padding-top: 18px;
+}
+.stepNum {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--card-hover);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.stepBody {
+  min-width: 0;
+  flex: 1;
+}
+.stepTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.stepHint {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+.launchers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.launchers .btn {
+  text-decoration: none;
+}
+.promptPreview {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--card-hover);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-mid);
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.sourcePick {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.select {
+  font-size: 12.5px;
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--input-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Delete-account small dialog inputs */
+.codeInput {
+  width: 100%;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 16px;
+  letter-spacing: 0.2em;
+  text-align: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+  margin-top: 14px;
+}
+.codeInput:focus {
+  border-color: var(--text-dim);
+}
+.errText {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: #c0392b;
+}
+
 /* Small screens — stack the sidebar on top */
 @media (max-width: 640px) {
   .modal {
