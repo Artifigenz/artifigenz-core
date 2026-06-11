@@ -687,7 +687,7 @@ export default function AppHome() {
 
   return (
     <div className={styles.page}>
-      <HavenAura />
+      <HavenAura dim={inChat} />
       <HavenTopBar
         onHistory={() => setHistoryOpen(true)}
         onSettings={() => setSettingsOpen(true)}
