@@ -12,6 +12,7 @@ import { useDevtools } from '@/lib/devtools-context';
 import type { ChatAttachmentDraft, PasteSnippetDraft } from '@/components/sections/ChatInput';
 import HomeChatMessages, { type ChatMessage } from '@/components/sections/HomeChatMessages';
 import ChatHistoryModal from '@/components/sections/ChatHistoryModal';
+import SettingsModal from '@/components/sections/SettingsModal';
 import styles from './page.module.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -40,6 +41,7 @@ export default function AppHome() {
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [pasteSnippets, setPasteSnippets] = useState<PasteSnippetDraft[]>([]);
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
@@ -48,6 +50,26 @@ export default function AppHome() {
   useEffect(() => {
     const stored = localStorage.getItem('artifigenz.chat.model');
     if (stored) setModelId(stored);
+  }, []);
+
+  // ?settings=1 (e.g. via the /settings page redirect) auto-opens the modal.
+  // We clear the param on close so the URL doesn't keep re-opening it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('settings') === '1') {
+      setSettingsOpen(true);
+    }
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('settings')) {
+        url.searchParams.delete('settings');
+        window.history.replaceState(null, '', url.pathname + url.search);
+      }
+    }
   }, []);
 
   const changeModel = useCallback((id: string) => {
@@ -666,7 +688,14 @@ export default function AppHome() {
       <HavenAura />
       <HavenTopBar
         onHistory={() => setHistoryOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
         title={inChat ? conversationTitle : null}
+      />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={closeSettings}
+        modelId={modelId}
+        onModelChange={changeModel}
       />
       <ChatHistoryModal
         open={historyOpen}

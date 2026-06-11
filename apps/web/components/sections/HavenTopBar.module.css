@@ -110,6 +110,7 @@
   border: none;
   cursor: pointer;
   font-family: inherit;
+  text-decoration: none;
 }
 
 .menu {

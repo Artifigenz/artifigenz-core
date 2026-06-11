@@ -1,48 +1,9 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import Header from '@/components/layout/Header';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import {
-  IdentitySection,
-  ChannelsSection,
-  ChatSection,
-  SharedChatsSection,
-  MemoriesSection,
-  AppearanceSection,
-  PrivacySection,
-  DevToolsSection,
-} from './sections';
-import styles from './page.module.css';
-
-export default function SettingsPage() {
-  return (
-    <ProtectedRoute>
-      <SettingsContent />
-    </ProtectedRoute>
-  );
-}
-
-function SettingsContent() {
-  return (
-    <div className={styles.page}>
-      <Header />
-      <main className={styles.main}>
-        <div className={styles.hero}>
-          <h1 className={styles.title}>Settings</h1>
-        </div>
-
-        <div className={styles.sections}>
-          <IdentitySection />
-          <ChannelsSection />
-          <ChatSection />
-          <SharedChatsSection />
-          <MemoriesSection />
-          <AppearanceSection />
-          <PrivacySection />
-          <DevToolsSection />
-        </div>
-
-      </main>
-    </div>
-  );
+// The standalone /settings page is gone — settings is now an in-place
+// modal launched from the avatar on any HavenTopBar page. Hitting this
+// route forwards to the home with ?settings=1, which page.tsx detects
+// and auto-opens the modal.
+export default function SettingsRedirect() {
+  redirect('/?settings=1');
 }

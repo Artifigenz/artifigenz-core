@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useUser, useClerk } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
 import { useTheme } from '@/components/ThemeProvider';
 import styles from './HavenTopBar.module.css';
 
@@ -17,6 +16,7 @@ import styles from './HavenTopBar.module.css';
 
 interface HavenTopBarProps {
   onHistory?: () => void;
+  onSettings?: () => void;
   /**
    * When set, the bar enters thread mode: wordmark hides and this title
    * is shown centered (matches the Haven Thread design).
@@ -24,23 +24,15 @@ interface HavenTopBarProps {
   title?: string | null;
 }
 
-export default function HavenTopBar({ onHistory, title }: HavenTopBarProps) {
+export default function HavenTopBar({
+  onHistory,
+  onSettings,
+  title,
+}: HavenTopBarProps) {
   const { user, isLoaded } = useUser();
-  const { signOut } = useClerk();
   const { theme, setTheme } = useTheme();
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const isDark = theme === 'dark';
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(`.${styles.avatarWrap}`)) setMenuOpen(false);
-    };
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [menuOpen]);
 
   const initial =
     user?.firstName?.[0]?.toUpperCase() ||
@@ -80,38 +72,24 @@ export default function HavenTopBar({ onHistory, title }: HavenTopBarProps) {
           {isDark ? <SunIcon /> : <MoonIcon />}
         </button>
 
-        <div className={styles.avatarWrap}>
+        {onSettings ? (
           <button
             type="button"
             className={styles.avatar}
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Account"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
+            onClick={onSettings}
+            aria-label="Open settings"
           >
             <span>{isLoaded ? initial : ''}</span>
           </button>
-          {menuOpen && (
-            <div className={styles.menu} role="menu">
-              <Link
-                href="/settings"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => setMenuOpen(false)}
-              >
-                Settings
-              </Link>
-              <button
-                type="button"
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => signOut()}
-              >
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
+        ) : (
+          <Link
+            href="/?settings=1"
+            className={styles.avatar}
+            aria-label="Open settings"
+          >
+            <span>{isLoaded ? initial : ''}</span>
+          </Link>
+        )}
       </div>
     </header>
   );
