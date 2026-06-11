@@ -44,6 +44,28 @@
 
 .mainInChat {
   padding-top: 76px;
+  /* Leave headroom under the docked composer so the last message
+     isn't trapped underneath it when the chat scrolls to the bottom. */
+  padding-bottom: 160px;
+}
+
+/* In-chat composer dock — same visual position the Haven Thread design
+   used: fixed at the bottom of the viewport, horizontally centered, on
+   top of the chat scroll so it's always reachable. */
+.composerDock {
+  position: fixed;
+  bottom: 34px;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 0 24px;
+  pointer-events: none;
+}
+
+.composerDock > * {
+  pointer-events: auto;
 }
 
 /* Quiet brand tagline anchored to the bottom of the home page in the

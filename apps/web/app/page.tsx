@@ -9,7 +9,7 @@ import HavenTopBar from '@/components/sections/HavenTopBar';
 import HavenComposer from '@/components/sections/HavenComposer';
 import AgentGrid from '@/components/sections/AgentGrid';
 import { useDevtools } from '@/lib/devtools-context';
-import ChatInput, { type ChatAttachmentDraft, type PasteSnippetDraft } from '@/components/sections/ChatInput';
+import type { ChatAttachmentDraft, PasteSnippetDraft } from '@/components/sections/ChatInput';
 import HomeChatMessages, { type ChatMessage } from '@/components/sections/HomeChatMessages';
 import ChatHistoryModal from '@/components/sections/ChatHistoryModal';
 import styles from './page.module.css';
@@ -697,23 +697,17 @@ export default function AppHome() {
               onRegenerate={onRegenerate}
               onFollowUp={(text) => runSend(text)}
             />
-            <ChatInput
-              value={input}
-              onChange={setInput}
-              onSend={sendMessage}
-              streaming={streaming}
-              onStop={stopGenerating}
-              attachments={attachments}
-              onAddFiles={addAttachmentFiles}
-              onRemoveAttachment={removeAttachment}
-              pasteSnippets={pasteSnippets}
-              onAddPasteSnippet={addPasteSnippet}
-              onRemovePasteSnippet={removePasteSnippet}
-              onNewChat={newChat}
-              onShowHistory={() => setHistoryOpen(true)}
-              modelId={modelId}
-              onModelChange={changeModel}
-            />
+            <div className={styles.composerDock}>
+              <HavenComposer
+                value={input}
+                onChange={setInput}
+                onSend={sendMessage}
+                modelId={modelId}
+                onModelChange={changeModel}
+                onAddFiles={addAttachmentFiles}
+                disabled={streaming}
+              />
+            </div>
           </>
         )}
       </main>
