@@ -847,180 +847,67 @@ async function streamOpenAI(
     if (converted) input.push(converted);
   }
 
-  // Try with web search first; fall back without it if OpenAI's
-  // web_search_preview tool errors out (transient outages, region
-  // restrictions, model-specific incompatibility). The retry path keeps
-  // the user's question answerable instead of dropping the connection.
-  return await runOpenAIStream({
-    openai,
-    modelId,
-    systemPrompt,
-    input,
-    onEvent,
-    withSearch: true,
-  });
-}
-
-async function runOpenAIStream(params: {
-  openai: ReturnType<typeof getOpenAIClient>;
-  modelId: string;
-  systemPrompt: string;
-  input: ResponsesInputItem[];
-  onEvent: StreamOpenAIParams["onEvent"];
-  withSearch: boolean;
-}): Promise<StreamOpenAIResult> {
-  const { openai, modelId, systemPrompt, input, onEvent, withSearch } = params;
-
   // SDK types differ across versions; the wire format we send is stable.
-  let stream: AsyncIterable<Record<string, unknown>>;
-  try {
-    stream = (await openai.responses.create({
-      model: modelId,
-      instructions: systemPrompt,
-      input: input as unknown as Parameters<typeof openai.responses.create>[0]["input"],
-      tools: withSearch ? [{ type: "web_search_preview" }] : [],
-      stream: true,
-    })) as AsyncIterable<Record<string, unknown>>;
-  } catch (err) {
-    if (withSearch && isToolRejection(err)) {
-      console.warn(
-        `[openai] web_search_preview rejected for ${modelId}, retrying without tools`,
-        err instanceof Error ? err.message : String(err),
-      );
-      return await runOpenAIStream({ ...params, withSearch: false });
-    }
-    throw err;
-  }
+  const stream = (await openai.responses.create({
+    model: modelId,
+    instructions: systemPrompt,
+    input: input as unknown as Parameters<typeof openai.responses.create>[0]["input"],
+    tools: [{ type: "web_search_preview" }],
+    stream: true,
+  })) as AsyncIterable<Record<string, unknown>>;
 
   let assistantContent = "";
   const citations: Array<{ url: string; title: string; citedText?: string }> = [];
   const seenUrls = new Set<string>();
   let searchAnnounced = false;
-  let searchFailed = false;
-  let topLevelFailure: string | null = null;
 
-  try {
-    for await (const ev of stream) {
-      const type = ev.type as string;
-      if (type === "response.output_text.delta") {
-        const delta = ev.delta as string | undefined;
-        if (typeof delta === "string" && delta.length > 0) {
-          assistantContent += delta;
-          onEvent({ type: "delta", data: { content: delta } });
-        }
-      } else if (
-        type === "response.web_search_call.in_progress" ||
-        type === "response.web_search_call.searching"
-      ) {
-        if (!searchAnnounced) {
-          searchAnnounced = true;
-          onEvent({
-            type: "tool_use",
-            data: { tool: "web_search", input: {} },
-          });
-        }
-      } else if (type === "response.web_search_call.completed") {
-        searchAnnounced = false;
+  for await (const ev of stream) {
+    const type = ev.type as string;
+    if (type === "response.output_text.delta") {
+      const delta = ev.delta as string | undefined;
+      if (typeof delta === "string" && delta.length > 0) {
+        assistantContent += delta;
+        onEvent({ type: "delta", data: { content: delta } });
+      }
+    } else if (
+      type === "response.web_search_call.in_progress" ||
+      type === "response.web_search_call.searching"
+    ) {
+      if (!searchAnnounced) {
+        searchAnnounced = true;
         onEvent({
-          type: "tool_result",
-          data: { tool: "web_search", result: { ok: true } },
+          type: "tool_use",
+          data: { tool: "web_search", input: {} },
         });
-      } else if (type === "response.web_search_call.failed") {
-        // OpenAI's web search bombed (network, region, rate limit).
-        // Surface as a tool_result with ok=false so the UI can show
-        // "search failed" and the model can decide what to do.
-        searchFailed = true;
-        searchAnnounced = false;
-        const reason =
-          (((ev as Record<string, unknown>).error as { message?: string } | undefined)
-            ?.message) ?? "search unavailable";
-        console.warn(`[openai] web_search_call.failed: ${reason}`);
-        onEvent({
-          type: "tool_result",
-          data: { tool: "web_search", result: { ok: false, error: reason } },
-        });
-      } else if (
-        type === "response.output_text.annotation.added" ||
-        type === "response.output_text.annotation_added"
+      }
+    } else if (type === "response.web_search_call.completed") {
+      searchAnnounced = false;
+      onEvent({
+        type: "tool_result",
+        data: { tool: "web_search", result: { ok: true } },
+      });
+    } else if (
+      type === "response.output_text.annotation.added" ||
+      type === "response.output_text.annotation_added"
+    ) {
+      const annotation = (ev.annotation ?? {}) as {
+        type?: string;
+        url?: string;
+        title?: string;
+      };
+      if (
+        annotation.type === "url_citation" &&
+        annotation.url &&
+        !seenUrls.has(annotation.url)
       ) {
-        const annotation = (ev.annotation ?? {}) as {
-          type?: string;
-          url?: string;
-          title?: string;
-        };
-        if (
-          annotation.type === "url_citation" &&
-          annotation.url &&
-          !seenUrls.has(annotation.url)
-        ) {
-          seenUrls.add(annotation.url);
-          citations.push({
-            url: annotation.url,
-            title: annotation.title ?? annotation.url,
-          });
-        }
-      } else if (type === "response.failed" || type === "error") {
-        // The model itself errored (usually surfaced via the wrapper
-        // response object). Capture the message and let the loop exit
-        // naturally — the catch below will rethrow with context.
-        const errObj =
-          ((ev as Record<string, unknown>).response as { error?: { message?: string } } | undefined)
-            ?.error ??
-          ((ev as Record<string, unknown>).error as { message?: string } | undefined);
-        topLevelFailure = errObj?.message ?? "model response failed";
-        console.warn(`[openai] ${type}: ${topLevelFailure}`);
+        seenUrls.add(annotation.url);
+        citations.push({
+          url: annotation.url,
+          title: annotation.title ?? annotation.url,
+        });
       }
     }
-  } catch (err) {
-    // Stream broke mid-flight. If we got nothing useful and the cause
-    // looks search-related, retry without the tool — better to answer
-    // without citations than to hand the user a network error.
-    if (
-      withSearch &&
-      assistantContent.length === 0 &&
-      isSearchRelatedFailure(err)
-    ) {
-      console.warn(
-        `[openai] stream broke during web search, retrying without tools`,
-      );
-      return await runOpenAIStream({ ...params, withSearch: false });
-    }
-    throw err;
-  }
-
-  if (topLevelFailure && assistantContent.length === 0) {
-    throw new Error(topLevelFailure);
-  }
-
-  // Search failed but the model didn't add a fallback note — let the
-  // user know explicitly so they don't think the AI just ignored their
-  // question.
-  if (searchFailed && assistantContent.length === 0) {
-    assistantContent =
-      "I tried to search the web for this but the search tool failed. Try again, or rephrase the question so I can answer from what I already know.";
-    onEvent({ type: "delta", data: { content: assistantContent } });
   }
 
   return { assistantContent, citations };
-}
-
-function isToolRejection(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message.toLowerCase();
-  return (
-    msg.includes("tool") &&
-    (msg.includes("invalid") ||
-      msg.includes("not supported") ||
-      msg.includes("unknown"))
-  );
-}
-
-function isSearchRelatedFailure(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message.toLowerCase();
-  return (
-    msg.includes("search") ||
-    msg.includes("web_search") ||
-    msg.includes("tool")
-  );
 }

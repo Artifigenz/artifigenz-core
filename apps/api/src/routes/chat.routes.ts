@@ -145,35 +145,6 @@ app.post("/", async (c) => {
   }
 
   return streamSSE(c, async (stream) => {
-    // SSE heartbeat: Railway's HTTP/2 proxy will drop a long-lived
-    // connection when there's a big gap with no frames. GPT-5 +
-    // web_search can sit silent for tens of seconds between visible
-    // events while it iterates searches, which is exactly when the
-    // proxy kills us (ERR_HTTP2_PROTOCOL_ERROR client-side). A noop
-    // SSE comment every 15s keeps the pipe warm without producing any
-    // visible UI events.
-    //
-    // We track `lastWrite` so we don't emit a heartbeat right after a
-    // real event — only when the stream has actually been idle.
-    let lastWrite = Date.now();
-    const writeEvent = async (event: string, data: unknown) => {
-      lastWrite = Date.now();
-      await stream.writeSSE({ event, data: JSON.stringify(data) });
-    };
-    const heartbeat = setInterval(async () => {
-      if (Date.now() - lastWrite < 12_000) return;
-      try {
-        // ": " prefix is a comment in the SSE spec — clients ignore
-        // these but the bytes count as activity for the HTTP/2 proxy.
-        await stream.writeSSE({ event: "ping", data: "1" });
-        lastWrite = Date.now();
-      } catch {
-        // Stream already closed; the outer try/catch will handle the
-        // body's failure on the next event. Stop trying.
-        clearInterval(heartbeat);
-      }
-    }, 15_000);
-
     try {
       await chatService.sendMessage({
         userId: user.id,
@@ -187,17 +158,21 @@ app.post("/", async (c) => {
         model: typeof body.model === "string" ? body.model : null,
         message: body.message,
         onEvent: async (event) => {
-          await writeEvent(event.type, event.data);
+          await stream.writeSSE({
+            event: event.type,
+            data: JSON.stringify(event.data),
+          });
         },
       });
     } catch (err) {
       console.error("[chat] sendMessage failed:", err);
-      await writeEvent("error", {
-        code: "internal_error",
-        message: err instanceof Error ? err.message : "Unknown error",
+      await stream.writeSSE({
+        event: "error",
+        data: JSON.stringify({
+          code: "internal_error",
+          message: err instanceof Error ? err.message : "Unknown error",
+        }),
       });
-    } finally {
-      clearInterval(heartbeat);
     }
   });
 });
