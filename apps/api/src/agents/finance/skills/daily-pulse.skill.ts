@@ -58,7 +58,12 @@ export const dailyPulseSkill: SkillDefinition = {
       id: "finance.daily-pulse.morning",
       name: "Daily Pulse",
       critical: false,
-      deliveryChannels: ["in_app"],
+      // Allow every channel the platform supports. The user's per-channel
+      // preferences (deliveryPreferences) gate the actual fan-out; the
+      // insight type whitelists which ones are EVEN candidates. Listing
+      // them all means the user's settings page is the single source of
+      // truth for what they receive.
+      deliveryChannels: ["in_app", "email", "telegram", "whatsapp"],
     },
   ],
 

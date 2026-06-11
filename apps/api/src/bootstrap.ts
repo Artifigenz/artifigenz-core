@@ -61,7 +61,22 @@ async function syncSkillsCatalog() {
     ),
   );
   if (typeRows.length > 0) {
-    await db.insert(insightTypes).values(typeRows).onConflictDoNothing();
+    // Upsert so changes to deliveryChannels / criticality in code take
+    // effect on next boot. Without this, a row inserted with an older
+    // channel set stays frozen because ON CONFLICT DO NOTHING ignores it.
+    for (const row of typeRows) {
+      await db
+        .insert(insightTypes)
+        .values(row)
+        .onConflictDoUpdate({
+          target: insightTypes.id,
+          set: {
+            name: row.name,
+            isCritical: row.isCritical,
+            deliveryChannels: row.deliveryChannels,
+          },
+        });
+    }
     console.log(
       `[Bootstrap] Insight types synced (${typeRows.length} type(s))`,
     );
