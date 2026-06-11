@@ -49,6 +49,19 @@
   padding-bottom: 160px;
 }
 
+/* Fade-bottom gradient — sits below the docked composer to mask the
+   chat scroll fading into the composer (matches Haven Thread design). */
+.fadeBottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 190px;
+  z-index: 5;
+  background: linear-gradient(to top, var(--bg) 38%, transparent);
+  pointer-events: none;
+}
+
 /* In-chat composer dock — same visual position the Haven Thread design
    used: fixed at the bottom of the viewport, horizontally centered, on
    top of the chat scroll so it's always reachable. */

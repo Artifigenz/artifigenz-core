@@ -18,8 +18,8 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 36px;            /* design spec */
-  max-width: 1200px;
+  gap: 34px;            /* Haven Thread spec */
+  max-width: 740px;
   margin: 0 auto;
   padding-top: 16px;
   /* Lets the browser pin the viewport to whatever the user is reading even
