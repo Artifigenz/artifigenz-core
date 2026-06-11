@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -85,6 +86,17 @@ export default function HavenComposer({
     }
     el.style.height = next ? `${Math.min(el.scrollHeight, 240)}px` : '36px';
   }, [value]);
+
+  // After the multi class commits, the input width changes (full row vs
+  // shared row), so the height we set in the value effect above reflects
+  // the *old* layout — leaving empty space below the cursor. Re-measure
+  // here so the textarea snaps to the right height immediately.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = multi ? `${Math.min(el.scrollHeight, 240)}px` : '36px';
+  }, [multi]);
 
   // Click-outside closes the model menu.
   useEffect(() => {

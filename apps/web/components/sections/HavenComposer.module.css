@@ -19,7 +19,6 @@
   transition:
     width 0.34s cubic-bezier(0.16, 1, 0.3, 1),
     background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    border-radius 0.34s cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 0.34s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -47,12 +46,11 @@
 }
 
 .composer.multi {
-  border-radius: 28px;
   grid-template-areas:
     'input input input'
     'plus  .     tools';
-  padding: 16px 14px 10px;
-  row-gap: 8px;
+  padding: 14px 14px 10px;
+  row-gap: 6px;
 }
 
 .attach {
