@@ -1,17 +1,41 @@
+/* Haven composer — pill-by-default, morphs to rounded card on multi-line.
+   Adapted from the design handoff (shared.css, used by both Home and
+   Thread). */
+
 .composer {
-  width: 680px;
+  width: 760px;
   max-width: 100%;
   background: var(--menu-bg);
   border: 1px solid var(--border-light);
-  border-radius: 28px;
+  border-radius: 9999px;
   box-shadow: var(--shadow-lg);
-  padding: 18px 18px 12px;
+  padding: 8px 8px 8px 12px;
   position: relative;
-  transition: background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'plus input tools';
+  align-items: center;
+  gap: 10px;
+  transition:
+    background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.composer.multi {
+  border-radius: 28px;
+  grid-template-areas:
+    'input input input'
+    'plus  .     tools';
+  padding: 16px 14px 10px;
+  row-gap: 8px;
+}
+
+.attach {
+  grid-area: plus;
 }
 
 .input {
+  grid-area: input;
   display: block;
   width: 100%;
   resize: none;
@@ -21,24 +45,23 @@
   color: var(--text);
   font-family: inherit;
   font-size: 16px;
-  line-height: 1.5;
-  padding: 4px 6px 14px;
-  min-height: 46px;
+  line-height: 24px;
+  padding: 6px 0;
+  height: 36px;
   max-height: 200px;
+  overflow-y: auto;
+}
+
+.composer.multi .input {
+  padding: 0 6px 6px;
 }
 
 .input::placeholder {
   color: var(--text-dim);
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.left,
-.right {
+.tools {
+  grid-area: tools;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -56,7 +79,8 @@
   border: 1px solid var(--border-light);
   background: transparent;
   cursor: pointer;
-  transition: color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+  transition:
+    color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
     background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -86,7 +110,8 @@
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  transition: color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+  transition:
+    color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
     background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -161,10 +186,8 @@
   cursor: default;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 800px) {
   .composer {
     width: 100%;
-    padding: 14px 14px 10px;
-    border-radius: 22px;
   }
 }

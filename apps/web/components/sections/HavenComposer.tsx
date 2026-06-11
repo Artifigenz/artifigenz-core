@@ -11,14 +11,13 @@ import { MODELS, findModel } from '@artifigenz/shared';
 import styles from './HavenComposer.module.css';
 
 /**
- * Haven composer — the intro-state input. Visual replica of the
- * composer from "Haven Home.html": rounded white card, textarea, +/mic
- * icon buttons on the left, model picker + send button on the right.
+ * Haven composer — pill-by-default, morphs into a rounded card when the
+ * content overflows a single line. Matches the design handoff (the
+ * thread page wraps the same composer style around the bottom dock).
  *
- * Keeps the public API minimal because the intro state only needs to
- * compose a single first message — once it sends, the page swaps to
- * the chat UI (ChatInput) which carries attachments, paste snippets,
- * etc.
+ * Layout single-line  →  [+] [        textarea        ] [model] [mic] [send]
+ * Layout multi-line   →  [           textarea           ]
+ *                        [+]                      [model] [mic] [send]
  */
 
 interface HavenComposerProps {
@@ -30,6 +29,8 @@ interface HavenComposerProps {
   /** Optional — fires on file picker if provided. */
   onAddFiles?: (files: File[]) => void;
   disabled?: boolean;
+  /** Override default placeholder. */
+  placeholder?: string;
 }
 
 export default function HavenComposer({
@@ -40,18 +41,23 @@ export default function HavenComposer({
   onModelChange,
   onAddFiles,
   disabled,
+  placeholder = 'Ask anything or give a task...',
 }: HavenComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [multi, setMulti] = useState(false);
 
-  // Autogrow the textarea up to 200px tall, matching Haven's behavior.
+  // Autogrow + single↔multi swap.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    const sc = el.scrollHeight;
+    const isMulti = value.indexOf('\n') !== -1 || sc > 40;
+    setMulti(isMulti);
+    el.style.height = isMulti ? `${Math.min(sc, 200)}px` : '36px';
   }, [value]);
 
   // Click-outside closes the model menu.
@@ -78,12 +84,40 @@ export default function HavenComposer({
   };
 
   return (
-    <div className={styles.composer} ref={wrapRef}>
+    <div
+      ref={wrapRef}
+      className={`${styles.composer} ${multi ? styles.multi : ''}`}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = e.target.files;
+          if (files && files.length > 0 && onAddFiles) {
+            onAddFiles(Array.from(files));
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+        }}
+      />
+
+      <button
+        type="button"
+        className={`${styles.iconBtn} ${styles.attach}`}
+        onClick={() => fileInputRef.current?.click()}
+        disabled={!onAddFiles}
+        title="Attach"
+        aria-label="Attach files"
+      >
+        <PlusIcon />
+      </button>
+
       <textarea
         ref={textareaRef}
         className={styles.input}
         rows={1}
-        placeholder="Ask anything or give a task..."
+        placeholder={placeholder}
         value={value}
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
           onChange(e.target.value)
@@ -92,97 +126,64 @@ export default function HavenComposer({
         autoFocus
       />
 
-      <div className={styles.row}>
-        <div className={styles.left}>
-          {onAddFiles && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                hidden
-                onChange={(e) => {
-                  const files = e.target.files;
-                  if (files && files.length > 0) {
-                    onAddFiles(Array.from(files));
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={() => fileInputRef.current?.click()}
-                title="Attach"
-                aria-label="Attach files"
-              >
-                <PlusIcon />
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            className={styles.iconBtn}
-            title="Dictate"
-            aria-label="Dictate"
-            disabled
-          >
-            <MicIcon />
-          </button>
-        </div>
-
-        <div className={styles.right}>
-          {onModelChange && (
-            <div className={styles.modelWrap}>
-              <button
-                type="button"
-                className={styles.model}
-                onClick={() => setModelOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={modelOpen}
-              >
-                <span>{currentModel.label}</span>
-                <ChevronDownIcon />
-              </button>
-              {modelOpen && (
-                <div className={styles.modelMenu} role="menu">
-                  {MODELS.map((m) => {
-                    const on = m.id === currentModel.id;
-                    return (
-                      <button
-                        type="button"
-                        key={m.id}
-                        role="menuitem"
-                        className={`${styles.modelItem} ${on ? styles.modelItemOn : ''}`}
-                        onClick={() => {
-                          onModelChange(m.id);
-                          setModelOpen(false);
-                        }}
-                      >
-                        <span>{m.label}</span>
-                        {m.description && (
-                          <span className={styles.modelSub}>
-                            {m.description}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-          <button
-            type="button"
-            className={styles.send}
-            onClick={onSend}
-            disabled={!canSend}
-            title="Send"
-            aria-label="Send message"
-          >
-            <SendIcon />
-          </button>
-        </div>
+      <div className={styles.tools}>
+        {onModelChange && (
+          <div className={styles.modelWrap}>
+            <button
+              type="button"
+              className={styles.model}
+              onClick={() => setModelOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={modelOpen}
+            >
+              <span>{currentModel.label}</span>
+              <ChevronDownIcon />
+            </button>
+            {modelOpen && (
+              <div className={styles.modelMenu} role="menu">
+                {MODELS.map((m) => {
+                  const on = m.id === currentModel.id;
+                  return (
+                    <button
+                      type="button"
+                      key={m.id}
+                      role="menuitem"
+                      className={`${styles.modelItem} ${on ? styles.modelItemOn : ''}`}
+                      onClick={() => {
+                        onModelChange(m.id);
+                        setModelOpen(false);
+                      }}
+                    >
+                      <span>{m.label}</span>
+                      {m.description && (
+                        <span className={styles.modelSub}>{m.description}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+        <button
+          type="button"
+          className={styles.iconBtn}
+          title="Dictate"
+          aria-label="Dictate"
+          disabled
+        >
+          <MicIcon />
+        </button>
+        <button
+          type="button"
+          className={styles.send}
+          onClick={onSend}
+          disabled={!canSend}
+          title="Send"
+          aria-label="Send message"
+        >
+          <SendIcon />
+        </button>
       </div>
     </div>
   );
