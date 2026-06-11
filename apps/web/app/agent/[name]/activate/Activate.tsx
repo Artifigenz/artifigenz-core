@@ -954,7 +954,7 @@ export default function Activate({ params }: { params: Promise<{ name: string }>
                   <button className={styles.primaryBtn} onClick={next} style={{ padding: '14px 36px', fontSize: '0.9rem' }}>
                     Get started →
                   </button>
-                  <Link href="/app" className={styles.ghostBtn} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                  <Link href="/agents" className={styles.ghostBtn} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                     Cancel
                   </Link>
                 </div>

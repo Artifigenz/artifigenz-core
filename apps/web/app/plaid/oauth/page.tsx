@@ -68,11 +68,11 @@ export default function PlaidOAuthPage() {
       } finally {
         clearPlaidPending();
       }
-      router.replace(pending.returnTo || '/app');
+      router.replace(pending.returnTo || '/finance');
     },
     onExit: () => {
       clearPlaidPending();
-      router.replace(pending?.returnTo || '/app');
+      router.replace(pending?.returnTo || '/finance');
     },
   });
 
@@ -103,7 +103,7 @@ export default function PlaidOAuthPage() {
             </p>
             <button
               type="button"
-              onClick={() => router.replace('/app')}
+              onClick={() => router.replace('/finance')}
               style={{
                 padding: '10px 20px',
                 borderRadius: '9999px',

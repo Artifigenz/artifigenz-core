@@ -500,7 +500,7 @@ export default function FinanceConnect() {
         />
       )}
       <main className={styles.main}>
-        <Link href="/app" className={styles.back}>
+        <Link href="/agents" className={styles.back}>
           ← Back
         </Link>
 

@@ -11,7 +11,7 @@ interface HeaderProps {
   /**
    * If provided, intercepts the logo click instead of navigating. Useful on
    * the home page itself, where clicking the logo should reset the chat
-   * back to the intro state rather than no-op-navigate to /app.
+   * back to the intro state rather than no-op-navigate to /.
    */
   onLogoClick?: () => void;
 }
@@ -21,7 +21,7 @@ export default function Header({ onLogoClick }: HeaderProps = {}) {
   return (
     <header className={styles.header}>
       <Link
-        href="/app"
+        href="/"
         className={styles.logoMark}
         onClick={(e) => {
           if (onLogoClick) {

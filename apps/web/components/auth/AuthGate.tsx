@@ -5,14 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 
 // Routes an anonymous visitor can reach without being redirected to /sign-in.
-// '/' is the public landing page; authed users visiting it are bounced to /app.
+// '/' is now the chat (protected) — we no longer host a marketing landing.
 // '/share' hosts read-only conversation snapshots that anyone with the link
 // can view without an account.
-const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up', '/sso-callback', '/share'];
+const PUBLIC_ROUTES = ['/sign-in', '/sign-up', '/sso-callback', '/share'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_ROUTES.some(
-    (route) => pathname === route || (route !== '/' && pathname.startsWith(`${route}/`))
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }
 
@@ -21,19 +21,12 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isPublic = isPublicPath(pathname);
-  const isLanding = pathname === '/';
 
   useEffect(() => {
     if (!isLoaded) return;
 
-    // Authed users shouldn't see the landing page — send them to the dashboard.
-    if (isLanding && isSignedIn) {
-      router.replace('/app');
-      return;
-    }
-
-    // Anon users shouldn't see protected routes — send them to sign-in
-    // with the original destination preserved as redirect_url.
+    // Anon users on any protected route → sign-in, preserve target as
+    // redirect_url so post-auth they land back where they were headed.
     if (!isPublic && !isSignedIn) {
       const target =
         pathname && pathname !== '/'
@@ -41,23 +34,15 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           : '/sign-in';
       router.replace(target);
     }
-  }, [isLoaded, isSignedIn, isPublic, isLanding, pathname, router]);
+  }, [isLoaded, isSignedIn, isPublic, pathname, router]);
 
-  // Landing renders immediately for anon; for authed it renders null
-  // during the redirect to /app to avoid a flash of landing content.
-  if (isLanding) {
-    if (!isLoaded) return null;
-    if (isSignedIn) return null;
-    return <>{children}</>;
-  }
-
-  // Other public routes (/sign-in, /sign-up, /sso-callback) always render.
+  // Public routes (/sign-in, /sign-up, /sso-callback, /share) always render.
   if (isPublic) {
     return <>{children}</>;
   }
 
-  // Protected routes: render nothing while loading or during redirect,
-  // otherwise render children for signed-in users.
+  // Protected routes: render nothing while loading or during the redirect
+  // to sign-in, otherwise render children for signed-in users.
   if (!isLoaded || !isSignedIn) {
     return null;
   }

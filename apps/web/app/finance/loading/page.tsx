@@ -135,7 +135,7 @@ export default function FinanceLoadingPage() {
     try {
       const res = await api.getAgentStatus();
       if (!res.agentExists) {
-        router.replace('/app');
+        router.replace('/agents');
         return;
       }
       setConnections(res.connections as ConnectionStatus[]);
@@ -235,7 +235,7 @@ export default function FinanceLoadingPage() {
     <div className={shell.page}>
       <Header />
       <main className={shell.main}>
-        <Link href="/app" className={shell.back}>← Back</Link>
+        <Link href="/agents" className={shell.back}>← Back</Link>
 
         <div className={shell.agentHeader}>
           <div>

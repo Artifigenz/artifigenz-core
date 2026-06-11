@@ -845,7 +845,7 @@ export default function FinanceBriefPage() {
         const status = await api.getAgentStatus();
         if (cancelled) return;
         if (!status.agentExists) {
-          router.replace('/app');
+          router.replace('/agents');
           return;
         }
         // First-time setup: no connection has completed yet → loading page.
@@ -1374,7 +1374,7 @@ export default function FinanceBriefPage() {
         />
       )}
       <main className={shell.main}>
-        <Link href="/app" className={shell.back}>← Back</Link>
+        <Link href="/agents" className={shell.back}>← Back</Link>
 
         <div className={shell.agentHeader}>
           <div>
