@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { db, conversations, messages, users, contextStated } from "@artifigenz/db";
 import { extractMemoriesFromTurn } from "../memories/extractor";
-import { findModel, DEFAULT_MODEL_ID } from "@artifigenz/shared";
+import {
+  findModel,
+  DEFAULT_MODEL_ID,
+  DEFAULT_INTELLIGENCE,
+  resolveModelConfig,
+  type Intelligence,
+} from "@artifigenz/shared";
 import { getClaudeClient } from "../../agents/finance/lib/claude-client";
 import { getOpenAIClient } from "./openai-client";
 import { toolExecutor } from "./tool-executor";
@@ -91,7 +97,21 @@ export class ChatService {
    */
   async sendMessage(params: SendMessageParams): Promise<void> {
     const { userId, message, onEvent } = params;
-    const model = findModel(params.model ?? DEFAULT_MODEL_ID);
+    // The user picks (intelligence, model). The resolver decides what we
+    // actually call: Instant routes to Haiku; High enables extended thinking
+    // on Claude / reasoning_effort on OpenAI. The picked model is just the
+    // "preferred family" for Medium/High.
+    const intelligence: Intelligence =
+      params.intelligence === "instant" ||
+      params.intelligence === "medium" ||
+      params.intelligence === "high"
+        ? params.intelligence
+        : DEFAULT_INTELLIGENCE;
+    const resolved = resolveModelConfig(
+      intelligence,
+      params.model ?? DEFAULT_MODEL_ID,
+    );
+    const model = findModel(resolved.actualModelId);
 
     // ─── 1. Load user ────────────────────────────────────────────
     const [user] = await db
@@ -279,6 +299,17 @@ export class ChatService {
         ...(model.supportsTemperature === false
           ? {}
           : { temperature: TEMPERATURE }),
+        // Anthropic extended thinking — set when the user picked High and
+        // the model supports it. Resolved server-side; client only sends
+        // the intelligence preference, not the budget.
+        ...(resolved.thinkingBudget && model.supportsThinking
+          ? {
+              thinking: {
+                type: "enabled",
+                budget_tokens: resolved.thinkingBudget,
+              },
+            }
+          : {}),
         system: systemPrompt,
         tools,
         messages: claudeMessages,

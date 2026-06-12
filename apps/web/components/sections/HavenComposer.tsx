@@ -11,12 +11,13 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { MODELS, findModel } from '@artifigenz/shared';
+import { DEFAULT_INTELLIGENCE, type Intelligence } from '@artifigenz/shared';
 import type {
   ChatAttachmentDraft,
   PasteSnippetDraft,
 } from './ChatInput';
 import AttachmentBar from './AttachmentBar';
+import ModelPicker from './ModelPicker';
 import styles from './HavenComposer.module.css';
 
 /**
@@ -42,6 +43,8 @@ interface HavenComposerProps {
   onSend: () => void;
   modelId?: string;
   onModelChange?: (id: string) => void;
+  intelligence?: Intelligence;
+  onIntelligenceChange?: (intel: Intelligence) => void;
   /** Optional — fires on file picker if provided. */
   onAddFiles?: (files: File[]) => void;
   /** Existing attachment drafts shown as chips above the input. */
@@ -71,6 +74,8 @@ export default function HavenComposer({
   onSend,
   modelId,
   onModelChange,
+  intelligence,
+  onIntelligenceChange,
   onAddFiles,
   attachments,
   onRemoveAttachment,
@@ -88,7 +93,14 @@ export default function HavenComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [modelOpen, setModelOpen] = useState(false);
+  // Local intelligence fallback for callers that haven't lifted it into state
+  // yet (e.g. older entry points). The page.tsx top-level provides controlled
+  // values; ChatInput-style callers fall back to this local copy.
+  const [localIntelligence, setLocalIntelligence] = useState<Intelligence>(
+    DEFAULT_INTELLIGENCE,
+  );
+  const intel = intelligence ?? localIntelligence;
+  const setIntel = onIntelligenceChange ?? setLocalIntelligence;
   const [multi, setMulti] = useState(false);
   const [focused, setFocused] = useState(false);
   // Mirror of `multi` so the autogrow effect can read the current value
@@ -130,26 +142,12 @@ export default function HavenComposer({
     el.style.height = multi ? `${Math.min(el.scrollHeight, 240)}px` : '36px';
   }, [multi]);
 
-  // Click-outside closes the model menu.
-  useEffect(() => {
-    if (!modelOpen) return;
-    const close = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!wrapRef.current?.contains(target)) setModelOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [modelOpen]);
-
   const canSend =
     (value.trim().length > 0 ||
       (attachments?.some((a) => a.status === 'ready') ?? false) ||
       (pasteSnippets?.length ?? 0) > 0) &&
     !disabled &&
     !streaming;
-  const currentModel = modelId
-    ? findModel(modelId) ?? MODELS[0]
-    : MODELS[0];
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -258,62 +256,14 @@ export default function HavenComposer({
       />
 
       <div className={styles.tools}>
-        {onModelChange && (
+        {onModelChange && modelId && (
           <div className={styles.modelWrap}>
-            <button
-              type="button"
-              className={styles.model}
-              onClick={() => setModelOpen((v) => !v)}
-              aria-haspopup="menu"
-              aria-expanded={modelOpen}
-            >
-              <span>{currentModel.label}</span>
-              <ChevronDownIcon />
-            </button>
-            {modelOpen && (
-              <div className={styles.modelMenu} role="menu">
-                {(() => {
-                  const out: ReactNode[] = [];
-                  let lastFamily: string | null = null;
-                  MODELS.forEach((m) => {
-                    if (m.family !== lastFamily) {
-                      const spaced = lastFamily !== null;
-                      lastFamily = m.family;
-                      out.push(
-                        <div
-                          key={`g-${m.family}`}
-                          className={`${styles.modelGroup} ${spaced ? styles.modelGroupSpaced : ''}`}
-                        >
-                          {m.family}
-                        </div>,
-                      );
-                    }
-                    const on = m.id === currentModel.id;
-                    out.push(
-                      <button
-                        type="button"
-                        key={m.id}
-                        role="menuitem"
-                        className={`${styles.modelItem} ${on ? styles.modelItemOn : ''}`}
-                        onClick={() => {
-                          onModelChange(m.id);
-                          setModelOpen(false);
-                        }}
-                      >
-                        <span className={styles.modelName}>{m.label}</span>
-                        <span className={styles.modelCheck}>
-                          <CheckIcon />
-                        </span>
-                        {m.description && (
-                          <span className={styles.modelSub}>{m.description}</span>
-                        )}
-                      </button>,
-                    );
-                  });
-                  return out;
-                })()}
-              </div>
-            )}
+            <ModelPicker
+              modelId={modelId}
+              intelligence={intel}
+              onModelChange={onModelChange}
+              onIntelligenceChange={setIntel}
+            />
           </div>
         )}
         <button

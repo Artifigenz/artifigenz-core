@@ -156,6 +156,8 @@ app.post("/", async (c) => {
         attachments: Array.isArray(body.attachments) ? body.attachments : [],
         pasteSnippets: snippetsRaw as unknown as Parameters<typeof chatService.sendMessage>[0]["pasteSnippets"],
         model: typeof body.model === "string" ? body.model : null,
+        intelligence:
+          typeof body.intelligence === "string" ? body.intelligence : null,
         message: body.message,
         onEvent: async (event) => {
           await stream.writeSSE({

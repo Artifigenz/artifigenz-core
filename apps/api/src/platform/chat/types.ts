@@ -106,6 +106,9 @@ export interface SendMessageParams {
   pasteSnippets?: PasteSnippet[];
   /** Model id (e.g. "claude-sonnet-4-6", "gpt-4o"). Defaults to DEFAULT_MODEL_ID. */
   model?: string | null;
+  /** Intelligence level the user picked (instant | medium | high). Resolved
+   *  server-side against `model` to produce the actual call config. */
+  intelligence?: string | null;
   /**
    * If set, delete this message and everything newer in the same
    * conversation before appending. Used for edit + regenerate.

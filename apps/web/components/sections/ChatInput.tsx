@@ -2,7 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { AGENTS } from '@artifigenz/shared';
+import {
+  AGENTS,
+  DEFAULT_INTELLIGENCE,
+  type Intelligence,
+} from '@artifigenz/shared';
 import { useActivatedAgents, agentSlug } from '@/hooks/useActivatedAgents';
 import ModelPicker from './ModelPicker';
 import styles from './ChatInput.module.css';
@@ -318,7 +322,10 @@ export default function ChatInput({ agent, value, onChange, onSend, onStop, disa
             </div>
             <div className={styles.toolbarRight}>
               {modelId && onModelChange && (
-                <ModelPicker value={modelId} onChange={onModelChange} />
+                <ChatInputModelPickerWrapper
+                  modelId={modelId}
+                  onModelChange={onModelChange}
+                />
               )}
             {streaming ? (
               <button
@@ -595,5 +602,30 @@ function AttachmentChip({
         ×
       </button>
     </div>
+  );
+}
+
+/**
+ * Wrapper that gives ChatInput a self-contained intelligence state without
+ * threading it through every call site (AgentDetail etc.). The main composer
+ * (HavenComposer) controls intelligence externally so it persists; this
+ * wrapper is for agent-scoped chats where intelligence resets each session.
+ */
+function ChatInputModelPickerWrapper({
+  modelId,
+  onModelChange,
+}: {
+  modelId: string;
+  onModelChange: (id: string) => void;
+}) {
+  const [intelligence, setIntelligence] =
+    useState<Intelligence>(DEFAULT_INTELLIGENCE);
+  return (
+    <ModelPicker
+      modelId={modelId}
+      intelligence={intelligence}
+      onModelChange={onModelChange}
+      onIntelligenceChange={setIntelligence}
+    />
   );
 }

@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { DEFAULT_MODEL_ID } from '@artifigenz/shared';
+import {
+  DEFAULT_MODEL_ID,
+  DEFAULT_INTELLIGENCE,
+  type Intelligence,
+} from '@artifigenz/shared';
 import { HavenGreeting, HavenSuggestions } from '@/components/sections/HavenIntro';
 import HavenAura from '@/components/effects/HavenAura';
 import HavenTopBar from '@/components/sections/HavenTopBar';
@@ -45,11 +49,21 @@ export default function AppHome() {
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [pasteSnippets, setPasteSnippets] = useState<PasteSnippetDraft[]>([]);
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
+  const [intelligence, setIntelligence] =
+    useState<Intelligence>(DEFAULT_INTELLIGENCE);
 
-  // Restore last selected model from localStorage on mount.
+  // Restore last selected model + intelligence from localStorage on mount.
   useEffect(() => {
-    const stored = localStorage.getItem('artifigenz.chat.model');
-    if (stored) setModelId(stored);
+    const storedModel = localStorage.getItem('artifigenz.chat.model');
+    if (storedModel) setModelId(storedModel);
+    const storedIntel = localStorage.getItem('artifigenz.chat.intelligence');
+    if (
+      storedIntel === 'instant' ||
+      storedIntel === 'medium' ||
+      storedIntel === 'high'
+    ) {
+      setIntelligence(storedIntel);
+    }
   }, []);
 
   // ?settings=1 (e.g. via the /settings page redirect) auto-opens the modal.
@@ -78,6 +92,15 @@ export default function AppHome() {
       localStorage.setItem('artifigenz.chat.model', id);
     } catch {
       // localStorage can throw in some private-browsing modes; ignore.
+    }
+  }, []);
+
+  const changeIntelligence = useCallback((intel: Intelligence) => {
+    setIntelligence(intel);
+    try {
+      localStorage.setItem('artifigenz.chat.intelligence', intel);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -351,6 +374,7 @@ export default function AppHome() {
           body: JSON.stringify({
             message: text,
             model: opts?.model ?? modelId,
+            intelligence,
             conversationId: conversationId || undefined,
             truncateFromMessageId: opts?.truncateFromMessageId,
             regenerate: isRegenerate,
@@ -554,7 +578,7 @@ export default function AppHome() {
         setToolStatus(null);
       }
     },
-    [conversationId, getToken, startTicker, modelId],
+    [conversationId, getToken, startTicker, modelId, intelligence],
   );
 
   const sendMessage = useCallback(async () => {
@@ -720,6 +744,8 @@ export default function AppHome() {
                 onSend={sendMessage}
                 modelId={modelId}
                 onModelChange={changeModel}
+                intelligence={intelligence}
+                onIntelligenceChange={changeIntelligence}
                 onAddFiles={addAttachmentFiles}
                 attachments={attachments}
                 onRemoveAttachment={removeAttachment}
@@ -754,6 +780,8 @@ export default function AppHome() {
                 onSend={sendMessage}
                 modelId={modelId}
                 onModelChange={changeModel}
+                intelligence={intelligence}
+                onIntelligenceChange={changeIntelligence}
                 onAddFiles={addAttachmentFiles}
                 attachments={attachments}
                 onRemoveAttachment={removeAttachment}

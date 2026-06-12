@@ -6,6 +6,8 @@ import { useClerk } from '@clerk/nextjs';
 import { MODELS, DEFAULT_MODEL_ID, findModel } from '@artifigenz/shared';
 import { useTheme } from '@/components/ThemeProvider';
 import { useDevtools } from '@/lib/devtools-context';
+import type { Plan } from '@artifigenz/shared';
+import { readDevPlanOverride, setDevPlanOverride } from '@/hooks/usePlan';
 import { useApiClient } from '@/hooks/useApiClient';
 import type {
   ApiError,
@@ -1266,6 +1268,21 @@ function PrivacyPane() {
 
 function DeveloperPane() {
   const { agentMode, setAgentMode, hydrated } = useDevtools();
+  const [planOverride, setPlanOverride] = useState<Plan | null>(null);
+
+  useEffect(() => {
+    setPlanOverride(readDevPlanOverride());
+  }, []);
+
+  const pickPlan = (plan: Plan) => {
+    setPlanOverride(plan);
+    setDevPlanOverride(plan);
+  };
+  const clearPlan = () => {
+    setPlanOverride(null);
+    setDevPlanOverride(null);
+  };
+
   return (
     <>
       <PaneHeader
@@ -1293,8 +1310,83 @@ function DeveloperPane() {
             />
           </div>
         </div>
+
+        <div className={styles.row}>
+          <div>
+            <div className={styles.label}>Simulate plan</div>
+            <div className={styles.sub}>
+              Pretend the user is on this plan in the model picker. Billing is
+              unaffected. Default (Clear) treats everyone as Basic.
+            </div>
+          </div>
+          <div
+            className={styles.right}
+            style={{ display: 'flex', gap: 8, alignItems: 'center' }}
+          >
+            <PlanChip
+              label="Basic"
+              active={planOverride === 'basic'}
+              onClick={() => pickPlan('basic')}
+            />
+            <PlanChip
+              label="Pro"
+              active={planOverride === 'pro'}
+              onClick={() => pickPlan('pro')}
+            />
+            <button
+              type="button"
+              onClick={clearPlan}
+              disabled={planOverride === null}
+              style={{
+                fontSize: '0.78rem',
+                padding: '6px 12px',
+                background: 'transparent',
+                border: '1px solid var(--border-light)',
+                borderRadius: 999,
+                color: 'var(--text-mid)',
+                cursor: planOverride === null ? 'default' : 'pointer',
+                opacity: planOverride === null ? 0.5 : 1,
+                fontFamily: 'inherit',
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
       </div>
     </>
+  );
+}
+
+function PlanChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: '0.78rem',
+        padding: '6px 14px',
+        borderRadius: 999,
+        border: active
+          ? '1px solid var(--text)'
+          : '1px solid var(--border-light)',
+        background: active ? 'var(--text)' : 'transparent',
+        color: active ? 'var(--bg)' : 'var(--text)',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        fontWeight: 500,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
