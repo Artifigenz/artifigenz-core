@@ -24,6 +24,13 @@ export interface ChatModel {
   supportsThinking?: boolean;
 }
 
+// Tier rule of thumb (mirrors ChatGPT Plus vs Pro):
+//   Basic (≈ $20 tier) = every flagship + every mid-tier model from each
+//   provider. The picker shouldn't feel pay-walled at Basic — users get
+//   the latest from Anthropic and OpenAI.
+//   Pro (≈ $200 tier) = only the heaviest-compute reasoning model and any
+//   "max-mode" variants. One Pro-only model is enough today; we can add
+//   usage caps + premium reasoning variants here as we go.
 export const MODELS: ChatModel[] = [
   {
     id: "claude-sonnet-4-6",
@@ -36,6 +43,17 @@ export const MODELS: ChatModel[] = [
     supportsThinking: true,
   },
   {
+    id: "claude-opus-4-7",
+    label: "Opus 4.7",
+    family: "Claude",
+    provider: "anthropic",
+    tier: "basic",
+    description: "Most capable Claude. Slower, deeper.",
+    vision: true,
+    supportsTemperature: false,
+    supportsThinking: true,
+  },
+  {
     id: "claude-haiku-4-5",
     label: "Haiku 4.5",
     family: "Claude",
@@ -45,8 +63,17 @@ export const MODELS: ChatModel[] = [
     vision: true,
   },
   {
+    id: "gpt-5",
+    label: "GPT-5.5",
+    family: "OpenAI",
+    provider: "openai",
+    tier: "basic",
+    description: "OpenAI's current flagship.",
+    vision: true,
+  },
+  {
     id: "gpt-5-mini",
-    label: "GPT-5 mini",
+    label: "GPT-5.5 mini",
     family: "OpenAI",
     provider: "openai",
     tier: "basic",
@@ -54,32 +81,22 @@ export const MODELS: ChatModel[] = [
     vision: true,
   },
   {
-    id: "claude-opus-4-7",
-    label: "Opus 4.7",
-    family: "Claude",
-    provider: "anthropic",
-    tier: "pro",
-    description: "Most capable Claude. Slower, deeper.",
-    vision: true,
-    supportsTemperature: false,
-    supportsThinking: true,
-  },
-  {
-    id: "gpt-5",
-    label: "GPT-5",
-    family: "OpenAI",
-    provider: "openai",
-    tier: "pro",
-    description: "OpenAI's current flagship.",
-    vision: true,
-  },
-  {
     id: "o4-mini",
     label: "o4-mini",
     family: "OpenAI",
     provider: "openai",
+    tier: "basic",
+    description: "Reasoning model — cheaper, capable.",
+    vision: true,
+    supportsTemperature: false,
+  },
+  {
+    id: "o3",
+    label: "o3",
+    family: "OpenAI",
+    provider: "openai",
     tier: "pro",
-    description: "Dedicated reasoning model.",
+    description: "Deepest reasoning. Slowest, most expensive.",
     vision: true,
     supportsTemperature: false,
   },
@@ -99,14 +116,15 @@ export function modelsAvailableForPlan(plan: Plan): ChatModel[] {
 
 /** Intelligence levels the user can pick given their plan. */
 export function intelligenceAvailableForPlan(
-  plan: Plan,
+  _plan: Plan,
 ): Record<Intelligence, boolean> {
+  // Mirror ChatGPT Plus / Claude Pro: extended-thinking ("High") is part of
+  // the basic paid experience, not the premium tier. The real Pro upgrade
+  // gets a premium model + (future) higher usage caps, not a thinking knob.
   return {
     instant: true,
     medium: true,
-    // High = extended thinking. Gated to Pro to make the upgrade meaningful;
-    // when we add real billing, this is the most visible Pro perk.
-    high: plan === "pro",
+    high: true,
   };
 }
 
