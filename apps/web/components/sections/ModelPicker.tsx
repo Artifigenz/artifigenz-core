@@ -97,6 +97,7 @@ export default function ModelPicker({
         <div
           className={`${styles.menu} ${variant === 'menu' ? styles.menuAlignLeft : ''}`}
         >
+          <div className={styles.menuBody}>
           {/* ── Intelligence ───────────────────────────────────── */}
           <div className={styles.group}>
             <div className={styles.groupLabel}>Intelligence</div>
@@ -161,7 +162,8 @@ export default function ModelPicker({
             );
           })()}
 
-          {/* ── Upgrade CTA (Basic only) ───────────────────────── */}
+          </div>
+          {/* ── Upgrade CTA (Basic only, pinned outside scroll) ── */}
           {plan !== 'pro' && (
             <a
               href="/settings#plan"

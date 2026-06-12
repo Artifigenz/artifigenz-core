@@ -38,6 +38,12 @@
   bottom: calc(100% + 8px);
   right: 0;
   width: 260px;
+  /* Cap the menu so it fits within the viewport above the input even on
+     small screens. Body scrolls; the upgrade CTA stays pinned via the
+     sticky footer below. */
+  max-height: min(360px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
   background: var(--menu-bg, var(--bg));
   border: 1px solid var(--menu-border, var(--border-light));
   border-radius: 12px;
@@ -46,6 +52,23 @@
   z-index: 60;
   backdrop-filter: blur(var(--blur, 0px));
   -webkit-backdrop-filter: blur(var(--blur, 0px));
+  overflow: hidden;
+}
+
+/* The scrollable region — every section except the pinned Upgrade CTA. */
+.menuBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
+.menuBody::-webkit-scrollbar {
+  width: 6px;
+}
+.menuBody::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 3px;
 }
 
 .menuAlignLeft {
@@ -60,8 +83,8 @@
 }
 
 .groupLabel {
-  padding: 6px 10px 4px;
-  font-size: 0.68rem;
+  padding: 4px 10px 2px;
+  font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -74,7 +97,7 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 6px 10px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -143,6 +166,9 @@
   font-weight: 500;
   text-decoration: none;
   transition: filter 0.15s ease;
+  /* Sticks at the bottom of the menu so the scrollable section above
+     never hides it. */
+  flex-shrink: 0;
 }
 .upgrade:hover {
   filter: brightness(1.1);
