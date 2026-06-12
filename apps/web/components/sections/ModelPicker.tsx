@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   MODELS,
+  findModel,
   type ChatModel,
   type Intelligence,
-  type Plan,
   intelligenceAvailableForPlan,
 } from '@artifigenz/shared';
 import { usePlan } from '@/hooks/usePlan';
@@ -26,12 +26,6 @@ const INTELLIGENCE_LABEL: Record<Intelligence, string> = {
   high: 'High',
 };
 
-const INTELLIGENCE_DESC: Record<Intelligence, string> = {
-  instant: 'Fastest answer. Routes to Haiku.',
-  medium: 'Balanced default.',
-  high: 'Extended thinking. Slower, deeper.',
-};
-
 export default function ModelPicker({
   modelId,
   intelligence,
@@ -43,6 +37,7 @@ export default function ModelPicker({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const intelAvailable = intelligenceAvailableForPlan(plan);
+  const currentModel = findModel(modelId);
 
   useEffect(() => {
     if (!open) return;
@@ -58,14 +53,17 @@ export default function ModelPicker({
   const pickIntelligence = (intel: Intelligence) => {
     if (!intelAvailable[intel]) return;
     onIntelligenceChange(intel);
+  };
+
+  const pickModel = (m: ChatModel) => {
+    const locked = m.tier === 'pro' && plan !== 'pro';
+    if (locked) return;
+    onModelChange(m.id);
     setOpen(false);
   };
 
-  const pickModel = (id: string, locked: boolean) => {
-    if (locked) return;
-    onModelChange(id);
-    setOpen(false);
-  };
+  // Group models by family/provider for clean Claude / OpenAI sections.
+  const groups = groupByFamily(MODELS);
 
   return (
     <div className={styles.wrap} ref={wrapRef}>
@@ -73,11 +71,9 @@ export default function ModelPicker({
         type="button"
         className={`${styles.trigger} ${variant === 'menu' ? styles.triggerMenu : ''}`}
         onClick={() => setOpen((v) => !v)}
-        title={`Intelligence: ${INTELLIGENCE_LABEL[intelligence]}`}
+        title={`${currentModel.family} · ${currentModel.label} · ${INTELLIGENCE_LABEL[intelligence]}`}
       >
-        <span className={styles.triggerLabel}>
-          {INTELLIGENCE_LABEL[intelligence]}
-        </span>
+        <span className={styles.triggerLabel}>{currentModel.label}</span>
         <svg
           width="12"
           height="12"
@@ -98,116 +94,75 @@ export default function ModelPicker({
           className={`${styles.menu} ${variant === 'menu' ? styles.menuAlignLeft : ''}`}
         >
           <div className={styles.menuBody}>
-          {/* ── Intelligence ───────────────────────────────────── */}
-          <div className={styles.group}>
-            <div className={styles.groupLabel}>Intelligence</div>
-            {(['instant', 'medium', 'high'] as Intelligence[]).map((intel) => {
-              const locked = !intelAvailable[intel];
-              const active = intelligence === intel && !locked;
-              return (
-                <button
-                  key={intel}
-                  type="button"
-                  className={`${styles.item} ${active ? styles.itemActive : ''} ${locked ? styles.itemLocked : ''}`}
-                  onClick={() => pickIntelligence(intel)}
-                >
-                  <div className={styles.itemBody}>
-                    <div className={styles.itemLabel}>
-                      {INTELLIGENCE_LABEL[intel]}
-                    </div>
-                    <div className={styles.itemDesc}>
-                      {INTELLIGENCE_DESC[intel]}
-                    </div>
-                  </div>
-                  {active && <CheckIcon />}
-                  {locked && <LockBadge />}
-                </button>
-              );
-            })}
-          </div>
+            {/* ── Intelligence — compact segmented row ───────────── */}
+            <div className={styles.intelRow}>
+              {(['instant', 'medium', 'high'] as Intelligence[]).map((intel) => {
+                const locked = !intelAvailable[intel];
+                const active = intelligence === intel;
+                return (
+                  <button
+                    key={intel}
+                    type="button"
+                    className={`${styles.intelChip} ${active ? styles.intelChipOn : ''} ${locked ? styles.intelChipLocked : ''}`}
+                    onClick={() => pickIntelligence(intel)}
+                    disabled={locked}
+                    title={locked ? 'Available on Pro' : INTELLIGENCE_LABEL[intel]}
+                  >
+                    <span>{INTELLIGENCE_LABEL[intel]}</span>
+                    {locked && <LockIcon />}
+                  </button>
+                );
+              })}
+            </div>
 
-          {/* ── Model (Basic-tier available) ───────────────────── */}
-          <div className={styles.group}>
-            <div className={styles.groupLabel}>Model</div>
-            {MODELS.filter((m) => m.tier === 'basic').map((m) => (
-              <ModelRow
-                key={m.id}
-                model={m}
-                active={modelId === m.id}
-                locked={false}
-                onPick={pickModel}
-              />
+            {/* ── Models grouped by provider ─────────────────────── */}
+            {groups.map(([family, models]) => (
+              <div key={family} className={styles.group}>
+                <div className={styles.groupLabel}>{family}</div>
+                {models.map((m) => {
+                  const locked = m.tier === 'pro' && plan !== 'pro';
+                  const active = m.id === modelId;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`${styles.item} ${active ? styles.itemActive : ''} ${locked ? styles.itemLocked : ''}`}
+                      onClick={() => pickModel(m)}
+                      disabled={locked}
+                      title={
+                        locked
+                          ? 'Available on Pro'
+                          : `${m.family} · ${m.label}`
+                      }
+                    >
+                      <div className={styles.itemBody}>
+                        <div className={styles.itemLabel}>{m.label}</div>
+                        {m.description && (
+                          <div className={styles.itemDesc}>{m.description}</div>
+                        )}
+                      </div>
+                      {active && !locked && <CheckIcon />}
+                      {locked && <LockIcon />}
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </div>
-
-          {/* ── Pro models (locked on Basic) ───────────────────── */}
-          {(() => {
-            const proModels = MODELS.filter((m) => m.tier === 'pro');
-            if (proModels.length === 0) return null;
-            return (
-              <div className={styles.group}>
-                <div className={styles.groupLabel}>
-                  {plan === 'pro' ? 'Pro models' : 'Available on Pro'}
-                </div>
-                {proModels.map((m) => (
-                  <ModelRow
-                    key={m.id}
-                    model={m}
-                    active={modelId === m.id}
-                    locked={plan !== 'pro'}
-                    onPick={pickModel}
-                  />
-                ))}
-              </div>
-            );
-          })()}
-
-          </div>
-          {/* ── Upgrade CTA (Basic only, pinned outside scroll) ── */}
-          {plan !== 'pro' && (
-            <a
-              href="/settings#plan"
-              className={styles.upgrade}
-              onClick={() => setOpen(false)}
-            >
-              <span>Upgrade to Pro</span>
-              <ArrowRightIcon />
-            </a>
-          )}
         </div>
       )}
     </div>
   );
 }
 
-function ModelRow({
-  model,
-  active,
-  locked,
-  onPick,
-}: {
-  model: ChatModel;
-  active: boolean;
-  locked: boolean;
-  onPick: (id: string, locked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`${styles.item} ${active ? styles.itemActive : ''} ${locked ? styles.itemLocked : ''}`}
-      onClick={() => onPick(model.id, locked)}
-      title={locked ? 'Available on Pro' : `${model.family} · ${model.label}`}
-    >
-      <div className={styles.itemBody}>
-        <div className={styles.itemLabel}>{model.label}</div>
-        {model.description && (
-          <div className={styles.itemDesc}>{model.description}</div>
-        )}
-      </div>
-      {active && <CheckIcon />}
-      {locked && <LockBadge />}
-    </button>
-  );
+function groupByFamily(models: ChatModel[]): Array<[string, ChatModel[]]> {
+  const map = new Map<string, ChatModel[]>();
+  for (const m of models) {
+    const arr = map.get(m.family) ?? [];
+    arr.push(m);
+    map.set(m.family, arr);
+  }
+  return Array.from(map.entries());
 }
 
 function CheckIcon() {
@@ -228,32 +183,11 @@ function CheckIcon() {
   );
 }
 
-function LockBadge() {
-  return (
-    <span className={styles.lockBadge} aria-label="Pro only">
-      <svg
-        width="11"
-        height="11"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </svg>
-    </span>
-  );
-}
-
-function ArrowRightIcon() {
+function LockIcon() {
   return (
     <svg
-      width="12"
-      height="12"
+      width="11"
+      height="11"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -262,10 +196,8 @@ function ArrowRightIcon() {
       strokeLinejoin="round"
       aria-hidden
     >
-      <line x1="5" y1="12" x2="19" y2="12" />
-      <polyline points="12 5 19 12 12 19" />
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   );
 }
-
-export type { Plan };

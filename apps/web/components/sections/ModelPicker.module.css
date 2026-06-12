@@ -38,9 +38,6 @@
   bottom: calc(100% + 8px);
   right: 0;
   width: 260px;
-  /* Cap the menu so it fits within the viewport above the input even on
-     small screens. Body scrolls; the upgrade CTA stays pinned via the
-     sticky footer below. */
   max-height: min(360px, calc(100vh - 120px));
   display: flex;
   flex-direction: column;
@@ -55,7 +52,11 @@
   overflow: hidden;
 }
 
-/* The scrollable region — every section except the pinned Upgrade CTA. */
+.menuAlignLeft {
+  right: auto;
+  left: 0;
+}
+
 .menuBody {
   flex: 1;
   min-height: 0;
@@ -71,11 +72,50 @@
   border-radius: 3px;
 }
 
-.menuAlignLeft {
-  right: auto;
-  left: 0;
+/* ── Intelligence segmented row ─────────────────────────────────── */
+.intelRow {
+  display: flex;
+  gap: 4px;
+  padding: 6px 6px 4px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 2px;
 }
 
+.intelChip {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-mid);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.intelChip:hover:not(:disabled) {
+  background: var(--card-hover);
+  color: var(--text);
+}
+.intelChipOn {
+  background: var(--text);
+  color: var(--bg);
+}
+.intelChipOn:hover {
+  background: var(--text);
+  color: var(--bg);
+}
+.intelChipLocked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Model groups ──────────────────────────────────────────────── */
 .group + .group {
   border-top: 1px solid var(--border-light);
   margin-top: 4px;
@@ -107,7 +147,7 @@
   transition: background 0.15s ease;
 }
 
-.item:hover {
+.item:hover:not(:disabled) {
   background: var(--card-hover);
 }
 
@@ -135,47 +175,11 @@
   text-overflow: ellipsis;
 }
 
-/* Locked rows are clickable for analytics later but visually muted; hover
-   shows the title tooltip ("Available on Pro") rather than committing a
-   selection. */
+/* Locked rows: dimmed, native title-attribute tooltip on hover. */
 .itemLocked {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .itemLocked:hover {
   background: transparent;
-}
-
-.lockBadge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
-}
-
-.upgrade {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 4px;
-  padding: 10px 12px;
-  background: var(--text);
-  color: var(--bg);
-  border-radius: 8px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  text-decoration: none;
-  transition: filter 0.15s ease;
-  /* Sticks at the bottom of the menu so the scrollable section above
-     never hides it. */
-  flex-shrink: 0;
-}
-.upgrade:hover {
-  filter: brightness(1.1);
-}
-.upgrade svg {
-  transition: transform 0.15s ease;
-}
-.upgrade:hover svg {
-  transform: translateX(2px);
 }
