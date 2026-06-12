@@ -16,6 +16,7 @@ import type {
   ChatAttachmentDraft,
   PasteSnippetDraft,
 } from './ChatInput';
+import AttachmentBar from './AttachmentBar';
 import styles from './HavenComposer.module.css';
 
 /**
@@ -220,20 +221,12 @@ export default function HavenComposer({
 
       {hasChips && (
         <div className={styles.chipsRow}>
-          {attachments?.map((a) => (
-            <AttachmentChip
-              key={`a-${a.fileId}`}
-              attachment={a}
-              onRemove={onRemoveAttachment}
-            />
-          ))}
-          {pasteSnippets?.map((s) => (
-            <SnippetChip
-              key={`s-${s.id}`}
-              snippet={s}
-              onRemove={onRemovePasteSnippet}
-            />
-          ))}
+          <AttachmentBar
+            attachments={attachments ?? []}
+            snippets={pasteSnippets ?? []}
+            onRemoveAttachment={onRemoveAttachment}
+            onRemoveSnippet={onRemovePasteSnippet}
+          />
         </div>
       )}
 
@@ -359,92 +352,6 @@ export default function HavenComposer({
   );
 }
 
-// ── Chip subcomponents ────────────────────────────────────────────────
-
-function AttachmentChip({
-  attachment: a,
-  onRemove,
-}: {
-  attachment: ChatAttachmentDraft;
-  onRemove?: (fileId: string) => void;
-}) {
-  return (
-    <div
-      className={`${styles.chip} ${
-        a.status === 'error' ? styles.chipError : ''
-      }`}
-    >
-      {a.previewUrl && a.mimeType.startsWith('image/') ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={a.previewUrl}
-          alt={a.filename}
-          className={styles.chipThumb}
-        />
-      ) : (
-        <span className={styles.chipIcon} aria-hidden>
-          <FileIcon />
-        </span>
-      )}
-      <span className={styles.chipName} title={a.filename}>
-        {a.filename}
-      </span>
-      {a.status === 'uploading' && (
-        <span className={styles.chipStatus}>uploading…</span>
-      )}
-      {a.status === 'error' && (
-        <span className={styles.chipStatusErr}>{a.error ?? 'failed'}</span>
-      )}
-      {onRemove && (
-        <button
-          type="button"
-          className={styles.chipRemove}
-          onClick={() => onRemove(a.fileId)}
-          aria-label={`Remove ${a.filename}`}
-        >
-          ×
-        </button>
-      )}
-    </div>
-  );
-}
-
-function SnippetChip({
-  snippet: s,
-  onRemove,
-}: {
-  snippet: PasteSnippetDraft;
-  onRemove?: (id: string) => void;
-}) {
-  return (
-    <div className={styles.chip}>
-      <span className={styles.chipIcon} aria-hidden>
-        <FileIcon />
-      </span>
-      <span
-        className={styles.chipName}
-        title={s.firstLine ?? `${s.content.length} chars`}
-      >
-        Pasted text · {formatChars(s.content.length)}
-      </span>
-      {onRemove && (
-        <button
-          type="button"
-          className={styles.chipRemove}
-          onClick={() => onRemove(s.id)}
-          aria-label="Remove pasted text"
-        >
-          ×
-        </button>
-      )}
-    </div>
-  );
-}
-
-function formatChars(n: number): string {
-  if (n < 1000) return `${n} chars`;
-  return `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k chars`;
-}
 
 function PlusIcon() {
   return (
@@ -479,24 +386,6 @@ function StopIcon() {
   );
 }
 
-function FileIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
-}
 
 function MicIcon() {
   return (

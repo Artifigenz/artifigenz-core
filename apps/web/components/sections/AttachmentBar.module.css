@@ -1,0 +1,195 @@
+/* AttachmentBar — chip row with measured overflow and a +N flyout.
+   Ported verbatim from the original ChatInput so the behaviour
+   (insertion-order sort, ResizeObserver fit, overflow chip + flyout)
+   stays identical on the Haven composer. */
+
+.attachmentBar {
+  position: relative;
+  padding-bottom: 4px;
+}
+
+.attachmentBarFlex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.attachmentsRow {
+  display: flex;
+  /* Size to the visible chips' natural width so the +N pill sits flush
+     next to the last chip instead of being pushed to the right edge. */
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Off-screen measurement row: lets us compute each chip's natural width
+   without flicker. Position absolute so it doesn't add height. */
+.attachmentsMeasure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  gap: 8px;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}
+
+/* +N overflow chip */
+.overflowWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.overflowChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  background: var(--card-hover);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+:global([data-theme='terminal']) .overflowChip {
+  border-radius: 0;
+}
+
+.overflowChip:hover {
+  background: var(--bg);
+  border-color: var(--text);
+}
+
+.overflowFlyout {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  min-width: 280px;
+  max-width: 360px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 12px;
+  box-shadow: var(--menu-shadow);
+  animation: overflowPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Inside the flyout each chip is full-width with the × pushed right. */
+.overflowFlyout .attachmentChip {
+  max-width: 100%;
+  width: 100%;
+  flex-shrink: 1;
+}
+
+.overflowFlyout .attachmentChip .attachmentName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.overflowFlyout .attachmentChip .attachmentRemove {
+  margin-left: auto;
+}
+
+:global([data-theme='terminal']) .overflowFlyout {
+  border-radius: 0;
+}
+
+@keyframes overflowPop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.attachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--card-hover);
+  font-size: 0.78rem;
+  color: var(--text);
+  max-width: 260px;
+  flex-shrink: 0;
+}
+
+.attachmentThumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.attachmentIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.attachmentName {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+}
+
+.attachmentStatus {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.attachmentStatusError {
+  color: #d9534f;
+  font-size: 0.72rem;
+}
+
+.attachmentRemove {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0 6px;
+  transition: color 0.15s ease;
+  font-family: inherit;
+}
+
+.attachmentRemove:hover {
+  color: var(--text);
+}
