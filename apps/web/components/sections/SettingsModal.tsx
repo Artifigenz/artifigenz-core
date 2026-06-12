@@ -440,24 +440,34 @@ function MemoryPane() {
   const api = useApiClient();
   const [memories, setMemories] = useState<MemoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | MemorySource>('all');
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    // Reset before re-fetching when the user hits Retry; these run before
+    // the network resolves, so callers see Loading… instead of stale data.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError(null);
     api
       .listMemories()
       .then((data) => {
         if (!cancelled) setMemories(data.memories);
       })
-      .catch((err: ApiError) => console.error(err.message))
+      .catch((err: ApiError) => {
+        if (!cancelled) setError(err.message ?? 'Failed to load memories');
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, reloadKey]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: memories.length };
@@ -599,6 +609,19 @@ function MemoryPane() {
       <div className={styles.card}>
         {loading ? (
           <div className={styles.empty}>Loading…</div>
+        ) : error ? (
+          <div className={styles.empty}>
+            <div style={{ color: '#c0392b', marginBottom: 10 }}>
+              Couldn&apos;t load memories: {error}
+            </div>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => setReloadKey((k) => k + 1)}
+            >
+              Retry
+            </button>
+          </div>
         ) : visible.length === 0 ? (
           <div className={styles.empty}>
             {filter === 'all'
@@ -929,11 +952,13 @@ function SharedPane() {
 
       <div className={styles.card}>
         {error && (
-          <div className={styles.row}>
-            <div>
-              <div className={styles.label}>Error</div>
-              <div className={styles.sub}>{error}</div>
+          <div className={styles.empty}>
+            <div style={{ color: '#c0392b', marginBottom: 10 }}>
+              Couldn&apos;t load shared chats: {error}
             </div>
+            <button type="button" className={styles.btn} onClick={load}>
+              Retry
+            </button>
           </div>
         )}
 
