@@ -48,6 +48,7 @@
 .composer.multi {
   border-radius: 28px;
   grid-template-areas:
+    'chips chips chips'
     'input input input'
     'plus  .     tools';
   padding: 14px 14px 10px;
@@ -248,6 +249,92 @@
 .send:disabled {
   opacity: 0.25;
   cursor: default;
+}
+
+/* ── Attachment / paste-snippet chips ─────────────────────────── */
+
+.chipsRow {
+  grid-area: chips;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-light);
+  background: var(--card-bg);
+  color: var(--text-mid);
+  font-size: 12px;
+  max-width: 240px;
+}
+
+.chipError {
+  border-color: rgba(192, 57, 43, 0.4);
+  color: #c0392b;
+}
+
+.chipThumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.chipIcon {
+  display: flex;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.chipName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.chipStatus {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.chipStatusErr {
+  font-size: 10.5px;
+  color: #c0392b;
+  flex-shrink: 0;
+}
+
+.chipRemove {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.chipRemove:hover {
+  background: var(--card-hover);
+  color: var(--text);
 }
 
 @media (max-width: 800px) {

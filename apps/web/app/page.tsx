@@ -721,6 +721,13 @@ export default function AppHome() {
                 modelId={modelId}
                 onModelChange={changeModel}
                 onAddFiles={addAttachmentFiles}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
+                pasteSnippets={pasteSnippets}
+                onAddPasteSnippet={addPasteSnippet}
+                onRemovePasteSnippet={removePasteSnippet}
+                streaming={streaming}
+                onStop={stopGenerating}
                 homeStage
               />
             </div>
@@ -748,7 +755,13 @@ export default function AppHome() {
                 modelId={modelId}
                 onModelChange={changeModel}
                 onAddFiles={addAttachmentFiles}
-                disabled={streaming}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
+                pasteSnippets={pasteSnippets}
+                onAddPasteSnippet={addPasteSnippet}
+                onRemovePasteSnippet={removePasteSnippet}
+                streaming={streaming}
+                onStop={stopGenerating}
               />
             </div>
           </>

@@ -6,10 +6,16 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { MODELS, findModel } from '@artifigenz/shared';
+import type {
+  ChatAttachmentDraft,
+  PasteSnippetDraft,
+} from './ChatInput';
 import styles from './HavenComposer.module.css';
 
 /**
@@ -20,7 +26,14 @@ import styles from './HavenComposer.module.css';
  * Layout single-line  →  [+] [        textarea        ] [model] [mic] [send]
  * Layout multi-line   →  [           textarea           ]
  *                        [+]                      [model] [mic] [send]
+ *
+ * Attachment + paste-snippet chips render in a row above the input grid
+ * area when present; the composer auto-expands into multi-line layout so
+ * the chips have room to sit.
  */
+
+/** Pastes larger than this become "snippet" chips instead of inline text. */
+export const PASTE_SNIPPET_THRESHOLD = 1500;
 
 interface HavenComposerProps {
   value: string;
@@ -30,7 +43,17 @@ interface HavenComposerProps {
   onModelChange?: (id: string) => void;
   /** Optional — fires on file picker if provided. */
   onAddFiles?: (files: File[]) => void;
+  /** Existing attachment drafts shown as chips above the input. */
+  attachments?: ChatAttachmentDraft[];
+  onRemoveAttachment?: (fileId: string) => void;
+  /** Existing paste-snippet drafts shown as chips above the input. */
+  pasteSnippets?: PasteSnippetDraft[];
+  onAddPasteSnippet?: (text: string) => void;
+  onRemovePasteSnippet?: (id: string) => void;
   disabled?: boolean;
+  /** When true the send button morphs to a stop control and calls onStop. */
+  streaming?: boolean;
+  onStop?: () => void;
   /** Override default placeholder. */
   placeholder?: string;
   /**
@@ -48,10 +71,19 @@ export default function HavenComposer({
   modelId,
   onModelChange,
   onAddFiles,
+  attachments,
+  onRemoveAttachment,
+  pasteSnippets,
+  onAddPasteSnippet,
+  onRemovePasteSnippet,
   disabled,
+  streaming = false,
+  onStop,
   placeholder = 'Ask anything or give a task...',
   homeStage = false,
 }: HavenComposerProps) {
+  const hasChips =
+    (attachments?.length ?? 0) > 0 || (pasteSnippets?.length ?? 0) > 0;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,8 +97,8 @@ export default function HavenComposer({
   const multiRef = useRef(false);
 
   // Autogrow + single↔multi swap with hysteresis.
-  //   - Enter multi on a real newline OR scrollHeight > 44.
-  //   - Stay multi until the field is empty — never flip mid-typing.
+  //   - Enter multi on a real newline, scrollHeight > 44, OR any chips present.
+  //   - Stay multi until the field is empty AND no chips remain.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -74,19 +106,17 @@ export default function HavenComposer({
     const sc = el.scrollHeight;
     let next = multiRef.current;
     if (!next) {
-      if (value.indexOf('\n') !== -1 || sc > 44) next = true;
-    } else if (value.length === 0) {
+      if (value.indexOf('\n') !== -1 || sc > 44 || hasChips) next = true;
+    } else if (value.length === 0 && !hasChips) {
       next = false;
     }
     if (next !== multiRef.current) {
       multiRef.current = next;
-      // The layout class needs to track the measured state; this fires at
-      // most once per multi-line transition, not on every keystroke.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMulti(next);
     }
     el.style.height = next ? `${Math.min(el.scrollHeight, 240)}px` : '36px';
-  }, [value]);
+  }, [value, hasChips]);
 
   // After the multi class commits, the input width changes (full row vs
   // shared row), so the height we set in the value effect above reflects
@@ -110,7 +140,12 @@ export default function HavenComposer({
     return () => document.removeEventListener('mousedown', close);
   }, [modelOpen]);
 
-  const canSend = value.trim().length > 0 && !disabled;
+  const canSend =
+    (value.trim().length > 0 ||
+      (attachments?.some((a) => a.status === 'ready') ?? false) ||
+      (pasteSnippets?.length ?? 0) > 0) &&
+    !disabled &&
+    !streaming;
   const currentModel = modelId
     ? findModel(modelId) ?? MODELS[0]
     : MODELS[0];
@@ -119,6 +154,36 @@ export default function HavenComposer({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (canSend) onSend();
+    }
+  };
+
+  // Paste: files in the clipboard become attachments; pastes over the
+  // threshold become snippet chips so they don't blow up the textarea.
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (onAddFiles && e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      onAddFiles(Array.from(e.clipboardData.files));
+      return;
+    }
+    if (onAddPasteSnippet) {
+      const text = e.clipboardData.getData('text');
+      if (text.length >= PASTE_SNIPPET_THRESHOLD) {
+        e.preventDefault();
+        onAddPasteSnippet(text);
+      }
+    }
+  };
+
+  // Drag-and-drop files anywhere on the composer.
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!onAddFiles) return;
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+  };
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (!onAddFiles) return;
+    if (e.dataTransfer.files.length > 0) {
+      e.preventDefault();
+      onAddFiles(Array.from(e.dataTransfer.files));
     }
   };
 
@@ -132,10 +197,16 @@ export default function HavenComposer({
     .join(' ');
 
   return (
-    <div ref={wrapRef} className={classes}>
+    <div
+      ref={wrapRef}
+      className={classes}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <input
         ref={fileInputRef}
         type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
         multiple
         hidden
         onChange={(e) => {
@@ -147,12 +218,31 @@ export default function HavenComposer({
         }}
       />
 
+      {hasChips && (
+        <div className={styles.chipsRow}>
+          {attachments?.map((a) => (
+            <AttachmentChip
+              key={`a-${a.fileId}`}
+              attachment={a}
+              onRemove={onRemoveAttachment}
+            />
+          ))}
+          {pasteSnippets?.map((s) => (
+            <SnippetChip
+              key={`s-${s.id}`}
+              snippet={s}
+              onRemove={onRemovePasteSnippet}
+            />
+          ))}
+        </div>
+      )}
+
       <button
         type="button"
         className={`${styles.iconBtn} ${styles.attach}`}
         onClick={() => fileInputRef.current?.click()}
         disabled={!onAddFiles}
-        title="Attach"
+        title="Attach files or images"
         aria-label="Attach files"
       >
         <PlusIcon />
@@ -168,6 +258,7 @@ export default function HavenComposer({
           onChange(e.target.value)
         }
         onKeyDown={onKey}
+        onPaste={onPaste}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         autoFocus
@@ -241,19 +332,118 @@ export default function HavenComposer({
         >
           <MicIcon />
         </button>
-        <button
-          type="button"
-          className={styles.send}
-          onClick={onSend}
-          disabled={!canSend}
-          title="Send"
-          aria-label="Send message"
-        >
-          <SendIcon />
-        </button>
+        {streaming && onStop ? (
+          <button
+            type="button"
+            className={styles.send}
+            onClick={onStop}
+            title="Stop generating"
+            aria-label="Stop generating"
+          >
+            <StopIcon />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.send}
+            onClick={onSend}
+            disabled={!canSend}
+            title="Send"
+            aria-label="Send message"
+          >
+            <SendIcon />
+          </button>
+        )}
       </div>
     </div>
   );
+}
+
+// ── Chip subcomponents ────────────────────────────────────────────────
+
+function AttachmentChip({
+  attachment: a,
+  onRemove,
+}: {
+  attachment: ChatAttachmentDraft;
+  onRemove?: (fileId: string) => void;
+}) {
+  return (
+    <div
+      className={`${styles.chip} ${
+        a.status === 'error' ? styles.chipError : ''
+      }`}
+    >
+      {a.previewUrl && a.mimeType.startsWith('image/') ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={a.previewUrl}
+          alt={a.filename}
+          className={styles.chipThumb}
+        />
+      ) : (
+        <span className={styles.chipIcon} aria-hidden>
+          <FileIcon />
+        </span>
+      )}
+      <span className={styles.chipName} title={a.filename}>
+        {a.filename}
+      </span>
+      {a.status === 'uploading' && (
+        <span className={styles.chipStatus}>uploading…</span>
+      )}
+      {a.status === 'error' && (
+        <span className={styles.chipStatusErr}>{a.error ?? 'failed'}</span>
+      )}
+      {onRemove && (
+        <button
+          type="button"
+          className={styles.chipRemove}
+          onClick={() => onRemove(a.fileId)}
+          aria-label={`Remove ${a.filename}`}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SnippetChip({
+  snippet: s,
+  onRemove,
+}: {
+  snippet: PasteSnippetDraft;
+  onRemove?: (id: string) => void;
+}) {
+  return (
+    <div className={styles.chip}>
+      <span className={styles.chipIcon} aria-hidden>
+        <FileIcon />
+      </span>
+      <span
+        className={styles.chipName}
+        title={s.firstLine ?? `${s.content.length} chars`}
+      >
+        Pasted text · {formatChars(s.content.length)}
+      </span>
+      {onRemove && (
+        <button
+          type="button"
+          className={styles.chipRemove}
+          onClick={() => onRemove(s.id)}
+          aria-label="Remove pasted text"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatChars(n: number): string {
+  if (n < 1000) return `${n} chars`;
+  return `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k chars`;
 }
 
 function PlusIcon() {
@@ -271,6 +461,39 @@ function PlusIcon() {
     >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
     </svg>
   );
 }
