@@ -50,13 +50,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 42px; /* match attachmentChip's natural height (4px pad + 32px icon + 4px pad + 2px border) */
-  padding: 0 14px;
+  height: 36px; /* match attachmentChip's natural height (3px pad + 28px icon + 3px pad + 2px border) */
+  padding: 0 12px;
   border: 1px solid var(--border-light);
   border-radius: 10px;
   background: var(--card-hover);
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text);
   cursor: pointer;
@@ -128,20 +128,20 @@
 .attachmentChip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px;
+  gap: 6px;
+  padding: 3px;
   border: 1px solid var(--border-light);
   border-radius: 10px;
   background: var(--card-hover);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: var(--text);
-  max-width: 260px;
+  max-width: 170px;
   flex-shrink: 0;
 }
 
 .attachmentThumb {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   object-fit: cover;
   border-radius: 6px;
   flex-shrink: 0;
@@ -151,8 +151,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   background: var(--bg);
   color: var(--text-dim);
@@ -165,6 +165,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 0 2px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .attachmentStatus {
