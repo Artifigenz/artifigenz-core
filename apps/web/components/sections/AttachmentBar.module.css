@@ -50,15 +50,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  height: 32px;
-  padding: 0 10px;
+  height: 42px; /* match attachmentChip's natural height (4px pad + 32px icon + 4px pad + 2px border) */
+  padding: 0 14px;
   border: 1px solid var(--border-light);
-  border-radius: 9999px;
+  border-radius: 10px;
   background: var(--card-hover);
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   cursor: pointer;
   transition:
