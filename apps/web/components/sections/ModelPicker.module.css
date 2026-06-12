@@ -72,49 +72,6 @@
   border-radius: 3px;
 }
 
-/* ── Intelligence segmented row ─────────────────────────────────── */
-.intelRow {
-  display: flex;
-  gap: 4px;
-  padding: 6px 6px 4px;
-  border-bottom: 1px solid var(--border-light);
-  margin-bottom: 2px;
-}
-
-.intelChip {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-mid);
-  font-family: inherit;
-  font-size: 0.74rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.intelChip:hover:not(:disabled) {
-  background: var(--card-hover);
-  color: var(--text);
-}
-.intelChipOn {
-  background: var(--text);
-  color: var(--bg);
-}
-.intelChipOn:hover {
-  background: var(--text);
-  color: var(--bg);
-}
-.intelChipLocked {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* ── Model groups ──────────────────────────────────────────────── */
 .group + .group {
   border-top: 1px solid var(--border-light);

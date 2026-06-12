@@ -6,7 +6,6 @@ import {
   findModel,
   type ChatModel,
   type Intelligence,
-  intelligenceAvailableForPlan,
 } from '@artifigenz/shared';
 import { usePlan } from '@/hooks/usePlan';
 import styles from './ModelPicker.module.css';
@@ -20,12 +19,6 @@ interface Props {
   variant?: 'toolbar' | 'menu';
 }
 
-const INTELLIGENCE_LABEL: Record<Intelligence, string> = {
-  instant: 'Instant',
-  medium: 'Medium',
-  high: 'High',
-};
-
 export default function ModelPicker({
   modelId,
   intelligence,
@@ -36,8 +29,12 @@ export default function ModelPicker({
   const plan = usePlan();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const intelAvailable = intelligenceAvailableForPlan(plan);
   const currentModel = findModel(modelId);
+  // Intelligence still flows server-side (Instant routes to Haiku, High
+  // enables extended thinking). The UI row was noise — keep the state
+  // pass-through so callers don't have to change, but stop rendering it.
+  void intelligence;
+  void onIntelligenceChange;
 
   useEffect(() => {
     if (!open) return;
@@ -49,11 +46,6 @@ export default function ModelPicker({
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
-
-  const pickIntelligence = (intel: Intelligence) => {
-    if (!intelAvailable[intel]) return;
-    onIntelligenceChange(intel);
-  };
 
   const pickModel = (m: ChatModel) => {
     const locked = m.tier === 'pro' && plan !== 'pro';
@@ -71,7 +63,7 @@ export default function ModelPicker({
         type="button"
         className={`${styles.trigger} ${variant === 'menu' ? styles.triggerMenu : ''}`}
         onClick={() => setOpen((v) => !v)}
-        title={`${currentModel.family} · ${currentModel.label} · ${INTELLIGENCE_LABEL[intelligence]}`}
+        title={`${currentModel.family} · ${currentModel.label}`}
       >
         <span className={styles.triggerLabel}>{currentModel.label}</span>
         <svg
@@ -94,27 +86,6 @@ export default function ModelPicker({
           className={`${styles.menu} ${variant === 'menu' ? styles.menuAlignLeft : ''}`}
         >
           <div className={styles.menuBody}>
-            {/* ── Intelligence — compact segmented row ───────────── */}
-            <div className={styles.intelRow}>
-              {(['instant', 'medium', 'high'] as Intelligence[]).map((intel) => {
-                const locked = !intelAvailable[intel];
-                const active = intelligence === intel;
-                return (
-                  <button
-                    key={intel}
-                    type="button"
-                    className={`${styles.intelChip} ${active ? styles.intelChipOn : ''} ${locked ? styles.intelChipLocked : ''}`}
-                    onClick={() => pickIntelligence(intel)}
-                    disabled={locked}
-                    title={locked ? 'Available on Pro' : INTELLIGENCE_LABEL[intel]}
-                  >
-                    <span>{INTELLIGENCE_LABEL[intel]}</span>
-                    {locked && <LockIcon />}
-                  </button>
-                );
-              })}
-            </div>
-
             {/* ── Models grouped by provider ─────────────────────── */}
             {groups.map(([family, models]) => (
               <div key={family} className={styles.group}>
