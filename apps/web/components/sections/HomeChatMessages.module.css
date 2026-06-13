@@ -712,10 +712,21 @@
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
+  /* Cap each chip to its column so a long follow-up question
+     ellipsis-truncates instead of stretching past the message column. */
+  max-width: 100%;
+  min-width: 0;
   transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1),
               color 0.25s ease,
               border-color 0.25s ease,
               transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.followUpChip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 :global([data-theme="terminal"]) .followUpChip {
@@ -732,6 +743,7 @@
 
 .followUpChev {
   opacity: 0.5;
+  flex: 0 0 auto;
   transition: transform 0.18s ease, opacity 0.18s ease;
 }
 
