@@ -77,6 +77,19 @@ export default function AppHome() {
     }
   }, []);
 
+  // ⌘K / Ctrl+K toggles the history modal — matches the kbd hint in the
+  // topbar. Toggle (not just open) so pressing it twice closes again.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setHistoryOpen((cur) => !cur);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
     if (typeof window !== 'undefined') {
