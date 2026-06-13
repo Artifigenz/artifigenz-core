@@ -19,6 +19,11 @@ interface HavenTopBarProps {
   onHistory?: () => void;
   onSettings?: () => void;
   /**
+   * When provided AND the bar is in thread mode (title set), shows a
+   * Share button that opens the share modal for the current conversation.
+   */
+  onShare?: () => void;
+  /**
    * Click handler for the logo. When provided, the brand is rendered as
    * a button — useful on the home route where we want clicking the logo
    * to reset to a fresh chat instead of doing a no-op Link nav. Pages
@@ -35,6 +40,7 @@ interface HavenTopBarProps {
 export default function HavenTopBar({
   onHistory,
   onSettings,
+  onShare,
   onLogoClick,
   title,
 }: HavenTopBarProps) {
@@ -101,6 +107,18 @@ export default function HavenTopBar({
           </button>
         )}
 
+        {onShare && title && (
+          <button
+            type="button"
+            className={styles.modeToggle}
+            onClick={onShare}
+            title="Share this chat"
+            aria-label="Share this chat"
+          >
+            <ShareIcon />
+          </button>
+        )}
+
         <button
           type="button"
           className={styles.modeToggle}
@@ -162,6 +180,26 @@ function Logo({ size }: { size: number }) {
       aria-hidden="true"
       dangerouslySetInnerHTML={{ __html: tris.join('') }}
     />
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </svg>
   );
 }
 

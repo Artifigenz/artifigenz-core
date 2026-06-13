@@ -17,6 +17,7 @@ import type { ChatAttachmentDraft, PasteSnippetDraft } from '@/components/sectio
 import HomeChatMessages, { type ChatMessage } from '@/components/sections/HomeChatMessages';
 import ChatHistoryModal from '@/components/sections/ChatHistoryModal';
 import SettingsModal from '@/components/sections/SettingsModal';
+import ShareConversationModal from '@/components/sections/ShareConversationModal';
 import styles from './page.module.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -46,6 +47,7 @@ export default function AppHome() {
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [pasteSnippets, setPasteSnippets] = useState<PasteSnippetDraft[]>([]);
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
@@ -715,6 +717,9 @@ export default function AppHome() {
       <HavenTopBar
         onHistory={() => setHistoryOpen(true)}
         onSettings={() => setSettingsOpen(true)}
+        onShare={
+          conversationId ? () => setShareOpen(true) : undefined
+        }
         onLogoClick={newChat}
         title={inChat ? conversationTitle : null}
       />
@@ -730,6 +735,12 @@ export default function AppHome() {
         onSelect={loadConversation}
         currentConversationId={conversationId}
         onCurrentDeleted={newChat}
+      />
+      <ShareConversationModal
+        open={shareOpen}
+        conversationId={conversationId}
+        conversationTitle={conversationTitle}
+        onClose={() => setShareOpen(false)}
       />
       <main
         className={`${styles.main} ${inChat ? styles.mainInChat : styles.mainIntro}`}
