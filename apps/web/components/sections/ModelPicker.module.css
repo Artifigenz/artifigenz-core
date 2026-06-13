@@ -37,14 +37,14 @@
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
-  width: 260px;
-  max-height: min(360px, calc(100vh - 120px));
+  width: 300px;
+  max-height: min(440px, calc(100vh - 120px));
   display: flex;
   flex-direction: column;
   background: var(--menu-bg, var(--bg));
   border: 1px solid var(--menu-border, var(--border-light));
-  border-radius: 12px;
-  padding: 4px;
+  border-radius: 14px;
+  padding: 6px;
   box-shadow: var(--menu-shadow, 0 12px 32px rgba(0, 0, 0, 0.18));
   z-index: 60;
   backdrop-filter: blur(var(--blur, 0px));
@@ -75,15 +75,15 @@
 /* ── Model groups ──────────────────────────────────────────────── */
 .group + .group {
   border-top: 1px solid var(--border-light);
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 .groupLabel {
-  padding: 4px 10px 2px;
-  font-size: 0.66rem;
+  padding: 8px 12px 6px;
+  font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -92,11 +92,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 10px 12px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -118,15 +118,17 @@
 }
 
 .itemLabel {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   font-weight: 500;
   color: var(--text);
+  line-height: 1.25;
 }
 
 .itemDesc {
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 3px;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
