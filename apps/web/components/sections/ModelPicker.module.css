@@ -38,7 +38,9 @@
   bottom: calc(100% + 8px);
   right: 0;
   width: 300px;
-  max-height: min(440px, calc(100vh - 120px));
+  /* Short by design — shows ~4 items, scrolls the rest. Keeps the picker
+     compact regardless of how many models we add later. */
+  max-height: min(280px, calc(100vh - 120px));
   display: flex;
   flex-direction: column;
   background: var(--menu-bg, var(--bg));
