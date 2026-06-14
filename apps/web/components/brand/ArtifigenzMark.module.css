@@ -1,0 +1,65 @@
+/* Artifigenz character mark — ported from the design's
+   "Artifigenz Character/Artifigenz Character.html" idle state.
+   Capsule + three slanted face lines (short / long / short).
+   Defaults to a small static render suitable for the topbar logo. */
+
+.mark {
+  --h: 28px;
+  --w: calc(var(--h) * 0.64);
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.capsule {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--text);
+  box-shadow:
+    0 calc(var(--h) * 0.08) calc(var(--h) * 0.16) rgba(0, 0, 0, 0.25),
+    0 0 0 1px var(--border-light),
+    inset 0 calc(var(--h) * 0.018) calc(var(--h) * 0.04)
+      rgba(255, 255, 255, 0.15);
+}
+
+/* On dark mode the capsule is already near-white via var(--text); on
+   light mode it's near-black. Either way the face lines below use the
+   page bg color so they always contrast strongly. */
+
+.face {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+}
+
+.line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--h) * 0.205);
+  height: calc(var(--h) * 0.07);
+  margin-left: calc(var(--h) * -0.1025);
+  margin-top: calc(var(--h) * -0.035);
+  border-radius: 999px;
+  background: var(--bg);
+  transform-origin: center;
+}
+
+/* Idle face — short / long / short, slanted -25°, airy vertical spacing.
+   sx scales horizontal length; y offsets vertical position. */
+.line:nth-child(1) {
+  transform: translate(0, calc(var(--h) * -0.075)) rotate(-25deg) scaleX(0.56);
+}
+.line:nth-child(2) {
+  transform: translate(0, 0) rotate(-25deg) scaleX(1);
+}
+.line:nth-child(3) {
+  transform: translate(0, calc(var(--h) * 0.075)) rotate(-25deg) scaleX(0.56);
+}

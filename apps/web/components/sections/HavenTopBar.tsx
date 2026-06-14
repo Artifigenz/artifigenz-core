@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
 import { useTheme } from '@/components/ThemeProvider';
+import ArtifigenzMark from '@/components/brand/ArtifigenzMark';
 import styles from './HavenTopBar.module.css';
 
 /**
@@ -76,12 +77,12 @@ export default function HavenTopBar({
           className={styles.brand}
           aria-label="Artifigenz home"
         >
-          <Logo size={24} />
+          <ArtifigenzMark height={28} />
           {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
         </button>
       ) : (
         <Link href="/" className={styles.brand} aria-label="Artifigenz home">
-          <Logo size={24} />
+          <ArtifigenzMark height={28} />
           {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
         </Link>
       )}
@@ -149,37 +150,6 @@ export default function HavenTopBar({
         )}
       </div>
     </header>
-  );
-}
-
-function Logo({ size }: { size: number }) {
-  // Recursive spiral triangle matching the Haven design.
-  const cx = 12;
-  const cy = 13.2;
-  const tris: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const sc = 11 * Math.pow(0.86, i);
-    const rot = i * 4.2;
-    const pts = [0, 1, 2]
-      .map((k) => {
-        const a = ((-90 + k * 120 + rot) * Math.PI) / 180;
-        return `${(cx + sc * Math.cos(a)).toFixed(2)},${(cy + sc * Math.sin(a)).toFixed(2)}`;
-      })
-      .join(' ');
-    tris.push(`<polygon points="${pts}" />`);
-  }
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.1"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: tris.join('') }}
-    />
   );
 }
 
