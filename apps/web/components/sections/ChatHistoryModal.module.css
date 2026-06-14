@@ -123,9 +123,10 @@
 /* ── Modal ──────────────────────────────────────────────────── */
 .modal {
   position: relative;
-  width: min(740px, calc(100vw - 64px));
-  height: min(820px, calc(100vh - 64px));
+  width: min(800px, calc(100vw - 56px));
+  height: min(860px, calc(100vh - 72px));
   background: var(--v3-paper);
+  border: 1px solid var(--v3-hairline);
   border-radius: var(--v3-radius);
   box-shadow: var(--v3-shadow);
   z-index: 1001;
@@ -134,10 +135,10 @@
   overflow: hidden;
   font-family: var(--v3-font);
   color: var(--v3-text);
-  animation: pop 0.6s var(--v3-ease) both;
+  animation: pop 0.55s var(--v3-ease) both;
 }
 @keyframes pop {
-  from { opacity: 0; transform: scale(0.985) translateY(6px) }
+  from { opacity: 0; transform: scale(0.99) translateY(6px) }
   to   { opacity: 1; transform: scale(1) translateY(0) }
 }
 
@@ -191,17 +192,14 @@
 
 /* ── List ───────────────────────────────────────────────────── */
 .list {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
-  /* No padding-top: sticky group headers must sit flush with .list's
-     top edge or scrolled rows can paint through the gap above. */
-  padding: 0 24px 22px;
+  padding: 8px 30px 26px;
   scrollbar-width: thin;
   scrollbar-color: var(--v3-hairline-strong) transparent;
-  border-top: 1px solid var(--v3-hairline);
   isolation: isolate;
 }
-.list::-webkit-scrollbar { width: 8px; }
+.list::-webkit-scrollbar { width: 9px; }
 .list::-webkit-scrollbar-thumb {
   background: var(--v3-hairline-strong);
   border-radius: 6px;
@@ -213,97 +211,62 @@
   background-clip: padding-box;
 }
 
-/* ── Group — chapter break ──────────────────────────────────── */
-/* Inter-group spacing lives OUTSIDE the .group box (margin) so the
-   sticky header has no transparent strip above it inside its container
-   for rows to bleed into. */
-/* Thin hairline divider between groups + tight spacing — per the
-   Haven History design notes. The previous "big breath" between groups
-   read as too much empty air. */
+/* ── Group — sticky chapter header, hairline rule between ───── */
+.group {
+  padding-top: 8px;
+}
 .group + .group {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--v3-hairline-strong);
+  margin-top: 22px;
+  border-top: 1px solid var(--v3-hairline);
 }
 
 .groupHead {
   position: sticky;
   top: 0;
-  display: flex;
-  align-items: center;
-  padding: 6px 16px 10px;
+  z-index: 2;
+  padding: 20px 16px 6px;
   background: var(--v3-paper);
-  z-index: 5;
-  box-shadow: 0 -24px 0 var(--v3-paper);
+}
+.group:first-child .groupHead {
+  padding-top: 8px;
 }
 .groupLabel {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--v3-text);
-}
-.groupCount {
-  /* Always mono — number reads as a count, even when the modal font is Inter. */
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
   color: var(--v3-text-dim);
-  font-variant-numeric: tabular-nums;
-}
-/* Chapter rule — runs from after the count all the way right */
-.groupRule {
-  height: 1px;
-  background: var(--v3-hairline-strong);
 }
 
-/* ── Row ──────────────────────────────────────────────────────
-   Simplified Haven row: just the title on the left, optional pin in
-   a fixed right-edge column, hover-revealed actions slide in over the
-   pin. Tighter padding than the legacy row since there's no meta line. */
+/* ── Row — title on left, meta (pin + time) on right, actions
+   absolutely positioned and revealed on hover (overlay, not column). */
 .row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 14px;
-  padding: 14px 14px;
+  gap: 18px;
+  padding: 13px 16px;
   border-radius: var(--v3-radius-inner);
-  transition: background 0.2s var(--v3-ease), transform 0.2s var(--v3-ease);
+  transition: background 0.2s var(--v3-ease);
   cursor: pointer;
   position: relative;
   outline: none;
-  animation: rowIn 0.6s var(--v3-ease) both;
-  animation-delay: calc(var(--i, 0) * 28ms + 180ms);
+  animation: rowIn 0.55s var(--v3-ease) both;
+  animation-delay: calc(var(--i, 0) * 22ms + 120ms);
 }
 @keyframes rowIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Left-edge tick on hover — a thin line that ticks in */
-.row::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  width: 2px;
-  height: 0;
-  background: var(--v3-accent);
-  transform: translateY(-50%);
-  transition: height 0.22s var(--v3-ease);
-}
 .row:hover,
-.row:focus-visible { background: var(--v3-paper-hover); }
-.row:hover::before,
-.row:focus-visible::before { height: 24px; }
-.row:hover .rowTitle,
-.row:focus-visible .rowTitle { color: var(--v3-accent); }
-.rowActive { background: var(--v3-paper-hover); }
-.rowActive::before { height: 24px; }
+.row:focus-visible,
+.rowActive {
+  background: var(--v3-paper-hover);
+}
 .rowBusy { opacity: 0.5; pointer-events: none; }
 /* When the popover menu is open, lift the row above the sticky group
-   header. The row's animation creates a stacking context (any non-none
-   transform does), trapping the menu's z-index inside the row — so we
-   raise the row itself instead. Reverts to default z-order on close. */
+   header so the menu paints over neighbouring content. */
 .rowMenuOpen { z-index: 20; }
 
 .rowBody {
@@ -314,15 +277,21 @@
 }
 
 .rowTitleLine {
-  font-size: 14.5px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 450;
   line-height: 1.35;
   letter-spacing: -0.005em;
-  color: var(--v3-text);
+  color: var(--v3-text-mid);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   min-width: 0;
+  transition: color 0.2s var(--v3-ease);
+}
+.row:hover .rowTitleLine,
+.row:focus-visible .rowTitleLine,
+.rowActive .rowTitleLine {
+  color: var(--v3-text);
 }
 
 .rowTitle {
@@ -330,7 +299,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  transition: color 0.2s var(--v3-ease);
 }
 
 .pinMark {
@@ -406,30 +374,33 @@
   gap: 4px;
 }
 
-/* ── Hover-revealed actions ─────────────────────────────────── */
-/* No `transform` here — transforms create a stacking context that traps
-   the popover menu's z-index inside .actions, causing it to render
-   *below* the sticky group header. Slide-in is achieved via margin. */
+/* ── Hover-revealed actions — overlay, not a grid column ─────
+   Absolutely positioned over the right edge of the row so they slide
+   in on top of the meta cluster (which fades to opacity 0). Matches
+   the design's overlay pattern. */
 .actions {
+  position: absolute;
+  right: 16px;
+  top: 50%;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   opacity: 0;
-  margin-left: 6px;
-  transition: opacity 0.2s var(--v3-ease), margin-left 0.2s var(--v3-ease);
+  transform: translate(6px, -50%);
+  transition: opacity 0.2s var(--v3-ease), transform 0.2s var(--v3-ease);
   pointer-events: none;
 }
 .row:hover .actions,
 .row:focus-within .actions,
 .actionsForce {
   opacity: 1;
-  margin-left: 0;
+  transform: translate(0, -50%);
   pointer-events: auto;
 }
 
 .iconBtn {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--v3-radius-sm);
   border: 0;
   background: transparent;
@@ -437,17 +408,17 @@
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: all 0.18s var(--v3-ease);
+  transition: color 0.18s var(--v3-ease), background 0.18s var(--v3-ease);
 }
 .iconBtn:hover:not(:disabled) { background: var(--v3-iconbtn-hover); color: var(--v3-text); }
-.iconBtn.iconBtnOn { color: var(--v3-accent); }
+.iconBtn.iconBtnOn { color: var(--v3-text); background: var(--v3-iconbtn-hover); }
 
 .continueBtn {
   margin-left: 4px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px 6px 14px;
+  gap: 5px;
+  padding: 7px 13px 7px 15px;
   border-radius: var(--v3-radius-pill);
   background: var(--v3-accent);
   color: var(--v3-accent-text);
@@ -456,9 +427,9 @@
   font-weight: 500;
   border: 0;
   cursor: pointer;
-  transition: all 0.18s var(--v3-ease);
+  transition: opacity 0.18s var(--v3-ease);
 }
-.continueBtn:hover { filter: brightness(0.92); }
+.continueBtn:hover { opacity: 0.85; }
 .continueBtn svg { transition: transform 0.2s var(--v3-ease); }
 .continueBtn:hover svg { transform: translateX(2px); }
 
