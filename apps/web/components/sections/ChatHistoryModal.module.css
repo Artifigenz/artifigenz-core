@@ -141,65 +141,53 @@
   to   { opacity: 1; transform: scale(1) translateY(0) }
 }
 
-/* ── Header — editorial confidence ──────────────────────────── */
+/* ── Header — one calm search bar (Option A from the design book) ── */
 .header {
-  padding: 48px 40px 20px;
+  flex: 0 0 auto;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px 8px 24px;
+  border-bottom: 1px solid var(--v3-hairline);
 }
 
-.title {
-  margin: 0;
-  font-size: 40px;
-  font-weight: 500;
-  letter-spacing: -0.035em;
-  line-height: 1;
-  color: var(--v3-text);
-  animation: headlineIn 0.7s var(--v3-ease) both;
+.searchIcon {
+  color: var(--v3-text-dim);
+  flex: 0 0 auto;
 }
-@keyframes headlineIn {
-  from { opacity: 0; transform: translateY(8px); letter-spacing: -0.02em; }
-  to   { opacity: 1; transform: translateY(0); letter-spacing: -0.035em; }
+
+.searchInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--v3-text);
+  padding: 14px 0;
+}
+.searchInput::placeholder {
+  color: var(--v3-text-dim);
 }
 
 .close {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
   border-radius: var(--v3-radius-pill);
   background: transparent;
   border: 0;
-  color: var(--v3-text-mid);
+  color: var(--v3-text-dim);
   cursor: pointer;
   display: grid;
   place-items: center;
   transition: all 0.2s var(--v3-ease);
 }
-.close:hover { background: var(--v3-iconbtn-hover); color: var(--v3-text); }
-
-/* ── Search ─────────────────────────────────────────────────── */
-.searchRow {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 18px 40px 28px;
-}
-.searchIcon { color: var(--v3-text-dim); flex: 0 0 auto; }
-.searchInput {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font-family: inherit;
-  font-size: 20px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
+.close:hover {
+  background: var(--v3-iconbtn-hover);
   color: var(--v3-text);
-  padding: 8px 0;
-  line-height: 1.4;
 }
-.searchInput::placeholder { color: var(--v3-text-dim); font-weight: 400; }
 
 /* ── List ───────────────────────────────────────────────────── */
 .list {
@@ -351,22 +339,33 @@
   display: inline-flex;
 }
 
-/* Pin glyph in a consistent right-edge column. Fades out as the hover
-   actions slide in so the row never has the pin colliding with the
-   More + Continue cluster. */
-.pinSlot {
+/* Right meta cluster — quiet pin + timestamp. Fades out as the hover
+   actions slide in, so the More + Continue cluster owns the column on
+   hover and there's never collision with the pin glyph. */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
   color: var(--v3-text-dim);
+  transition: opacity 0.2s var(--v3-ease);
+}
+.pin {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  opacity: 0.6;
-  transition: opacity 0.2s var(--v3-ease);
+  color: var(--v3-text-dim);
+  opacity: 0.55;
+  flex: 0 0 auto;
 }
-.row:hover .pinSlot,
-.row:focus-within .pinSlot {
+.time {
+  font-size: 12.5px;
+  color: var(--v3-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.row:hover .meta,
+.row:focus-within .meta,
+.rowActive .meta {
   opacity: 0;
 }
 

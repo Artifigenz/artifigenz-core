@@ -246,19 +246,10 @@ export default function ChatHistoryModal({
         role="dialog"
         aria-label="History"
       >
+        {/* Search owns the header bar — magnifier · field · close.
+            No standalone "History" title; the search field doubles as the
+            chrome. Matches the Option A design from the latest handoff. */}
         <header className={styles.header}>
-          <h2 className={styles.title}>History</h2>
-          <button
-            type="button"
-            className={styles.close}
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <CloseIcon />
-          </button>
-        </header>
-
-        <div className={styles.searchRow}>
           <SearchIcon className={styles.searchIcon} />
           <input
             ref={searchRef}
@@ -267,8 +258,18 @@ export default function ChatHistoryModal({
             placeholder="Search your history"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
           />
-        </div>
+          <button
+            type="button"
+            className={styles.close}
+            aria-label="Close (esc)"
+            onClick={onClose}
+          >
+            <CloseIcon />
+          </button>
+        </header>
 
         <div className={styles.list}>
           {loading && <div className={styles.empty}><p>Loading…</p></div>}
@@ -464,14 +465,18 @@ function Row({
         </div>
       </div>
 
-      {/* Pin glyph sits in the right-edge column. Fades out as the
-          hover actions slide in so a pinned row never has the pin
-          collide with the More + Continue cluster. */}
-      {conv.pinned && (
-        <span className={styles.pinSlot} aria-label="Pinned">
-          <PinIcon filled size={14} />
-        </span>
-      )}
+      {/* Right meta — quiet pin glyph + timestamp. Fades out on hover so
+          the More + Continue cluster has the column to itself. */}
+      <div className={styles.meta}>
+        {conv.pinned && (
+          <span className={styles.pin} aria-label="Pinned">
+            <PinIcon filled size={13} />
+          </span>
+        )}
+        {conv.updatedAt && (
+          <span className={styles.time}>{formatDate(conv.updatedAt)}</span>
+        )}
+      </div>
 
       <div
         className={`${styles.actions} ${actionsForce ? styles.actionsForce : ''}`}
@@ -565,7 +570,9 @@ function formatDate(iso: string) {
   const diffMs = now.getTime() - d.getTime();
   const day = 86_400_000;
   if (diffMs < day && sameCalendarDay(iso, now.getTime())) {
-    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return d
+      .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      .toLowerCase();
   }
   if (diffMs < 7 * day) {
     return d.toLocaleDateString([], { weekday: 'short' });
