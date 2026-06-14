@@ -1,10 +1,14 @@
-/* Artifigenz character mark — ported from the design's
-   "Artifigenz Character/Artifigenz Character.html" idle state.
-   Capsule + three slanted face lines (short / long / short).
-   Defaults to a small static render suitable for the topbar logo. */
+/* Artifigenz character mark — flat, static.
+   Ported from the design handoff's "Artifigenz Logo Book.html" spec:
+   - capsule = a single flat fill, NO shadow / NO border / NO inset
+   - strokes = max(1.6px, 0.04h) thick, capsule width = 0.64h
+   - three slanted strokes at -25°: short / long / short, ±0.075h apart
+   Colours bind to theme tokens (--text / --bg) so the mark renders as
+   the design's primary on dark backgrounds (white capsule, dark strokes)
+   and its "on light — inverse" on light (dark capsule, light strokes). */
 
 .mark {
-  --h: 28px;
+  --h: 40px;
   --w: calc(var(--h) * 0.64);
   position: relative;
   width: var(--w);
@@ -19,16 +23,7 @@
   inset: 0;
   border-radius: 999px;
   background: var(--text);
-  box-shadow:
-    0 calc(var(--h) * 0.08) calc(var(--h) * 0.16) rgba(0, 0, 0, 0.25),
-    0 0 0 1px var(--border-light),
-    inset 0 calc(var(--h) * 0.018) calc(var(--h) * 0.04)
-      rgba(255, 255, 255, 0.15);
 }
-
-/* On dark mode the capsule is already near-white via var(--text); on
-   light mode it's near-black. Either way the face lines below use the
-   page bg color so they always contrast strongly. */
 
 .face {
   position: absolute;
@@ -44,22 +39,20 @@
   left: 0;
   top: 0;
   width: calc(var(--h) * 0.205);
-  height: calc(var(--h) * 0.07);
+  height: max(1.6px, calc(var(--h) * 0.04));
   margin-left: calc(var(--h) * -0.1025);
-  margin-top: calc(var(--h) * -0.035);
+  margin-top: calc(max(1.6px, var(--h) * 0.04) / -2);
   border-radius: 999px;
   background: var(--bg);
   transform-origin: center;
 }
 
-/* Idle face — short / long / short, slanted -25°, airy vertical spacing.
-   sx scales horizontal length; y offsets vertical position. */
 .line:nth-child(1) {
-  transform: translate(0, calc(var(--h) * -0.075)) rotate(-25deg) scaleX(0.56);
+  transform: translateY(calc(var(--h) * -0.075)) rotate(-25deg) scaleX(0.56);
 }
 .line:nth-child(2) {
-  transform: translate(0, 0) rotate(-25deg) scaleX(1);
+  transform: rotate(-25deg) scaleX(1);
 }
 .line:nth-child(3) {
-  transform: translate(0, calc(var(--h) * 0.075)) rotate(-25deg) scaleX(0.56);
+  transform: translateY(calc(var(--h) * 0.075)) rotate(-25deg) scaleX(0.56);
 }
