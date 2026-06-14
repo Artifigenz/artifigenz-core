@@ -124,6 +124,12 @@ export default function AppHome() {
   const streamDoneRef = useRef<Set<string>>(new Set());
   const lastWordTimeRef = useRef<Map<string, number>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
+  // True while the tab is hidden. When set, we stop dripping the
+  // typewriter and just commit whatever the network delivers so the
+  // user sees the fully-rendered reply when they come back — the
+  // browser throttles requestAnimationFrame on hidden tabs, so without
+  // this the reveal would freeze mid-paragraph and resume when focused.
+  const hiddenRef = useRef(false);
 
   const inChat = messages.length > 0;
 
@@ -213,6 +219,42 @@ export default function AppHome() {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
   }, []);
+
+  // Visibility-driven flush. When the tab is hidden the RAF ticker
+  // stops, so the typewriter would freeze mid-reveal. Instead, snap
+  // every active buffer to its full pending content the moment we
+  // hide; subsequent deltas (handled in the SSE loop below) keep
+  // doing the same while hidden. Return → resume the ticker just to
+  // clean up any drained-but-not-yet-deleted entries.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        hiddenRef.current = true;
+        let dirty = false;
+        bufferRef.current.forEach((entry) => {
+          if (entry.displayed.length < entry.pending.length) {
+            entry.displayed = entry.pending;
+            dirty = true;
+          }
+        });
+        if (dirty) {
+          const snap = new Map<string, string>();
+          bufferRef.current.forEach((e, id) => snap.set(id, e.displayed));
+          setMessages((prev) =>
+            prev.map((m) =>
+              snap.has(m.id) ? { ...m, content: snap.get(m.id)! } : m,
+            ),
+          );
+          setDrainingId(null);
+        }
+      } else {
+        hiddenRef.current = false;
+        startTicker();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [startTicker]);
 
   const addAttachmentFiles = useCallback(
     async (files: File[]) => {
@@ -467,7 +509,25 @@ export default function AppHome() {
               case 'delta':
                 if (typeof data.content === 'string') {
                   const entry = bufferRef.current.get(localAssistantId);
-                  if (entry) entry.pending += data.content;
+                  if (entry) {
+                    entry.pending += data.content;
+                    // Hidden tab — RAF is throttled so the ticker
+                    // can't drip out new text. Commit the chunk
+                    // straight to displayed so the message updates
+                    // in the background; on return the user sees
+                    // the full reply, not a frozen mid-paragraph.
+                    if (hiddenRef.current) {
+                      entry.displayed = entry.pending;
+                      const next = entry.displayed;
+                      setMessages((prev) =>
+                        prev.map((m) =>
+                          m.id === localAssistantId
+                            ? { ...m, content: next }
+                            : m,
+                        ),
+                      );
+                    }
+                  }
                   startTicker();
                 }
                 break;
