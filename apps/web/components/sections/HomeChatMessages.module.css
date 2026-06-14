@@ -292,15 +292,18 @@
 .mdStreaming > ol:last-child > li:last-child::after,
 .mdStreaming > blockquote:last-child > p:last-child::after,
 .mdStreaming > pre:last-child > code::after {
+  /* Small Artifigenz capsule shape — matches the brand mark at tiny size.
+     Replaces the old 2px blinking caret with the pill the user sees in
+     the topbar logo. Pulses to signal active streaming. */
   content: '';
   display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 3px;
-  vertical-align: -0.12em;
+  width: 8px;
+  height: 13px;
+  margin-left: 5px;
+  vertical-align: -0.18em;
   background: var(--text);
-  border-radius: 1px;
-  opacity: 0.9;
+  border-radius: 999px;
+  opacity: 0.92;
   animation: cursorPulse 1.05s ease-in-out infinite;
 }
 
@@ -310,12 +313,12 @@
 .mdStreaming:empty::after {
   content: '';
   display: inline-block;
-  width: 2px;
-  height: 1em;
-  vertical-align: -0.12em;
+  width: 8px;
+  height: 13px;
+  vertical-align: -0.18em;
   background: var(--text);
-  border-radius: 1px;
-  opacity: 0.9;
+  border-radius: 999px;
+  opacity: 0.92;
   animation: cursorPulse 1.05s ease-in-out infinite;
 }
 

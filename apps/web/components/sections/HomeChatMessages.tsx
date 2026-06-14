@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '@clerk/nextjs';
 import { MODELS, findModel } from '@artifigenz/shared';
+import ArtifigenzMark from '@/components/brand/ArtifigenzMark';
 import styles from './HomeChatMessages.module.css';
 import {
   useReadAloudPlayer,
@@ -343,7 +344,7 @@ export default function HomeChatMessages({
         {showStatus && (
           <div className={`${styles.row} ${styles.assistant}`}>
             <span className={styles.status}>
-              <SparkIcon />
+              <ArtifigenzMark state="thinking" height={20} />
               {statusLabel}
             </span>
           </div>
@@ -1199,10 +1200,6 @@ function copyToClipboard(text: string) {
 }
 
 // ── Icons (minimal, currentColor) ────────────────────────────────
-
-function SparkIcon() {
-  return <span className={styles.statusDot} aria-hidden />;
-}
 
 function CopyIcon() {
   return (
