@@ -78,7 +78,13 @@ async function loadAttachmentAsContentBlock(
   }
 }
 
-const MAX_TOKENS = 2048;
+// Max output tokens per assistant turn. The earlier 2048 cap was the
+// reason long replies (contract reviews, deep summaries) were cutting
+// off mid-sentence and forcing the user to type "continue". Claude
+// 4.x models support up to ~64k output tokens; 8192 comfortably covers
+// almost every real-world chat answer without letting a runaway reply
+// consume tens of thousands of tokens in one shot.
+const MAX_TOKENS = 8192;
 const TEMPERATURE = 0.5;
 const MAX_TOOL_ROUNDS = 5;
 
@@ -898,6 +904,10 @@ async function streamOpenAI(
     instructions: systemPrompt,
     input: input as unknown as Parameters<typeof openai.responses.create>[0]["input"],
     tools: [{ type: "web_search_preview" }],
+    // Same reasoning as the Anthropic path — leave room for long
+    // answers (contract reviews, summaries) instead of letting the
+    // model's default cap chop the reply mid-sentence.
+    max_output_tokens: MAX_TOKENS,
     stream: true,
   })) as AsyncIterable<Record<string, unknown>>;
 
