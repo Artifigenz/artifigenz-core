@@ -593,16 +593,33 @@
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
+/* Single horizontal row that scrolls when there are more sources than
+   fit. Right-edge mask fades the last visible chip into the page bg so
+   it's obvious more content is hiding off-screen. */
 .citationsList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Pad right so the last chip can fully scroll into view past the fade. */
+  padding: 2px 24px 4px 0;
+  margin-right: -24px;
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 32px),
+    transparent
+  );
+}
+.citationsList::-webkit-scrollbar {
+  display: none;
 }
 
 .citationChip {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
+  align-items: center;
   padding: 10px 12px;
   background: var(--card-bg);
   border: 1px solid var(--border-light);
@@ -612,9 +629,14 @@
   color: var(--text-mid);
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              color 0.25s ease,
-              transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Each source keeps a natural width up to a sensible cap, never
+     squashed by the row. */
+  flex: 0 0 auto;
+  width: 240px;
+  transition:
+    background 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.25s ease,
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :global([data-theme="terminal"]) .citationChip { border-radius: 0; }
@@ -653,9 +675,7 @@
   font-weight: 500;
   font-size: 0.82rem;
   margin-bottom: 3px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
