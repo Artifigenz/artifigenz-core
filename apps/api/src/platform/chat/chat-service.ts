@@ -78,13 +78,11 @@ async function loadAttachmentAsContentBlock(
   }
 }
 
-// Max output tokens per assistant turn. The earlier 2048 cap was the
-// reason long replies (contract reviews, deep summaries) were cutting
-// off mid-sentence and forcing the user to type "continue". Claude
-// 4.x models support up to ~64k output tokens; 8192 comfortably covers
-// almost every real-world chat answer without letting a runaway reply
-// consume tens of thousands of tokens in one shot.
-const MAX_TOKENS = 8192;
+// Max output tokens per assistant turn on the Anthropic path.
+// 2048 was cutting long replies mid-sentence; 4096 is the default cap
+// every Claude 4.x model accepts without needing the
+// `max-tokens-3-5-sonnet-...` beta header that 8192 wanted.
+const MAX_TOKENS = 4096;
 const TEMPERATURE = 0.5;
 const MAX_TOOL_ROUNDS = 5;
 
@@ -899,15 +897,15 @@ async function streamOpenAI(
   }
 
   // SDK types differ across versions; the wire format we send is stable.
+  // Deliberately *not* setting max_output_tokens — OpenAI reasoning
+  // models (gpt-5, o4-mini) count reasoning tokens toward that cap, so
+  // an explicit value can starve the visible reply and even surface as
+  // a mid-stream error. The provider default is fine.
   const stream = (await openai.responses.create({
     model: modelId,
     instructions: systemPrompt,
     input: input as unknown as Parameters<typeof openai.responses.create>[0]["input"],
     tools: [{ type: "web_search_preview" }],
-    // Same reasoning as the Anthropic path — leave room for long
-    // answers (contract reviews, summaries) instead of letting the
-    // model's default cap chop the reply mid-sentence.
-    max_output_tokens: MAX_TOKENS,
     stream: true,
   })) as AsyncIterable<Record<string, unknown>>;
 
