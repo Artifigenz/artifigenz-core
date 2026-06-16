@@ -630,9 +630,10 @@
   cursor: pointer;
   text-decoration: none;
   /* Each source keeps a natural width up to a sensible cap, never
-     squashed by the row. */
+     squashed by the row. Narrower so the next chip is more obviously
+     peeking past the fade. */
   flex: 0 0 auto;
-  width: 240px;
+  width: 200px;
   transition:
     background 0.25s cubic-bezier(0.16, 1, 0.3, 1),
     color 0.25s ease,
