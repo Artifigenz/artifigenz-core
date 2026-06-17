@@ -67,16 +67,19 @@ function SSOCallbackContent() {
           su?.verifications?.externalAccount?.status,
       });
 
+      const setActiveSI = setActiveSignInRef.current;
+      const setActiveSU = setActiveSignUpRef.current;
+
       // 1. Either flow already complete on arrival — set active + go.
       try {
-        if (si?.status === 'complete' && si.createdSessionId) {
-          await setActiveSignInRef.current({ session: si.createdSessionId });
+        if (si?.status === 'complete' && si.createdSessionId && setActiveSI) {
+          await setActiveSI({ session: si.createdSessionId });
           clearTimeout(stallGuard);
           hardNav(redirectUrl);
           return;
         }
-        if (su?.status === 'complete' && su.createdSessionId) {
-          await setActiveSignUpRef.current({ session: su.createdSessionId });
+        if (su?.status === 'complete' && su.createdSessionId && setActiveSU) {
+          await setActiveSU({ session: su.createdSessionId });
           clearTimeout(stallGuard);
           hardNav(redirectUrl);
           return;
@@ -110,9 +113,9 @@ function SSOCallbackContent() {
 
           if (created.status === 'complete' && created.createdSessionId) {
             try {
-              await setActiveSignUpRef.current({
-                session: created.createdSessionId,
-              });
+              if (setActiveSU) {
+                await setActiveSU({ session: created.createdSessionId });
+              }
             } catch (err) {
               console.error(
                 '[sso-callback] setActive after transfer failed:',
