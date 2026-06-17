@@ -154,7 +154,7 @@ function SSOCallbackContent() {
       setError(
         `Could not finish signing you in (signIn: ${si?.status ?? 'none'} / ${
           si?.firstFactorVerification?.status ?? 'none'
-        }, signUp: ${su?.status ?? 'none'}). Try again or use email + password.`,
+        }, signUp: none). Try again or use email + password.`,
       );
     })();
 
