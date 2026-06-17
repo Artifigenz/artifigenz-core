@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/nextjs/legacy';
+import { useSignUp } from '@clerk/nextjs/legacy';
 import { authStyles as styles } from './AuthLayout';
 
 type OAuthStrategy = 'oauth_google' | 'oauth_apple' | 'oauth_x';
@@ -57,34 +57,27 @@ const PROVIDERS: Array<{
 
 export default function OAuthButtons({
   redirectUrlComplete,
-  mode = 'signIn',
 }: {
   redirectUrlComplete: string;
+  /** Accepted for backwards compatibility; ignored. We always use the
+   *  signUp.authenticateWithRedirect path because Clerk's SDK auto-
+   *  handles the existing-user case on signup but does NOT auto-handle
+   *  the new-user case on signin — and "Continue with Google" should
+   *  just work whether the user already has an account or not. */
   mode?: 'signIn' | 'signUp';
 }) {
-  const { signIn, isLoaded: signInLoaded } = useSignIn();
-  const { signUp, isLoaded: signUpLoaded } = useSignUp();
+  const { signUp, isLoaded } = useSignUp();
   const [pending, setPending] = useState<OAuthStrategy | null>(null);
 
-  const isLoaded = mode === 'signUp' ? signUpLoaded : signInLoaded;
-
   async function handleOAuth(strategy: OAuthStrategy) {
-    if (!isLoaded || pending) return;
+    if (!isLoaded || pending || !signUp) return;
     setPending(strategy);
     try {
-      if (mode === 'signUp' && signUp) {
-        await signUp.authenticateWithRedirect({
-          strategy,
-          redirectUrl: '/sso-callback',
-          redirectUrlComplete,
-        });
-      } else if (signIn) {
-        await signIn.authenticateWithRedirect({
-          strategy,
-          redirectUrl: '/sso-callback',
-          redirectUrlComplete,
-        });
-      }
+      await signUp.authenticateWithRedirect({
+        strategy,
+        redirectUrl: '/sso-callback',
+        redirectUrlComplete,
+      });
     } catch {
       setPending(null);
     }

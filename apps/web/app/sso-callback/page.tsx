@@ -5,17 +5,20 @@ import { useSearchParams } from 'next/navigation';
 import { useSignIn, useSignUp } from '@clerk/nextjs/legacy';
 
 /**
- * OAuth callback. Follows Clerk's recommended custom-flow pattern:
- * the Clerk SDK auto-populates signIn / signUp from the URL params on
- * mount, we inspect that state and finish the flow ourselves. We do
- * NOT call handleRedirectCallback — when the server returns a
- * "transferable" signIn (new user via /sign-in OAuth), running it
- * eats the verification and the subsequent signUp.create({ transfer })
- * has nothing left to transfer.
+ * OAuth callback — both sign-in and sign-up paths come through here.
  *
- * Navigation always goes through window.location.assign — Next's
- * client router refuses to flush while a Clerk Promise is still
- * pending, and we'd rather just leave the page than juggle that.
+ * Because OAuthButtons always uses `signUp.authenticateWithRedirect`,
+ * Clerk's SDK auto-resolves three cases for us:
+ *
+ *   - New user → signUp.status === 'complete' (or 'missing_requirements'
+ *     when the provider didn't return a required field like email — X
+ *     does this).
+ *   - Existing user → SDK auto-transfers to a signIn under the hood, so
+ *     signIn.status === 'complete' on arrival.
+ *
+ * We just inspect whichever object got populated and finish the flow.
+ * Navigations use window.location so the Next router doesn't refuse
+ * to flush while a Clerk Promise is still pending.
  */
 function SSOCallbackContent() {
   const searchParams = useSearchParams();
@@ -25,18 +28,21 @@ function SSOCallbackContent() {
   const { signUp, isLoaded: signUpLoaded, setActive: setActiveSignUp } =
     useSignUp();
   const [error, setError] = useState<string | null>(null);
-  const [diagnostic, setDiagnostic] = useState<string>('Signing you in…');
-  // Imperative refs so the effect can read the latest values without
-  // putting the (unstable) Clerk objects in its dependency array, which
-  // was re-running the effect mid-await and cancelling our own flow.
-  const signInRef = useRef(signIn);
-  const signUpRef = useRef(signUp);
-  signInRef.current = signIn;
-  signUpRef.current = signUp;
-  const setActiveSignInRef = useRef(setActiveSignIn);
-  const setActiveSignUpRef = useRef(setActiveSignUp);
-  setActiveSignInRef.current = setActiveSignIn;
-  setActiveSignUpRef.current = setActiveSignUp;
+
+  // Refs so the effect can read the latest Clerk objects without
+  // putting them in its deps and re-running mid-await. Writing the
+  // ref in a layout effect rather than in render keeps the
+  // react-hooks/refs lint rule quiet.
+  const siRef = useRef(signIn);
+  const suRef = useRef(signUp);
+  const setSIRef = useRef(setActiveSignIn);
+  const setSURef = useRef(setActiveSignUp);
+  useEffect(() => {
+    siRef.current = signIn;
+    suRef.current = signUp;
+    setSIRef.current = setActiveSignIn;
+    setSURef.current = setActiveSignUp;
+  });
   const ran = useRef(false);
 
   const hardNav = (url: string) => {
@@ -48,121 +54,77 @@ function SSOCallbackContent() {
     if (ran.current) return;
     ran.current = true;
 
-    // 10s safety net — if every branch silently fails, hand off to
-    // /sign-up so the user is never permanently stranded.
-    const stallGuard = setTimeout(() => {
-      console.warn('[sso-callback] stalled, hard-nav /sign-up');
+    // Safety net — if every branch silently fails, dump the user at
+    // /sign-up so the form can pick up whatever state we got.
+    const stall = setTimeout(() => {
+      console.warn('[sso-callback] 10s stall, hard-nav /sign-up');
       hardNav('/sign-up');
     }, 10000);
 
     (async () => {
-      const si = signInRef.current;
-      const su = signUpRef.current;
-      console.log('[sso-callback] initial state', {
+      const si = siRef.current;
+      const su = suRef.current;
+      const setSI = setSIRef.current;
+      const setSU = setSURef.current;
+
+      console.log('[sso-callback] state', {
         signInStatus: si?.status,
-        signInFirstFactor: si?.firstFactorVerification?.status,
         signUpStatus: su?.status,
         signUpMissingFields: su?.missingFields,
-        signUpExternalAccountStatus:
-          su?.verifications?.externalAccount?.status,
+        signUpUnverifiedFields: su?.unverifiedFields,
       });
 
-      const setActiveSI = setActiveSignInRef.current;
-      const setActiveSU = setActiveSignUpRef.current;
-
-      // 1. Either flow already complete on arrival — set active + go.
       try {
-        if (si?.status === 'complete' && si.createdSessionId && setActiveSI) {
-          await setActiveSI({ session: si.createdSessionId });
-          clearTimeout(stallGuard);
+        // Existing user (SDK auto-transferred signUp → signIn).
+        if (si?.status === 'complete' && si.createdSessionId && setSI) {
+          await setSI({ session: si.createdSessionId });
+          clearTimeout(stall);
           hardNav(redirectUrl);
           return;
         }
-        if (su?.status === 'complete' && su.createdSessionId && setActiveSU) {
-          await setActiveSU({ session: su.createdSessionId });
-          clearTimeout(stallGuard);
+
+        // New user, signUp finished in one shot.
+        if (su?.status === 'complete' && su.createdSessionId && setSU) {
+          await setSU({ session: su.createdSessionId });
+          clearTimeout(stall);
           hardNav(redirectUrl);
           return;
         }
-      } catch (err) {
-        console.error('[sso-callback] setActive on arrival failed:', err);
-      }
 
-      // 2. SignUp already in progress with missing fields — let
-      //    /sign-up's form finish it.
-      if (su?.status === 'missing_requirements') {
-        clearTimeout(stallGuard);
-        hardNav('/sign-up');
-        return;
-      }
-
-      // 3. Transferable signIn (new user via /sign-in OAuth). Convert
-      //    to a signUp via Clerk's transfer mechanism.
-      const transferable =
-        si?.firstFactorVerification?.status === 'transferable';
-      if (transferable && su) {
-        try {
-          setDiagnostic('Creating your account…');
-          const created = await su.create({ transfer: true });
-          console.log('[sso-callback] transfer result', {
-            status: created.status,
-            missingFields: created.missingFields,
-            unverifiedFields: created.unverifiedFields,
-            sessionId: created.createdSessionId,
-          });
-
-          if (created.status === 'complete' && created.createdSessionId) {
-            try {
-              if (setActiveSU) {
-                await setActiveSU({ session: created.createdSessionId });
-              }
-            } catch (err) {
-              console.error(
-                '[sso-callback] setActive after transfer failed:',
-                err,
-              );
-            }
-            clearTimeout(stallGuard);
-            hardNav(redirectUrl);
-            return;
-          }
-
-          // Anything else (missing_requirements OR unrecognised) → /sign-up.
-          clearTimeout(stallGuard);
+        // New user, signUp needs more info (provider didn't return
+        // email, etc.). /sign-up's form effect detects the in-progress
+        // signUp and asks the user for what's missing.
+        if (su?.status === 'missing_requirements') {
+          clearTimeout(stall);
           hardNav('/sign-up');
           return;
-        } catch (err) {
-          clearTimeout(stallGuard);
-          console.error('[sso-callback] transfer threw:', err);
-          setError(
-            extractClerkError(err) ??
-              'Could not finish creating your account. Try again or use email + password.',
-          );
+        }
+
+        // Unexpected: have a signUp in some other state — still safer
+        // to hand off to /sign-up than to dead-end here.
+        if (su) {
+          clearTimeout(stall);
+          hardNav('/sign-up');
           return;
         }
-      }
 
-      // 4. None of the above. If we have ANY signUp at all, send the
-      //    user to /sign-up so the form can pick it up. Otherwise show
-      //    a real error with the live statuses.
-      if (su) {
-        clearTimeout(stallGuard);
-        hardNav('/sign-up');
-        return;
+        clearTimeout(stall);
+        setError(
+          `Could not finish signing you in (signIn: ${si?.status ?? 'none'}, signUp: none). Try again or use email + password.`,
+        );
+      } catch (err) {
+        clearTimeout(stall);
+        console.error('[sso-callback] flow failed:', err);
+        setError(
+          extractClerkError(err) ??
+            'Could not finish signing you in. Try again or use email + password.',
+        );
       }
-      clearTimeout(stallGuard);
-      setError(
-        `Could not finish signing you in (signIn: ${si?.status ?? 'none'} / ${
-          si?.firstFactorVerification?.status ?? 'none'
-        }, signUp: none). Try again or use email + password.`,
-      );
     })();
 
     return () => {
-      clearTimeout(stallGuard);
+      clearTimeout(stall);
     };
-    // signIn / signUp / setActive intentionally read via refs above so
-    // we don't re-run the effect every time Clerk mutates them.
   }, [signInLoaded, signUpLoaded, redirectUrl]);
 
   return (
@@ -207,7 +169,7 @@ function SSOCallbackContent() {
           </div>
         </>
       ) : (
-        <>{diagnostic}</>
+        <>Signing you in…</>
       )}
     </div>
   );
