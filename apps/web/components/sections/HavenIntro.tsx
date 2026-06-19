@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
+import { useApiClient } from '@/hooks/useApiClient';
 import styles from './HavenIntro.module.css';
 
 /**
@@ -26,11 +27,36 @@ function greetingPart(): 'morning' | 'afternoon' | 'evening' {
 
 export function HavenGreeting() {
   const { isLoaded, user } = useUser();
+  const api = useApiClient();
   const [mounted, setMounted] = useState(false);
+  // Display name from OUR backend (users.name), which is what the
+  // Settings → General "Display name" form writes to. Falls back to
+  // the Clerk profile only when the user hasn't set their own name.
+  const [backendName, setBackendName] = useState<string | null>(null);
 
   useEffect(() => {
+    // One-shot mount flag gating client-only render (avoids SSR mismatch).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getMe()
+      .then((data) => {
+        if (cancelled) return;
+        const n = data.name?.trim();
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (n) setBackendName(n);
+      })
+      .catch(() => {
+        // Falls back to Clerk's name, no need to surface this.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   if (!mounted || !isLoaded) {
     return (
@@ -42,6 +68,7 @@ export function HavenGreeting() {
   }
 
   const firstName =
+    backendName ||
     user?.firstName ||
     user?.username ||
     user?.emailAddresses[0]?.emailAddress?.split('@')[0] ||
