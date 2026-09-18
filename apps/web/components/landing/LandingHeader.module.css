@@ -1,0 +1,93 @@
+.header {
+  position: relative;
+  z-index: 30;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.logoIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.logoText {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.themeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.themeBtn:hover {
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.signIn {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-mid);
+  text-decoration: none;
+  padding: 8px 4px;
+  transition: color 0.15s ease;
+}
+
+.signIn:hover {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .header {
+    padding: 20px 20px;
+    gap: 14px;
+  }
+
+  .logoIcon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .logoText {
+    font-size: 0.78rem;
+  }
+
+  .actions {
+    gap: 14px;
+  }
+
+  .themeBtn {
+    padding: 6px;
+  }
+}

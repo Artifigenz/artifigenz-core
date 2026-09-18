@@ -11,7 +11,7 @@ function SignInContent() {
   const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect_url') || '/';
+  const redirectUrl = searchParams.get('redirect_url') || '/app';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,7 +53,7 @@ function SignInContent() {
         <>
           Don&apos;t have an account?
           <Link
-            href={`/sign-up${redirectUrl !== '/' ? `?redirect_url=${encodeURIComponent(redirectUrl)}` : ''}`}
+            href={`/sign-up${redirectUrl !== '/app' ? `?redirect_url=${encodeURIComponent(redirectUrl)}` : ''}`}
             className={styles.footerLink}
           >
             Sign up

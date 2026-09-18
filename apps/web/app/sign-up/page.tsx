@@ -13,7 +13,7 @@ function SignUpContent() {
   const { signUp, setActive, isLoaded } = useSignUp();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect_url') || '/';
+  const redirectUrl = searchParams.get('redirect_url') || '/app';
 
   const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState('');
@@ -243,7 +243,7 @@ function SignUpContent() {
         <>
           Already have an account?
           <Link
-            href={`/sign-in${redirectUrl !== '/' ? `?redirect_url=${encodeURIComponent(redirectUrl)}` : ''}`}
+            href={`/sign-in${redirectUrl !== '/app' ? `?redirect_url=${encodeURIComponent(redirectUrl)}` : ''}`}
             className={styles.footerLink}
           >
             Sign in

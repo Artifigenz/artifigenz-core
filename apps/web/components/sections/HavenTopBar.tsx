@@ -81,7 +81,7 @@ export default function HavenTopBar({
           {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
         </button>
       ) : (
-        <Link href="/" className={styles.brand} aria-label="Artifigenz home">
+        <Link href="/app" className={styles.brand} aria-label="Artifigenz home">
           <ArtifigenzMark height={40} />
           {!title && <span className={styles.wordmark}>ARTIFIGENZ</span>}
         </Link>

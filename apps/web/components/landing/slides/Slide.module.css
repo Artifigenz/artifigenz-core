@@ -1,0 +1,157 @@
+/* ──────────────────────────────────────────
+   Shared slide shell styles
+   Each slide is a 100vh block in the
+   scroll-snap container.
+   ────────────────────────────────────────── */
+
+.slide {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 40px 140px;
+  overflow: hidden;
+}
+
+.inner {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* ─── Common content elements with stagger reveal ─── */
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  padding: 8px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.eyebrowDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.title {
+  font-size: clamp(2.4rem, 5.5vw, 4.8rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  color: var(--text);
+  margin-bottom: 24px;
+  max-width: 920px;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.subtitle {
+  font-size: clamp(1rem, 1.6vw, 1.22rem);
+  line-height: 1.55;
+  color: var(--text-mid);
+  max-width: 640px;
+  margin-bottom: 48px;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 34px;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  opacity: 0.95;
+}
+
+/* When slide becomes active, fade content up with stagger */
+.slideActive .eyebrow {
+  animation: contentReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+}
+.slideActive .title {
+  animation: contentReveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+}
+.slideActive .subtitle {
+  animation: contentReveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.45s forwards;
+}
+.slideActive .cta {
+  animation: contentReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+}
+
+@keyframes contentReveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .slide {
+    padding: 100px 20px 140px;
+  }
+
+  .title {
+    font-size: 2.2rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+    margin-bottom: 36px;
+  }
+
+  .cta {
+    padding: 15px 28px;
+    font-size: 0.92rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eyebrow,
+  .title,
+  .subtitle,
+  .cta {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

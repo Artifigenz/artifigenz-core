@@ -1,0 +1,344 @@
+.section {
+  padding: 120px 0;
+}
+
+.header {
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto 48px;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+.subtitle {
+  font-size: clamp(0.95rem, 1.3vw, 1.08rem);
+  line-height: 1.55;
+  color: var(--text-mid);
+}
+
+/* ─── Picker ─── */
+
+.pickerScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 -40px 40px;
+  padding: 0 40px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pickerScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: min-content;
+  padding: 4px 0;
+}
+
+.pickerItem {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.2s ease;
+}
+
+.pickerItem:hover {
+  transform: translateY(-2px);
+}
+
+.pickerOrb {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  transition: color 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pickerItem:hover .pickerOrb {
+  color: var(--text-mid);
+  transform: scale(1.08);
+}
+
+.pickerItemActive .pickerOrb {
+  color: var(--text);
+  transform: scale(1.15);
+}
+
+.pickerItemActive:hover .pickerOrb {
+  color: var(--text);
+}
+
+.pickerName {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.pickerItemActive .pickerName {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ─── Spotlight ─── */
+
+.spotlight {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 48px;
+  padding: 48px 48px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg, 24px);
+  background: var(--card-bg);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.08);
+}
+
+.spotlightLeft {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+}
+
+.spotlightIconWrap {
+  flex-shrink: 0;
+}
+
+.spotlightIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.spotlightIcon :global(svg) {
+  width: 42px;
+  height: 42px;
+}
+
+.spotlightText {
+  flex: 1;
+  min-width: 0;
+}
+
+.spotlightNameRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.spotlightName {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.spotlightBadge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 5px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+}
+
+.spotlightPitch {
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--text-mid);
+  margin-bottom: 20px;
+}
+
+.spotlightSkills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skillChip {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 5px 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+/* ─── Right: Sample notification ─── */
+
+.spotlightRight {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sampleLabel {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.notification {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  background: var(--card-hover);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.notificationIconSlot {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notificationBody {
+  flex: 1;
+  min-width: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.notificationMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.notificationAgent {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-mid);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.notificationTime {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+}
+
+.notificationTitle {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.comingSoonBox {
+  padding: 24px 20px;
+  border: 1px dashed var(--border-light);
+  border-radius: 16px;
+  background: var(--card-hover);
+  text-align: center;
+}
+
+.comingSoonText {
+  font-size: 0.9rem;
+  color: var(--text-mid);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+@media (max-width: 960px) {
+  .section {
+    padding: 72px 0;
+  }
+
+  .header {
+    margin-bottom: 36px;
+  }
+
+  .pickerScroll {
+    margin: 0 -20px 32px;
+    padding: 0 20px;
+  }
+
+  .picker {
+    justify-content: flex-start;
+  }
+
+  .spotlight {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding: 36px 28px;
+  }
+
+  .spotlightLeft {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .spotlightIcon {
+    width: 64px;
+    height: 64px;
+  }
+
+  .spotlightName {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .spotlight {
+    padding: 28px 22px;
+  }
+
+  .pickerOrb {
+    width: 40px;
+    height: 40px;
+  }
+
+  .pickerName {
+    font-size: 0.66rem;
+  }
+}

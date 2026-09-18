@@ -1,0 +1,140 @@
+.section {
+  padding: 120px 0 100px;
+}
+
+.header {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 56px;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+/* ─── Scroll track ─── */
+
+.scrollWrap {
+  position: relative;
+  padding: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scrollWrap::-webkit-scrollbar {
+  display: none;
+}
+
+.track {
+  display: flex;
+  padding: 10px 0;
+  min-width: min-content;
+}
+
+.item {
+  flex: 0 0 auto;
+  width: 320px;
+  padding: 0 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  scroll-snap-align: start;
+}
+
+.item:first-child {
+  padding-left: 0;
+}
+
+.item:not(:last-child) {
+  border-right: 1px solid var(--border-light);
+}
+
+.quote {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text);
+  font-style: italic;
+}
+
+.attribution {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+
+.role {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+
+/* ─── Hint ─── */
+
+.hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 32px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.hint svg {
+  animation: nudge 1.8s ease-in-out infinite;
+}
+
+@keyframes nudge {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+@media (max-width: 900px) {
+  .section {
+    padding: 72px 0 60px;
+  }
+
+  .track {
+    padding: 10px 0;
+  }
+
+  .item {
+    width: 280px;
+    padding: 0 24px;
+  }
+
+  .quote {
+    font-size: 0.94rem;
+  }
+}
